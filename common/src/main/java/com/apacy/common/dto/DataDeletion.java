@@ -1,20 +1,10 @@
 package com.apacy.common.dto;
 
 /**
- * Data Transfer Object for data deletion operations.
- * 
- * @param tableName The name of the table to delete from
- * @param whereClause Optional WHERE clause for conditional deletion
- * @param transactionId The ID of the transaction performing the deletion
+ * Dibuat oleh QP, dikonsumsi oleh SM.
+ * Instruksi spesifik ke SM tentang data apa yang harus DIHAPUS.
  */
 public record DataDeletion(
     String tableName,
-    String whereClause,
-    String transactionId
-) {
-    public DataDeletion {
-        if (tableName == null || tableName.trim().isEmpty()) {
-            throw new IllegalArgumentException("Table name cannot be null or empty");
-        }
-    }
-}
+    Object filterCondition // Sebaiknya merujuk ke class/record internal SM
+) {}
