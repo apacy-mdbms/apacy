@@ -6,15 +6,15 @@
 
     <parent>
         <groupId>com.apacy</groupId>
-        <artifactId>mini-dbms</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <artifactId>mdbms-apacy</artifactId>
+        <version>1.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>query-optimization</artifactId>
+    <artifactId>query-optimizer</artifactId>
     <packaging>jar</packaging>
 
-    <name>Query Optimization</name>
-    <description>Query Optimization module for optimizing database queries</description>
+    <name>Query Optimizer</name>
+    <description>Query Optimizer Module - Handles SQL parsing and query optimization</description>
 
     <dependencies>
         <dependency>
@@ -24,8 +24,14 @@
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
+
 </project>

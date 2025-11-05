@@ -6,25 +6,25 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ConcurrencyControlManagerTest {
     
-    private ConcurrencyControlManager concurrencyControlManager;
+    private ConcurrencyControlManager manager;
     
     @BeforeEach
     void setUp() {
-        concurrencyControlManager = new ConcurrencyControlManager();
+        manager = new ConcurrencyControlManager();
     }
     
     @Test
     void testComponentName() {
-        assertEquals("Concurrency Control Manager", concurrencyControlManager.getComponentName());
+        assertEquals("Concurrency Control Manager", manager.getComponentName());
     }
     
     @Test
     void testInitialize() throws Exception {
-        assertDoesNotThrow(() -> concurrencyControlManager.initialize());
+        assertDoesNotThrow(() -> manager.initialize());
     }
     
     @Test
     void testShutdown() {
-        assertDoesNotThrow(() -> concurrencyControlManager.shutdown());
+        assertDoesNotThrow(() -> manager.shutdown());
     }
 }

@@ -15,6 +15,10 @@ buildNumber.properties
 *.jar
 *.war
 *.ear
+*.nar
+*.zip
+*.tar.gz
+*.rar
 *.log
 *.ctxt
 .mtj.tmp/
@@ -34,6 +38,11 @@ replay_pid*
 
 # OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 *~
 
@@ -41,3 +50,10 @@ Thumbs.db
 bin/
 build/
 out/
+
+# Project-specific data files
+storage-manager/data/*.dat
+storage-manager/data/*.metadata
+
+# Project-specific log files
+failure-recovery/log/*.log

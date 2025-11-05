@@ -5,25 +5,25 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.apacy</groupId>
-    <artifactId>mini-dbms</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <artifactId>mdbms-apacy</artifactId>
+    <version>1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>Mini DBMS</name>
-    <description>A mini Database Management System with Query Processor, Query Optimization, Storage Manager, Concurrency Control, and Failure Recovery</description>
+    <name>mDBMS-Apacy</name>
+    <description>Modular Database Management System - Apacy Super Group</description>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <junit.version>5.10.0</junit.version>
+        <junit.version>5.9.2</junit.version>
     </properties>
 
     <modules>
         <module>common</module>
-        <module>query-processor</module>
-        <module>query-optimization</module>
         <module>storage-manager</module>
+        <module>query-optimization</module>
+        <module>query-processor</module>
         <module>concurrency-control</module>
         <module>failure-recovery</module>
     </modules>
@@ -33,6 +33,18 @@
             <dependency>
                 <groupId>org.junit.jupiter</groupId>
                 <artifactId>junit-jupiter</artifactId>
+                <version>${junit.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter-api</artifactId>
+                <version>${junit.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter-engine</artifactId>
                 <version>${junit.version}</version>
                 <scope>test</scope>
             </dependency>
@@ -54,9 +66,10 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <version>3.1.2</version>
+                    <version>3.0.0</version>
                 </plugin>
             </plugins>
         </pluginManagement>
     </build>
+
 </project>

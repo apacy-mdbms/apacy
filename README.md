@@ -1,54 +1,69 @@
-# APACY - Mini DBMS
+# mDBMS-Apacy
 
-A mini Database Management System (DBMS) built with Java 17 and Maven. This project implements core DBMS components including query processing, query optimization, storage management, concurrency control, and failure recovery.
+**Modular Database Management System - Super Group Apacy**
 
-## Project Structure
+## Overview
 
-This is a multi-module Maven project with the following components:
+mDBMS-Apacy is a comprehensive, modular database management system built with Java 17 and Maven. This project demonstrates the implementation of core DBMS components including storage management, query processing, concurrency control, and failure recovery.
 
+## Architecture
+
+The system is organized into 6 main modules:
+
+### 1. Common (`common/`)
+The "Kitab Suci" module containing shared DTOs, enums, and interfaces used across all other modules.
+
+### 2. Storage Manager (`storage-manager/`)
+Handles physical data storage, including:
+- Block-level data management
+- Serialization/deserialization
+- Hash indexing (required) and B+ Tree (bonus)
+- Statistics collection
+
+### 3. Query Optimizer (`query-optimizer/`)
+Responsible for query parsing and optimization:
+- SQL query parsing
+- Heuristic-based optimization
+- Cost estimation using storage statistics
+
+### 4. Query Processor (`query-processor/`)
+The main execution engine that coordinates all other modules:
+- CLI interface (Main entry point)
+- Query execution strategies
+- JOIN and sorting implementations
+
+### 5. Concurrency Control (`concurrency-control/`)
+Manages concurrent access to data:
+- Lock-based concurrency control
+- Timestamp-based concurrency control
+- Deadlock detection and handling
+
+### 6. Failure Recovery (`failure-recovery/`)
+Ensures data consistency and recovery:
+- Write-ahead logging
+- UNDO/REDO recovery mechanisms
+- Checkpoint management
+
+## Building and Running
+
+### Prerequisites
+- Java 17 or higher
+- Maven 3.6+
+
+### Build
+```bash
+mvn clean compile
 ```
-apacy/
-├── common/                      # Common/Integration module
-│   └── src/
-│       ├── main/java/
-│       │   └── com/apacy/common/
-│       │       └── DBMSComponent.java
-│       └── test/java/
-│
-├── query-processor/             # Query Processor module
-│   └── src/
-│       ├── main/java/
-│       │   └── com/apacy/queryprocessor/
-│       │       └── QueryProcessor.java
-│       └── test/java/
-│
-├── query-optimization/          # Query Optimization module
-│   └── src/
-│       ├── main/java/
-│       │   └── com/apacy/queryoptimization/
-│       │       └── QueryOptimizer.java
-│       └── test/java/
-│
-├── storage-manager/             # Storage Manager module
-│   └── src/
-│       ├── main/java/
-│       │   └── com/apacy/storagemanager/
-│       │       └── StorageManager.java
-│       └── test/java/
-│
-├── concurrency-control/         # Concurrency Control Manager module
-│   └── src/
-│       ├── main/java/
-│       │   └── com/apacy/concurrencycontrol/
-│       │       └── ConcurrencyControlManager.java
-│       └── test/java/
-│
-└── failure-recovery/            # Failure Recovery module
-    └── src/
-        ├── main/java/
-        │   └── com/apacy/failurerecovery/
-        │       └── FailureRecoveryManager.java
-        └── test/java/
+
+### Run
+```bash
+cd query-processor
+mvn exec:java -Dexec.mainClass="com.apacy.queryprocessor.Main"
+```
+
+### Test
+```bash
+mvn test
 ```
 
 ## Components

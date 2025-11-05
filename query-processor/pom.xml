@@ -6,15 +6,15 @@
 
     <parent>
         <groupId>com.apacy</groupId>
-        <artifactId>mini-dbms</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <artifactId>mdbms-apacy</artifactId>
+        <version>1.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>query-processor</artifactId>
     <packaging>jar</packaging>
 
     <name>Query Processor</name>
-    <description>Query Processor module for parsing and processing database queries</description>
+    <description>Query Processor Module - Main execution engine that coordinates all other modules</description>
 
     <dependencies>
         <dependency>
@@ -23,9 +23,48 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>com.apacy</groupId>
+            <artifactId>storage-manager</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.apacy</groupId>
+            <artifactId>query-optimizer</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.apacy</groupId>
+            <artifactId>concurrency-control</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.apacy</groupId>
+            <artifactId>failure-recovery</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <mainClass>com.apacy.queryprocessor.Main</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
 </project>
