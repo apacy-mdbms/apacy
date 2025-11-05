@@ -22,10 +22,10 @@
     <modules>
         <module>common</module>
         <module>storage-manager</module>
-        <module>query-optimization</module>
+        <module>query-optimizer</module>
         <module>query-processor</module>
-        <module>concurrency-control</module>
-        <module>failure-recovery</module>
+        <module>concurrency-control-manager</module>
+        <module>failure-recovery-manager</module>
     </modules>
 
     <dependencyManagement>

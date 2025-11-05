@@ -34,12 +34,12 @@
         </dependency>
         <dependency>
             <groupId>com.apacy</groupId>
-            <artifactId>concurrency-control</artifactId>
+            <artifactId>concurrency-control-manager</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.apacy</groupId>
-            <artifactId>failure-recovery</artifactId>
+            <artifactId>failure-recovery-manager</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
