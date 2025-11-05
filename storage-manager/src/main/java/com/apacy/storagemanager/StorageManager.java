@@ -21,6 +21,18 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
     }
 
     @Override
+    public void initialize() throws Exception {
+        // TODO: Implement storage manager initialization logic
+        // (e.g., load metadata, open files)
+    }
+
+    @Override
+    public void shutdown() {
+        // TODO: Implement storage manager shutdown logic
+        // (e.g., flush buffers, close files)
+    }
+
+    @Override
     public List<Row> readBlock(DataRetrieval dataRetrieval) {
         // TODO:
         // 1. Panggil blockManager.readBlock(...)

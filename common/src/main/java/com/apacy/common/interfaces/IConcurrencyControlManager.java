@@ -1,9 +1,8 @@
 package com.apacy.common.interfaces;
 
-import com.apacy.common.dto.DataDeletion;
-import com.apacy.common.dto.DataRetrieval;
-import com.apacy.common.dto.DataWrite;
-import com.apacy.common.dto.ExecutionResult;
+import com.apacy.common.dto.Response;
+import com.apacy.common.dto.Row;
+import com.apacy.common.enums.Action;
 
 /**
  * Kontrak untuk: Concurrency Control Manager

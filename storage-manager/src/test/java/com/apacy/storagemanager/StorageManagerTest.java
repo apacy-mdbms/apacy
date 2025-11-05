@@ -10,7 +10,7 @@ class StorageManagerTest {
     
     @BeforeEach
     void setUp() {
-        storageManager = new StorageManager();
+        storageManager = new StorageManager("Bruh");
     }
     
     @Test
