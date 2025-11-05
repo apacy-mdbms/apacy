@@ -6,7 +6,7 @@ package com.apacy.common;
  */
 public abstract class DBMSComponent {
     
-    private String componentName;
+    private final String componentName;
     
     public DBMSComponent(String componentName) {
         this.componentName = componentName;
