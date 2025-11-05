@@ -1,0 +1,7 @@
+common/                 @Apacy-Supergroup/team-qp @Apacy-Supergroup/team-sm @Apacy-Supergroup/team-qo @Apacy-Supergroup/team-ccm @Apacy-Supergroup/team-frm
+
+query-processor/        @Apacy-Supergroup/team-qp
+storage-manager/        @Apacy-Supergroup/team-sm
+query-optimization/     @Apacy-Supergroup/team-qo
+concurrency-control/    @Apacy-Supergroup/team-ccm
+failure-recovery/       @Apacy-Supergroup/team-frm
