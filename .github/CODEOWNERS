@@ -1,7 +1,7 @@
-common/                 @Apacy-Supergroup/team-qp @Apacy-Supergroup/team-sm @Apacy-Supergroup/team-qo @Apacy-Supergroup/team-ccm @Apacy-Supergroup/team-frm
+common/                 @Apacy-Supergroup/qp-Bash @Apacy-Supergroup/sm-ASM @Apacy-Supergroup/qo-JakselScript @Apacy-Supergroup/ccm-Lua @Apacy-Supergroup/frm-R
 
-query-processor/        @Apacy-Supergroup/team-qp
-storage-manager/        @Apacy-Supergroup/team-sm
-query-optimization/     @Apacy-Supergroup/team-qo
-concurrency-control/    @Apacy-Supergroup/team-ccm
-failure-recovery/       @Apacy-Supergroup/team-frm
+query-processor/        @Apacy-Supergroup/qp-Bash
+storage-manager/        @Apacy-Supergroup/sm-ASM
+query-optimization/     @Apacy-Supergroup/qo-JakselScript
+concurrency-control/    @Apacy-Supergroup/ccm-Lua
+failure-recovery/       @Apacy-Supergroup/frm-R
