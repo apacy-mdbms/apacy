@@ -3,90 +3,76 @@ package com.apacy.failurerecovery;
 import com.apacy.common.DBMSComponent;
 import com.apacy.common.dto.*;
 import com.apacy.common.interfaces.IFailureRecoveryManager;
-import java.util.Map;
 
-/**
- * Implementation of the Failure Recovery Manager interface.
- * TODO: Implement comprehensive recovery mechanisms including UNDO/REDO operations, logging, and checkpointing
- */
 public class FailureRecoveryManager extends DBMSComponent implements IFailureRecoveryManager {
+
+    // Gunakan helper class internal yang sudah dibuat
+    private final LogWriter logWriter;
+    private final LogReplayer logReplayer;
+    private final CheckpointManager checkpointManager;
 
     public FailureRecoveryManager() {
         super("Failure Recovery Manager");
-        // TODO: Initialize log writer, log replayer, and checkpoint manager
+        
+        // Inisialisasi helper-nya
+        this.logWriter = new LogWriter();
+        this.logReplayer = new LogReplayer();
+        this.checkpointManager = new CheckpointManager();
     }
 
     @Override
     public void initialize() throws Exception {
-        // TODO: Initialize the failure recovery manager component
-        // For now, just return without throwing exception
+        // ... (Logika inisialisasi jika ada) ...
     }
 
     @Override
     public void shutdown() {
-        // TODO: Shutdown the failure recovery manager component gracefully
-        // For now, just return without throwing exception
+        // ... (Logika shutdown, misal: logWriter.close()) ...
     }
 
     @Override
-    public ExecutionResult writeLog(String transactionId, String operation, String tableName, 
-                                   Object oldData, Object newData) {
-        // TODO: Implement log writing logic
-        throw new UnsupportedOperationException("writeLog not implemented yet");
+    public void writeLog(ExecutionResult info) {
+        // Delegasikan tugas ke helper
+        try {
+            // Ubah DTO ExecutionResult menjadi format log entry internal Anda
+            // (Ini hanya contoh, sesuaikan dengan LogWriter Anda)
+            logWriter.writeLog(
+                String.valueOf(info.transactionId()),
+                info.operation(),
+                null, // Anda perlu cara untuk mendapatkan nama tabel
+                info.rows() // atau data lain dari 'info'
+            );
+        } catch (Exception e) {
+            // TODO: Handle exception (misal: print error)
+            e.printStackTrace();
+        }
     }
 
     @Override
-    public ExecutionResult undo(String transactionId) {
-        // TODO: Implement undo logic
-        throw new UnsupportedOperationException("undo not implemented yet");
+    public void saveCheckpoint() {
+        // Delegasikan tugas ke helper
+        try {
+            this.checkpointManager.createCheckpoint();
+        } catch (Exception e) {
+            // TODO: Handle exception
+            e.printStackTrace();
+        }
     }
 
     @Override
-    public ExecutionResult redo(boolean fromCheckpoint) {
-        // TODO: Implement redo logic
-        throw new UnsupportedOperationException("redo not implemented yet");
-    }
-
-    @Override
-    public ExecutionResult getLogStatus() {
-        // TODO: Implement log status reporting
-        throw new UnsupportedOperationException("getLogStatus not implemented yet");
-    }
-
-    @Override
-    public ExecutionResult truncateLog(String checkpointId) {
-        // TODO: Implement log truncation
-        throw new UnsupportedOperationException("truncateLog not implemented yet");
-    }
-
-    @Override
-    public ExecutionResult backupLog(String backupPath) {
-        // TODO: Implement log backup
-        throw new UnsupportedOperationException("backupLog not implemented yet");
-    }
-
-    @Override
-    public ExecutionResult restoreLog(String backupPath) {
-        // TODO: Implement log restoration
-        throw new UnsupportedOperationException("restoreLog not implemented yet");
-    }
-
-    @Override
-    public ExecutionResult writeLog(String transactionId, String operation, String tableName, 
-                                   DataDeletion deletion, Map<String, Object> data) {
-        // TODO: Implement log writing logic
-        throw new UnsupportedOperationException("writeLog not implemented yet");
-    }
-
-    @Override
-    public ExecutionResult recover(RecoveryCriteria criteria) {
-        // TODO: Implement recovery logic using log replay
-        throw new UnsupportedOperationException("recover not implemented yet");
-    }
-
-    @Override
-    public ExecutionResult saveCheckpoint() {
-        // TODO: Implement checkpoint creation
-        throw new UnsupportedOperationException("saveCheckpoint not implemented yet");
+    public void recover(RecoveryCriteria criteria) {
+        // Delegasikan tugas ke helper
+        try {
+            if ("UNDO_TRANSACTION".equals(criteria.recoveryType())) {
+                this.logReplayer.undoTransaction(criteria.transactionId());
+            } else if ("POINT_IN_TIME".equals(criteria.recoveryType())) {
+                this.logReplayer.replayLogs(criteria);
+            } else {
+                this.logReplayer.replayLogs(criteria);
+            }
+        } catch (Exception e) {
+            // TODO: Handle exception
+            e.printStackTrace();
+        }
     }
 }

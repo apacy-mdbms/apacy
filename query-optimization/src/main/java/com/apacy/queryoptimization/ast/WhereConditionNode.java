@@ -44,8 +44,7 @@ public class WhereConditionNode {
      * TODO: Implement leaf node detection
      */
     public boolean isLeaf() {
-        // TODO: Implement leaf node check logic
-        throw new UnsupportedOperationException("isLeaf not implemented yet");
+        return this.logicalOperator == null;
     }
     
     /**
@@ -59,7 +58,11 @@ public class WhereConditionNode {
     
     @Override
     public String toString() {
-        // TODO: Implement string representation of AST node
-        throw new UnsupportedOperationException("toString not implemented yet");
+        if (isLeaf()) {
+            return String.format("%s %s %s", columnName, operator, value.toString());
+        } else {
+            return String.format("(%s %s %s)", 
+                left.toString(), logicalOperator, right.toString());
+        }
     }
 }

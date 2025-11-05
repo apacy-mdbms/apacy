@@ -4,74 +4,47 @@ import com.apacy.common.DBMSComponent;
 import com.apacy.common.dto.*;
 import com.apacy.common.interfaces.IQueryOptimizer;
 
-/**
- * Implementation of the Query Optimizer interface.
- * TODO: Implement SQL query parsing, optimization, and cost estimation
- */
 public class QueryOptimizer extends DBMSComponent implements IQueryOptimizer {
+
+    private final QueryParser parser;
+    private final HeuristicOptimizer optimizer;
+    private final CostEstimator estimator;
 
     public QueryOptimizer() {
         super("Query Optimizer");
-        // TODO: Initialize query parser, optimizer, and cost estimator components
+        // Inisialisasi helper-nya
+        this.parser = new QueryParser();
+        this.optimizer = new HeuristicOptimizer();
+        this.estimator = new CostEstimator();
     }
 
     @Override
     public void initialize() throws Exception {
-        // TODO: Initialize the query optimizer component
-        // For now, just return without throwing exception
+        // ... (Logika inisialisasi jika ada) ...
     }
 
     @Override
     public void shutdown() {
-        // TODO: Shutdown the query optimizer component gracefully
-        // For now, just return without throwing exception
+        // ... (Logika shutdown jika ada) ...
+    }
+    
+    @Override
+    public ParsedQuery parseQuery(String query) {
+        // 5. Delegasikan tugas ke helper
+        return this.parser.parse(query);
     }
 
     @Override
-    public ExecutionResult parseQuery(String sqlQuery) {
-        // TODO: Implement SQL parsing with syntax validation and AST generation
-        throw new UnsupportedOperationException("parseQuery not implemented yet");
+    public ParsedQuery optimizeQuery(ParsedQuery query, Statistic stats) {
+        // 5. Delegasikan tugas ke helper
+        return this.optimizer.optimize(query, stats);
     }
 
     @Override
-    public ExecutionResult optimizeQuery(ParsedQuery query, Statistic statistics) {
-        // TODO: Implement query optimization using heuristics and cost estimation
-        throw new UnsupportedOperationException("optimizeQuery not implemented yet");
-    }
-
-    @Override
-    public ExecutionResult getCost(ParsedQuery query, Statistic statistics) {
-        // TODO: Implement cost estimation for query execution plans
-        throw new UnsupportedOperationException("getCost not implemented yet");
-    }
-
-    @Override
-    public ExecutionResult validateQuery(String sqlQuery) {
-        // TODO: Implement SQL query validation
-        throw new UnsupportedOperationException("validateQuery not implemented yet");
-    }
-
-    @Override
-    public ExecutionResult generateExecutionPlan(ParsedQuery query, Statistic statistics) {
-        // TODO: Generate optimal execution plan using cost-based optimization
-        throw new UnsupportedOperationException("generateExecutionPlan not implemented yet");
-    }
-
-    @Override
-    public ExecutionResult rewriteQuery(ParsedQuery query) {
-        // TODO: Implement query rewriting for optimization
-        throw new UnsupportedOperationException("rewriteQuery not implemented yet");
-    }
-
-    @Override
-    public ExecutionResult estimateSelectivity(String whereClause, Statistic statistics) {
-        // TODO: Implement selectivity estimation for WHERE clauses
-        throw new UnsupportedOperationException("estimateSelectivity not implemented yet");
-    }
-
-    @Override
-    public ExecutionResult suggestIndexes(ParsedQuery query, Statistic statistics) {
-        // TODO: Analyze query and suggest beneficial indexes
-        throw new UnsupportedOperationException("suggestIndexes not implemented yet");
+    public int getCost(ParsedQuery query, Statistic stats) {
+        // 5. Delegasikan tugas ke helper
+        // (CostEstimator Anda mengembalikan 'double', tapi interface minta 'int'.
+        // Anda harus menyesuaikannya, misal dibulatkan atau di-cast)
+        return (int) this.estimator.estimate(query, stats);
     }
 }
