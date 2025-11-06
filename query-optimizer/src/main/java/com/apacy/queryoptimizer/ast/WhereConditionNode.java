@@ -1,4 +1,4 @@
-package com.apacy.queryoptimization.ast;
+package com.apacy.queryoptimizer.ast;
 
 /**
  * Abstract Syntax Tree node for WHERE clause conditions.
