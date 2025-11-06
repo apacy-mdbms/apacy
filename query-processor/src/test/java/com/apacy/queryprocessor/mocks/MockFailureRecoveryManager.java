@@ -3,7 +3,7 @@ package com.apacy.queryprocessor.mocks;
 import com.apacy.common.dto.*;
 import com.apacy.common.interfaces.IFailureRecoveryManager;
 
-public class FailureRecoveryManager implements IFailureRecoveryManager {
+public class MockFailureRecoveryManager implements IFailureRecoveryManager {
 
     @Override
     public void writeLog(ExecutionResult info) {
