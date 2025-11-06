@@ -41,10 +41,10 @@ public class QueryOptimizer extends DBMSComponent implements IQueryOptimizer {
     }
 
     @Override
-    public int getCost(ParsedQuery query, Statistic stats) {
+    public double getCost(ParsedQuery query, Statistic stats) {
         // 5. Delegasikan tugas ke helper
         // (CostEstimator Anda mengembalikan 'double', tapi interface minta 'int'.
         // Anda harus menyesuaikannya, misal dibulatkan atau di-cast)
-        return (int) this.estimator.estimate(query, stats);
+        return this.estimator.estimate(query, stats);
     }
 }

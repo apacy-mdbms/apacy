@@ -14,5 +14,5 @@ public interface IQueryOptimizer {
 
     ParsedQuery optimizeQuery(ParsedQuery query, Statistic stats);
 
-    int getCost(ParsedQuery query, Statistic stats);
+    double getCost(ParsedQuery query, Statistic stats);
 }
