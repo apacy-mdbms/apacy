@@ -1,4 +1,4 @@
-package com.apacy.failurerecoverymanager;
+package com.apacy.queryprocessor.mocks;
 
 import com.apacy.common.dto.*;
 import com.apacy.common.interfaces.IFailureRecoveryManager;
