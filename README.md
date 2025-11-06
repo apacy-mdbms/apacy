@@ -4,150 +4,70 @@
 
 ## Overview
 
-mDBMS-Apacy is a comprehensive, modular database management system built with Java 17 and Maven. This project demonstrates the implementation of core DBMS components including storage management, query processing, concurrency control, and failure recovery.
+mDBMS-Apacy adalah sistem manajemen basis data modular komprehensif yang dibangun dari awal menggunakan Java 17 dan Maven. Proyek ini merupakan tugas akademis yang mendemonstrasikan implementasi komponen inti DBMS termasuk *storage management*, *query processing*, *concurrency control*, dan *failure recovery*.
 
 ## Architecture
 
-The system is organized into 6 main modules:
+Sistem ini diorganisir sebagai *monorepo* yang terdiri dari 6 modul Maven utama:
 
-### 1. Common (`common/`)
-The "Kitab Suci" module containing shared DTOs, enums, and interfaces used across all other modules.
-
-### 2. Storage Manager (`storage-manager/`)
-Handles physical data storage, including:
-- Block-level data management
-- Serialization/deserialization
-- Hash indexing (required) and B+ Tree (bonus)
-- Statistics collection
-
-### 3. Query Optimizer (`query-optimizer/`)
-Responsible for query parsing and optimization:
-- SQL query parsing
-- Heuristic-based optimization
-- Cost estimation using storage statistics
-
-### 4. Query Processor (`query-processor/`)
-The main execution engine that coordinates all other modules:
-- CLI interface (Main entry point)
-- Query execution strategies
-- JOIN and sorting implementations
-
-### 5. Concurrency Control (`concurrency-control/`)
-Manages concurrent access to data:
-- Lock-based concurrency control
-- Timestamp-based concurrency control
-- Deadlock detection and handling
-
-### 6. Failure Recovery (`failure-recovery/`)
-Ensures data consistency and recovery:
-- Write-ahead logging
-- UNDO/REDO recovery mechanisms
-- Checkpoint management
-
-## Building and Running
-
-### Prerequisites
-- Java 17 or higher
-- Maven 3.6+
-
-### Build
-```bash
-mvn clean compile
-```
-
-### Run
-```bash
-cd query-processor
-mvn exec:java -Dexec.mainClass="com.apacy.queryprocessor.Main"
-```
-
-### Test
-```bash
-mvn test
-```
-
-## Components
-
-### 1. Common Module
-The integration module that provides shared components and utilities used across all other modules. Contains the base `DBMSComponent` class that all components extend.
-
-### 2. Query Processor
-Responsible for parsing and processing database queries. Handles SQL query interpretation and execution.
-
-### 3. Query Optimization
-Optimizes database queries for better performance. Analyzes query plans and applies optimization techniques.
-
-### 4. Storage Manager
-Manages data storage and retrieval operations. Handles persistent storage of database data.
-
-### 5. Concurrency Control Manager
-Handles concurrent database transactions. Implements locking mechanisms and ensures transaction isolation.
-
-### 6. Failure Recovery Manager
-Provides database recovery and fault tolerance. Implements checkpoint creation and database recovery mechanisms.
-
-## Requirements
-
-- Java 17 or higher
-- Maven 3.6 or higher
-
-## Building the Project
-
-To build all modules:
-
-```bash
-mvn clean install
-```
-
-To build a specific module:
-
-```bash
-cd <module-name>
-mvn clean install
-```
-
-## Running Tests
-
-To run all tests:
-
-```bash
-mvn test
-```
-
-To run tests for a specific module:
-
-```bash
-cd <module-name>
-mvn test
-```
+1.  **Common (`common/`)**: Modul "Kitab Suci" yang berisi DTOs (`record`), `enum`, dan `interface` yang digunakan bersama oleh semua modul lain.
+2.  **Storage Manager (`storage-manager/`)**: Menangani penyimpanan data fisik, manajemen blok, serialisasi, *indexing* (Hash, B+ Tree), dan pengumpulan statistik.
+3.  **Query Optimizer (`query-optimizer/`)**: Bertanggung jawab untuk mem-parsing string SQL menjadi AST (`ParsedQuery`) dan menerapkan aturan optimasi berbasis heuristik.
+4.  **Concurrency Control (`concurrency-control/`)**: Mengelola akses data secara konkuren menggunakan *locking* (`LockManager`) dan manajemen transaksi.
+5.  **Failure Recovery (`failure-recovery/`)**: Menjamin konsistensi dan pemulihan data melalui *logging* (`LogWriter`) dan mekanisme *recovery* (`LogReplayer`).
+6.  **Query Processor (`query-processor/`)**: Mesin eksekusi utama dan titik masuk CLI (`Main.java`). Modul ini mengoordinasikan semua modul lain untuk mengeksekusi *query* dari awal hingga akhir.
 
 ## Module Dependencies
 
-All modules depend on the `common` module which provides shared functionality:
+Proyek ini mengikuti graf dependensi yang jelas, yang diatur oleh Maven:
+* **Query Processor (`query-processor/`)** adalah integrator pusat dan bergantung pada 5 modul lainnya.
+* Semua 4 komponen lainnya (SM, QO, CCM, FRM) **hanya bergantung pada `common`**.
+* `common` tidak memiliki dependensi.
 
-- `common` - No dependencies (base module)
-- `query-processor` - depends on `common`
-- `query-optimization` - depends on `common`
-- `storage-manager` - depends on `common`
-- `concurrency-control` - depends on `common`
-- `failure-recovery` - depends on `common`
 
-## Development
 
-### Adding New Components
+## Getting Started
 
-1. Create a new class in the appropriate module
-2. Extend from `DBMSComponent` if creating a new component
-3. Implement required abstract methods: `initialize()` and `shutdown()`
-4. Add corresponding unit tests
+### Prerequisites
+* Java 17 (Temurin atau yang setara)
+* Maven 3.6+
 
-### Code Style
+### Build
+*Compile* dan *build* semua 6 modul dari direktori *root* proyek:
+```bash
+mvn clean install
+````
 
-- Follow standard Java naming conventions
-- Use meaningful variable and method names
-- Add Javadoc comments for public methods and classes
-- Write unit tests for new functionality
+### Test
+
+Jalankan *semua* unit test untuk *semua* 6 modul:
+
+```bash
+mvn test
+```
+
+### Run
+
+Titik masuk utama adalah CLI di modul `query-processor`.
+
+```bash
+# Jalankan dari direktori root proyek
+mvn -pl query-processor exec:java -Dexec.mainClass="com.apacy.queryprocessor.Main"
+```
+
+## Development Workflow
+
+Ini adalah *monorepo* `public` yang digunakan bersama oleh 5 tim (25+ developer). Untuk mencegah kekacauan, kita memberlakukan alur kerja yang ketat menggunakan GitHub Actions (CI) dan `CODEOWNERS`.
+
+**Semua pekerjaan WAJIB mengikuti panduan di [dev_workflow.md](dev_workflow.md).** (Harap baca file tersebut sebelum memulai).
+
+**Aturan Kunci:**
+
+1.  **Branch:** Semua *branch* harus mengikuti format `feat/<komponen>/<fitur>` (misal: `feat/query-processor/implement-join`).
+2.  **PR:** Semua kode harus masuk ke `main` melalui **Pull Request (PR)**.
+3.  **CI:** Semua PR harus lolos *CI checks* (`mvn clean install` & `mvn test`) sebelum bisa di-*merge*.
+4.  **Review:** Semua PR wajib mendapatkan minimal satu *approval* dari `CODEOWNERS` komponen tersebut (misal: `@apacy-mdbms/team-qp` untuk perubahan di `query-processor/`).
 
 ## License
 
-This project is part of an educational initiative for learning database management systems.
+Proyek ini adalah bagian dari tugas akademis untuk mata kuliah IF3140 Sistem Basis Data.
