@@ -1,6 +1,7 @@
 package com.apacy.queryprocessor;
 
 import com.apacy.common.dto.*;
+import java.util.List;
 
 /**
  * Translates ParsedQuery objects into specific operation DTOs.
@@ -11,10 +12,31 @@ public class PlanTranslator {
     /**
      * Translate a ParsedQuery to a DataRetrieval object.
      * TODO: Implement translation for SELECT queries with proper predicate and projection handling
+     * // SORI ini gue implementasi buat testing, nanti lanjutin/perbaikin aja
      */
     public DataRetrieval translateToRetrieval(ParsedQuery parsedQuery, String transactionId) {
-        // TODO: Translate SELECT query to DataRetrieval DTO
-        throw new UnsupportedOperationException("translateToRetrieval not implemented yet");
+        if (parsedQuery.targetTables() == null || parsedQuery.targetTables().isEmpty()) {
+            throw new IllegalArgumentException("ParsedQuery untuk SELECT tidak memiliki target tabel.");
+        }
+        
+        // 1. Ambil tabel pertama (untuk M1, ini satu-satunya tabel)
+        String tableName = parsedQuery.targetTables().get(0);
+        
+        // 2. Ambil daftar kolom yang diminta
+        List<String> columns = parsedQuery.targetColumns();
+        
+        // 3. Ambil AST 'whereClause'. Ini adalah 'Object' yang akan kita teruskan
+        // ke SM. SM (atau filter di QP) harus bisa menginterpretasi ini.
+        // Kita perlu cast ke WhereConditionNode (atau Object)
+        Object filter = parsedQuery.whereClause();
+        
+        // 4. Cek apakah QO menyarankan pakai index.
+        // Asumsi sederhana: jika QO menandai 'isOptimized', kita coba pakai index.
+        // (Logika lebih canggih bisa membaca AST untuk 'id = 5')
+        boolean useIndex = parsedQuery.isOptimized();
+
+        // 5. Buat dan kembalikan DTO DataRetrieval
+        return new DataRetrieval(tableName, columns, filter, useIndex);
     }
     
     /**
