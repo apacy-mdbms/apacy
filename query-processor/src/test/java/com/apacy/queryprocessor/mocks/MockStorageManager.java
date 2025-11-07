@@ -68,7 +68,7 @@ public class MockStorageManager implements IStorageManager {
     }
 
     @Override
-    public Statistic getStats() {
+    public Map<String, Statistic> getAllStats() {
         throw new UnsupportedOperationException("getStats not implemented yet");
     }
 }
