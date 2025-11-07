@@ -4,6 +4,7 @@ import com.apacy.common.DBMSComponent;
 import com.apacy.common.dto.*;
 import com.apacy.common.interfaces.IStorageManager;
 import java.util.List;
+import java.util.Map;
 
 public class StorageManager extends DBMSComponent implements IStorageManager {
 
@@ -71,10 +72,10 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
     }
 
     @Override
-    public Statistic getStats() {
+    public Map<String, Statistic> getAllStats() {
         // TODO:
         // 1. Panggil statsCollector.collectStats()
-        // 2. Kembalikan objek Statistic
+        // 2. Kembalikan map dari String, Statistic (Nama tabel dan statistiknya)
         throw new UnsupportedOperationException("getStats not implemented yet");
     }
 }

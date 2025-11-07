@@ -3,6 +3,7 @@ package com.apacy.queryprocessor.mocks;
 import com.apacy.common.dto.*;
 import com.apacy.common.interfaces.IQueryOptimizer;
 import java.util.List;
+import java.util.Map;
 
 public class MockQueryOptimizer implements IQueryOptimizer {
     
@@ -39,12 +40,12 @@ public class MockQueryOptimizer implements IQueryOptimizer {
     }
 
     @Override
-    public ParsedQuery optimizeQuery(ParsedQuery query, Statistic stats) {
+    public ParsedQuery optimizeQuery(ParsedQuery query, Map<String, Statistic> allStats) {
         return query;
     }
 
     @Override
-    public double getCost(ParsedQuery query, Statistic stats) {
+    public double getCost(ParsedQuery query, Map<String, Statistic> allStats) {
         return 1;
     }
 }
