@@ -8,7 +8,7 @@ import java.io.*;
  */
 public class BlockManager {
     
-    private static final int DEFAULT_BLOCK_SIZE = 4096; // 4KB blocks
+    public static final int DEFAULT_BLOCK_SIZE = 4096; // 4KB blocks
     
     private final String dataDirectory;
     private final int blockSize;
