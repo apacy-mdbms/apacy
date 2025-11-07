@@ -1,5 +1,6 @@
 package com.apacy.queryoptimizer.parser;
 
+import java.text.ParseException;
 import java.util.List;
 
 import com.apacy.common.dto.ParsedQuery;
@@ -16,6 +17,18 @@ public abstract class AbstractParser {
     public AbstractParser(List<Token> tokens) {
         this.tokens = tokens;
     }
+
+    /**
+     * Parse query and return the ParsedQuery object
+     * Throws ParseException if fail to parse.
+     */
+    public abstract ParsedQuery parse() throws ParseException;
+
+    /**
+     * Parse and validate query syntax, without creating ParsedQuery object
+     */
+    public abstract boolean validate();
+
 
     /**
      * peek and get token in current position.
@@ -48,8 +61,4 @@ public abstract class AbstractParser {
         return token;
     }
 
-    /**
-     * Parse query and return the ParsedQuery object
-     */
-    public abstract ParsedQuery parse();
 }
