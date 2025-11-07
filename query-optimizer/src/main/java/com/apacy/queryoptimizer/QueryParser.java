@@ -27,13 +27,4 @@ public class QueryParser {
         throw new UnsupportedOperationException("validate not implemented yet");
     }
 
-    /**
-     * Tokenize SQL query into lexical tokens.
-     * TODO: Implement lexical analysis with proper token recognition
-     */
-    private Token[] tokenize(String sqlQuery) {
-        // TODO: Implement tokenization logic
-        throw new UnsupportedOperationException("tokenize not implemented yet");
-    }
-
 }
