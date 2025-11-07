@@ -32,7 +32,7 @@ class DeleteParserTest {
         List<Token> tokens = List.of(
             new Token(TokenType.DELETE, "DELETE"), new Token(TokenType.FROM, "FROM"), new Token(TokenType.IDENTIFIER, "temp_logs"),
             new Token(TokenType.WHERE, "WHERE"), new Token(TokenType.IDENTIFIER, "status"), new Token(TokenType.OPERATOR, "="), new Token(TokenType.STRING_LITERAL, "'PENDING'"),
-            new Token(TokenType.SEMICOLON, ";"), new Token(TokenType.EOF, "")
+            new Token(TokenType.SEMICOLON, ";"), new Token(TokenType.EOF, null)
         );
 
         assertTrue(new DeleteParser(tokens).validate(), "Valid DELETE query should pass validation.");
@@ -43,7 +43,7 @@ class DeleteParserTest {
         // DELETE temp_logs (Kurang FROM)
         List<Token> tokens = List.of(
             new Token(TokenType.DELETE, "DELETE"), new Token(TokenType.IDENTIFIER, "temp_logs"),
-            new Token(TokenType.EOF, "")
+            new Token(TokenType.EOF, null)
         );
 
         assertFalse(new DeleteParser(tokens).validate(),
@@ -60,7 +60,7 @@ class DeleteParserTest {
         List<Token> tokens = List.of(
             new Token(TokenType.DELETE, "DELETE"), new Token(TokenType.FROM, "FROM"), new Token(TokenType.IDENTIFIER, "cache"),
             new Token(TokenType.WHERE, "WHERE"), new Token(TokenType.IDENTIFIER, "last_access"), new Token(TokenType.OPERATOR, "<"), new Token(TokenType.NUMBER_LITERAL, "1000"),
-            new Token(TokenType.SEMICOLON, ";"), new Token(TokenType.EOF, "")
+            new Token(TokenType.SEMICOLON, ";"), new Token(TokenType.EOF, null)
         );
 
         ParsedQuery actual = new DeleteParser(tokens).parse();

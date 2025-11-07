@@ -54,7 +54,7 @@ class SelectParserTest {
             new Token(TokenType.FROM, "FROM"),
             new Token(TokenType.IDENTIFIER, "users"),
             new Token(TokenType.SEMICOLON, ";"),
-            new Token(TokenType.EOF, "")
+            new Token(TokenType.EOF, null)
         );
 
         AbstractParser parser = new SelectParser(tokens);
@@ -79,7 +79,7 @@ class SelectParserTest {
             new Token(TokenType.STAR, "*"),
             new Token(TokenType.FROM, "FROM"),
             new Token(TokenType.WHERE, "WHERE"),
-            new Token(TokenType.EOF, "")
+            new Token(TokenType.EOF, null)
         );
 
         assertFalse(new SelectParser(tokens).validate());
@@ -117,7 +117,7 @@ class SelectParserTest {
                 new Token(TokenType.RPARENTHESIS, ")"),
             new Token(TokenType.ORDER, "ORDER"), new Token(TokenType.BY, "BY"), new Token(TokenType.IDENTIFIER, "col1"),
             new Token(TokenType.LIMIT, "LIMIT"), new Token(TokenType.NUMBER_LITERAL, "10"),
-            new Token(TokenType.SEMICOLON, ";"), new Token(TokenType.EOF, "")
+            new Token(TokenType.SEMICOLON, ";"), new Token(TokenType.EOF, null)
         );
 
         AbstractParser parser = new SelectParser(tokens);

@@ -69,7 +69,7 @@ class UpdateParserTest {
                 new Token(TokenType.IDENTIFIER, "price"), new Token(TokenType.OPERATOR, "="), new Token(TokenType.IDENTIFIER, "price"), new Token(TokenType.STAR, "*"), new Token(TokenType.NUMBER_LITERAL, "1.1"), new Token(TokenType.COMMA, ","),
                 new Token(TokenType.IDENTIFIER, "stock"), new Token(TokenType.OPERATOR, "="), new Token(TokenType.IDENTIFIER, "stock"), new Token(TokenType.OPERATOR, "-"), new Token(TokenType.NUMBER_LITERAL, "1"),
             new Token(TokenType.WHERE, "WHERE"), new Token(TokenType.IDENTIFIER, "id"), new Token(TokenType.OPERATOR, ">"), new Token(TokenType.NUMBER_LITERAL, "10"),
-            new Token(TokenType.SEMICOLON, ";"), new Token(TokenType.EOF, "")
+            new Token(TokenType.SEMICOLON, ";"), new Token(TokenType.EOF, null)
         );
 
         ParsedQuery actual = new UpdateParser(tokens).parse();

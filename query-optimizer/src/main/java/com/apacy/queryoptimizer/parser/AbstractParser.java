@@ -34,7 +34,7 @@ public abstract class AbstractParser {
      * peek and get token in current position.
      */
     protected Token peek() {
-        return position < tokens.size() ? tokens.get(position) : new Token(TokenType.EOF, "");
+        return position < tokens.size() ? tokens.get(position) : new Token(TokenType.EOF, null);
     }
 
     /**

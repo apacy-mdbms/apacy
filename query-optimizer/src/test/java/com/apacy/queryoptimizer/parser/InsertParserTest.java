@@ -26,7 +26,7 @@ class InsertParserTest {
         List<Token> tokens = List.of(
             new Token(TokenType.INSERT, "INSERT"), new Token(TokenType.INTO, "INTO"), new Token(TokenType.IDENTIFIER, "logs"),
             new Token(TokenType.VALUES, "VALUES"), new Token(TokenType.LPARENTHESIS, "("), new Token(TokenType.STRING_LITERAL, "'INFO'"), new Token(TokenType.COMMA, ","), new Token(TokenType.STRING_LITERAL, "'Started'"), new Token(TokenType.RPARENTHESIS, ")"),
-            new Token(TokenType.SEMICOLON, ";"), new Token(TokenType.EOF, "")
+            new Token(TokenType.SEMICOLON, ";"), new Token(TokenType.EOF, null)
         );
 
         assertTrue(new InsertParser(tokens).validate(), "Valid INSERT query should pass validation.");
@@ -39,7 +39,7 @@ class InsertParserTest {
          */
         List<Token> tokens = List.of(
             new Token(TokenType.INSERT, "INSERT"), new Token(TokenType.IDENTIFIER, "logs"),
-            new Token(TokenType.VALUES, "VALUES"), new Token(TokenType.EOF, "")
+            new Token(TokenType.VALUES, "VALUES"), new Token(TokenType.EOF, null)
         );
 
         assertFalse(new InsertParser(tokens).validate(), "Invalid INSERT query should not pass validation.");
@@ -56,7 +56,7 @@ class InsertParserTest {
             new Token(TokenType.INSERT, "INSERT"), new Token(TokenType.INTO, "INTO"), new Token(TokenType.IDENTIFIER, "products"),
             new Token(TokenType.LPARENTHESIS, "("), new Token(TokenType.IDENTIFIER, "name"), new Token(TokenType.COMMA, ","), new Token(TokenType.IDENTIFIER, "price"), new Token(TokenType.RPARENTHESIS, ")"),
             new Token(TokenType.VALUES, "VALUES"), new Token(TokenType.LPARENTHESIS, "("), new Token(TokenType.STRING_LITERAL, "'Laptop'"), new Token(TokenType.COMMA, ","), new Token(TokenType.NUMBER_LITERAL, "1500"), new Token(TokenType.RPARENTHESIS, ")"),
-            new Token(TokenType.SEMICOLON, ";"), new Token(TokenType.EOF, "")
+            new Token(TokenType.SEMICOLON, ";"), new Token(TokenType.EOF, null)
         );
 
         ParsedQuery actual = new InsertParser(tokens).parse();
