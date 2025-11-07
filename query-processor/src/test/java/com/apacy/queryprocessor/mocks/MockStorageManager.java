@@ -5,6 +5,7 @@ import com.apacy.common.interfaces.IStorageManager;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 public class MockStorageManager implements IStorageManager {
 
@@ -69,6 +70,25 @@ public class MockStorageManager implements IStorageManager {
 
     @Override
     public Map<String, Statistic> getAllStats() {
-        throw new UnsupportedOperationException("getStats not implemented yet");
+        System.out.println("[MOCK-SM] getAllStats() dipanggil. Mengembalikan statistik palsu.");
+
+        Map<String, Statistic> mockStatsMap = new HashMap<>();
+
+        Statistic userStats = new Statistic(
+            3,  // nr (jumlah tuple)
+            1,  // br (jumlah blok)
+            50, // lr (ukuran tuple)
+            10, // fr (blocking factor)
+            Map.of("id", 3, "salary", 2) // V (nilai unik)
+        );
+
+        Statistic deptStats = new Statistic(
+            2, 1, 30, 10, Map.of("dept_id", 2)
+        );
+
+        mockStatsMap.put("users", userStats);
+        mockStatsMap.put("departments", deptStats);
+
+        return mockStatsMap;
     }
 }
