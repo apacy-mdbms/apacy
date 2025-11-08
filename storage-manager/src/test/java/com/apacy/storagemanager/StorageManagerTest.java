@@ -104,14 +104,19 @@ public class StorageManagerTest {
             Row rowPulih = serializer.deserialize(readRowBytes, studentSchema);
 
             // 9. VERIFIKASI
+            System.out.println("Data Asli   : " + rowAsli.getValue(0));
             System.out.println("Data Asli   : " + rowAsli.getValue(1));
+            System.out.println("Data Asli   : " + rowAsli.getValue(2));
+
+            System.out.println("Data Pulih  : " + rowPulih.getValue(0));
             System.out.println("Data Pulih  : " + rowPulih.getValue(1));
+            System.out.println("Data Pulih  : " + rowPulih.getValue(2));
             
             Assertions.assertEquals(rowAsli.getValue(0), rowPulih.getValue(0), "StudentID tidak cocok!");
             Assertions.assertEquals(rowAsli.getValue(1), rowPulih.getValue(1), "FullName tidak cocok!");
             Assertions.assertEquals((Float) rowAsli.getValue(2), (Float) rowPulih.getValue(2), 0.001f, "GPA tidak cocok!");
             
-            System.out.println("-> [HASIL]: SUKSES! Tes integrasi Physical Layer (Orang 1) berhasil.");
+            System.out.println("-> [HASIL]: SUKSES! Tes integrasi Physical Layer berhasil.");
 
         } catch (IOException e) {
             Assertions.fail("Tes gagal karena exception: " + e.getMessage());
