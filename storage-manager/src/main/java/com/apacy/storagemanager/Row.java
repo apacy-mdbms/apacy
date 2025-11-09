@@ -25,7 +25,6 @@ public class Row {
             sb.append("  ").append(schema.getColumn(i).getName()).append(" (").append(schema.getColumn(i).getType()).append(")")
               .append(": ").append(values.get(i)).append("\n");
         }
-        sb.append("] (Total Size: " + schema.getFixedRowSize() + " bytes)");
         return sb.toString();
     }
 }
