@@ -1,5 +1,10 @@
 package com.apacy.concurrencycontrolmanager;
 
+import com.apacy.common.dto.Row;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Internal Transaction object for tracking transaction status.
  */
@@ -13,11 +18,12 @@ public class Transaction {
     private TransactionStatus status;
     private long timestamp;
 
+    private final List<Row> loggedObjects = Collections.synchronizedList(new ArrayList<>());
+
     public Transaction(String transactionId) {
         this.transactionId = transactionId;
         this.status = TransactionStatus.ACTIVE;
         this.timestamp = 0L;
-        log("Transaction created.");
     }
 
     /**
@@ -123,6 +129,19 @@ public class Transaction {
 
     private void log(String message) {
         System.out.println("[Transaction " + transactionId + "] " + message);
+    }
+
+    public void addLog(Row row) {
+        if (row != null) {
+            loggedObjects.add(row);
+            System.out.println("[Transaction " + transactionId + "] Logged object: " + row);
+        }
+    }
+
+    public List<Row> getLoggedObjects() {
+        synchronized (loggedObjects) {
+            return new ArrayList<>(loggedObjects);
+        }
     }
 
     @Override
