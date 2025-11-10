@@ -27,6 +27,14 @@ public class ConcurrencyControlManager extends DBMSComponent implements IConcurr
         this.transactionMap = new ConcurrentHashMap<>();
         this.transactionCounter = new AtomicInteger(0);
     }
+
+    public ConcurrencyControlManager(LockManager lockManager, TimestampManager timestampManager) {
+        super("Concurrency Control Manager");
+        this.lockManager = (lockManager != null) ? lockManager : new LockManager();
+        this.timestampManager = timestampManager;
+        this.transactionMap = new ConcurrentHashMap<>();
+        this.transactionCounter = new AtomicInteger(0);
+    }
     
     @Override
     public void initialize() throws Exception {
