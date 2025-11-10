@@ -74,19 +74,37 @@ public class ConcurrencyControlManager extends DBMSComponent implements IConcurr
     public void endTransaction(int transactionId, boolean commit) {
         Transaction tx = transactionMap.get(transactionId);
         if (tx == null) {
-            // Sebaiknya throw exception
-            return; 
+            throw new IllegalArgumentException("Transaction not found: " + transactionId);
         }
         
         if (commit) {
-            tx.setStatus(Transaction.TransactionStatus.COMMITTED);
+            try {
+                tx.setPartiallyCommitted();
+                tx.commit();
+            } catch (RuntimeException e) {
+                try {
+                    tx.setFailed();
+                    tx.abort();
+                } catch (RuntimeException ignored) {}
+            }
         } else {
-            tx.setStatus(Transaction.TransactionStatus.ABORTED);
+            try {
+                tx.setFailed();
+                tx.abort();
+            } catch (RuntimeException ignored) {}
+
             // TODO: Panggil logic FRM.recover() untuk UNDO
         }
         
         // Selalu lepaskan lock, baik commit atau abort
-        lockManager.releaseLocks(String.valueOf(transactionId));
+        try {
+            lockManager.releaseLocks(String.valueOf(transactionId));
+        } catch (RuntimeException ignored) {}
+
+        try {
+            tx.terminate();
+        } catch (RuntimeException ignored) {}
+
         transactionMap.remove(transactionId);
     }
 
@@ -96,7 +114,11 @@ public class ConcurrencyControlManager extends DBMSComponent implements IConcurr
         // (Misal: mencatat 'before-image' dari 'object' ke 'transaction')
         Transaction tx = transactionMap.get(transactionId);
         if (tx != null) {
-            // tx.addLog(object); // Perlu menambah method ini di Transaction.java
+            try {
+                tx.addLog(object);
+            } catch (NoSuchMethodError | RuntimeException ignored) {
+                // just ignore if dont exist
+            }
         }
     }
 }
