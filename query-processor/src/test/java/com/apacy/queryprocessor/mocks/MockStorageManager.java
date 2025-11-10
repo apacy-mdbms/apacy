@@ -19,10 +19,56 @@ public class MockStorageManager implements IStorageManager {
             case "departments":
                 return getDepartmentData();
             default:
-                return new ArrayList<>();
+                // BACKWARD COMPATIBILITY: Return original employee data for any unknown table
+                // This matches the old behavior where it always returned employee data
+                return getEmployeeDataLegacy();
         }
     }
     
+    /**
+     * Legacy employee data (without dept_id) for backward compatibility.
+     * This is the ORIGINAL format that was always returned before multi-table support.
+     */
+    private List<Row> getEmployeeDataLegacy() {
+        List<Row> employees = new ArrayList<>();
+        
+        employees.add(new Row(Map.of(
+            "id", 1,
+            "name", "Naufarrel",
+            "salary", 20000
+        )));
+        
+        employees.add(new Row(Map.of(
+            "id", 2,
+            "name", "Weka",
+            "salary", 30000
+        )));
+        
+        employees.add(new Row(Map.of(
+            "id", 3,
+            "name", "Kinan",
+            "salary", 40000
+        )));
+        
+        employees.add(new Row(Map.of(
+            "id", 4,
+            "name", "Farrel",
+            "salary", 50000
+        )));
+        
+        employees.add(new Row(Map.of(
+            "id", 5,
+            "name", "Bayu",
+            "salary", 60000
+        )));
+        
+        return employees;
+    }
+    
+    /**
+     * New employee data with dept_id for join operations.
+     * Explicitly request with tableName = "employees"
+     */
     private List<Row> getEmployeeData() {
         List<Row> employees = new ArrayList<>();
         
