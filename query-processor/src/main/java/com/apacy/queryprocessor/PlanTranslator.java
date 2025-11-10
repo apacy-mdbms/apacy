@@ -2,6 +2,7 @@ package com.apacy.queryprocessor;
 
 import com.apacy.common.dto.*;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Translates ParsedQuery objects into specific operation DTOs.
@@ -11,8 +12,9 @@ public class PlanTranslator {
     
     /**
      * Translate a ParsedQuery to a DataRetrieval object.
-     * TODO: Implement translation for SELECT queries with proper predicate and projection handling
-     * // SORI ini gue implementasi buat testing, nanti lanjutin/perbaikin aja
+     * @param parsedQuery The parsed query from Query Optimizer
+     * @param transactionId Transaction ID for logging
+     * @return DataRetrieval DTO for Storage Manager
      */
     public DataRetrieval translateToRetrieval(ParsedQuery parsedQuery, String transactionId) {
         if (parsedQuery.targetTables() == null || parsedQuery.targetTables().isEmpty()) {
@@ -29,7 +31,6 @@ public class PlanTranslator {
         // ke SM. SM (atau filter di QP) harus bisa menginterpretasi ini.
         // Kita perlu cast ke WhereConditionNode (atau Object)
         Object filter = parsedQuery.whereClause();
-        
         // 4. Cek apakah QO menyarankan pakai index.
         // Asumsi sederhana: jika QO menandai 'isOptimized', kita coba pakai index.
         // (Logika lebih canggih bisa membaca AST untuk 'id = 5')
@@ -41,19 +42,89 @@ public class PlanTranslator {
     
     /**
      * Translate a ParsedQuery to a DataWrite object.
-     * TODO: Implement translation for INSERT/UPDATE queries with data mapping
+     * Handles both INSERT and UPDATE operations.
+     * 
+     * @param parsedQuery The parsed query from Query Optimizer
+     * @param transactionId Transaction ID for logging
+     * @param isUpdate true for UPDATE, false for INSERT
+     * @return DataWrite DTO for Storage Manager
      */
     public DataWrite translateToWrite(ParsedQuery parsedQuery, String transactionId, boolean isUpdate) {
-        // TODO: Translate INSERT/UPDATE query to DataWrite DTO
-        throw new UnsupportedOperationException("translateToWrite not implemented yet");
+        // Validasi input
+        if (parsedQuery.targetTables() == null || parsedQuery.targetTables().isEmpty()) {
+            throw new IllegalArgumentException("ParsedQuery untuk INSERT/UPDATE tidak memiliki target tabel.");
+        }
+        
+        
+        // 1. Ambil nama tabel
+        String tableName = parsedQuery.targetTables().get(0);
+        
+        // 2. Ekstrak data untuk INSERT/UPDATE
+        // TODO: ParsedQuery perlu field untuk menyimpan data (Map<String, Object>)
+        // Untuk M1, kita buat placeholder yang bisa diisi nanti
+        List<String> columns = parsedQuery.targetColumns();
+        Map<String, Object> dataMap;
+        
+        if (columns == null || columns.isEmpty()) {
+            // Placeholder kosong untuk testing
+            dataMap = Map.of();
+        } else {
+            // TODO: Ambil values dari ParsedQuery (perlu field baru di ParsedQuery)
+            // Untuk sekarang buat placeholder dengan null values
+            dataMap = Map.of();
+            // Contoh kalau ada data: dataMap = Map.of("name", "John", "age", 25);
+        }
+        
+        Row newData = new Row(dataMap);
+        
+        // 3. Ambil filter condition (untuk UPDATE, ini WHERE clause)
+        Object filter = parsedQuery.whereClause();
+        
+        // Untuk INSERT, filter biasanya null (tidak ada WHERE)
+        // Untuk UPDATE, filter harus ada (WHERE clause menentukan row mana yang diupdate)
+        if (isUpdate && filter == null) {
+            // UPDATE tanpa WHERE akan update semua rows (dangerous, tapi valid SQL)
+            // Bisa dikasih warning atau throw exception tergantung policy
+            System.out.println("[WARNING] UPDATE query tanpa WHERE clause akan mengubah semua rows!");
+        }
+        
+        // 4. Return DTO
+        return new DataWrite(tableName, newData, filter);
     }
     
     /**
      * Translate a ParsedQuery to a DataDeletion object.
-     * TODO: Implement translation for DELETE queries with condition handling
+     * Handles DELETE operations.
+     * 
+     * @param parsedQuery The parsed query from Query Optimizer
+     * @param transactionId Transaction ID for logging
+     * @return DataDeletion DTO for Storage Manager
      */
     public DataDeletion translateToDeletion(ParsedQuery parsedQuery, String transactionId) {
-        // TODO: Translate DELETE query to DataDeletion DTO
-        throw new UnsupportedOperationException("translateToDeletion not implemented yet");
+        // Validasi input
+        if (parsedQuery.targetTables() == null || parsedQuery.targetTables().isEmpty()) {
+            throw new IllegalArgumentException("ParsedQuery untuk DELETE tidak memiliki target tabel.");
+        }
+        
+        // Validasi queryType
+        if (!"DELETE".equalsIgnoreCase(parsedQuery.queryType())) {
+            throw new IllegalArgumentException(
+                "translateToDeletion hanya untuk DELETE query, dapat: " + parsedQuery.queryType()
+            );
+        }
+        
+        // 1. Ambil nama tabel
+        String tableName = parsedQuery.targetTables().get(0);
+        
+        // 2. Ambil filter condition (WHERE clause)
+        Object filter = parsedQuery.whereClause();
+        
+        // DELETE tanpa WHERE akan menghapus semua rows (dangerous!)
+        if (filter == null) {
+            System.out.println("[WARNING] DELETE query tanpa WHERE clause akan menghapus SEMUA rows!");
+            throw new IllegalArgumentException("DELETE tanpa WHERE tidak diizinkan");
+        }
+     
+        return new DataDeletion(tableName, filter);
     }
 }
