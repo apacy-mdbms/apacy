@@ -2,6 +2,7 @@ package com.apacy.storagemanager;
 
 import com.apacy.common.dto.DataDeletion;
 import com.apacy.common.dto.DataRetrieval;
+import com.apacy.common.enums.*;
 import com.apacy.common.dto.DataWrite;
 import com.apacy.common.dto.Row;
 import com.apacy.common.dto.Statistic;

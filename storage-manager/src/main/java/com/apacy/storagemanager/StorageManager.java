@@ -5,6 +5,7 @@ import com.apacy.common.dto.DataDeletion;
 import com.apacy.common.dto.DataRetrieval;
 import com.apacy.common.dto.DataWrite;
 import com.apacy.common.dto.Row;
+import com.apacy.common.dto.Schema;
 import com.apacy.common.dto.Statistic;
 import com.apacy.common.interfaces.IStorageManager;
 import java.util.List;

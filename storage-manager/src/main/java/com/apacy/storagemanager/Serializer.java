@@ -1,6 +1,10 @@
 package com.apacy.storagemanager;
 
+import com.apacy.common.dto.Column;
 import com.apacy.common.dto.Row;
+import com.apacy.common.dto.Schema;
+import com.apacy.common.enums.*;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -139,10 +143,10 @@ public class Serializer {
         Map<String, Object> data = row.data();
 
         // 3. Tulis data ke buffer
-        for (Column col : schema.getColumns()) {
-            Object value = data.get(col.getName());
+        for (Column col : schema.columns()) {
+            Object value = data.get(col.name());
 
-            switch (col.getType()) {
+            switch (col.type()) {
                 case INTEGER: // INTEGER
                     buffer.putInt((Integer) value);
                     break;
@@ -158,7 +162,7 @@ public class Serializer {
                     buffer.put(strBytes); 
                     break;
                 default:
-                    throw new IOException("Tipe data tidak didukung: " + col.getType());
+                    throw new IOException("Tipe data tidak didukung: " + col.type());
             }
         }
         return buffer.array();
@@ -172,13 +176,13 @@ public class Serializer {
         ByteBuffer buffer = ByteBuffer.wrap(data);
         Map<String, Object> rowData = new HashMap<>();
 
-        for (Column col : schema.getColumns()) {
-            switch (col.getType()) {
+        for (Column col : schema.columns()) {
+            switch (col.type()) {
                 case INTEGER: // INTEGER
-                    rowData.put(col.getName(), buffer.getInt());
+                    rowData.put(col.name(), buffer.getInt());
                     break;
                 case FLOAT: // FLOAT
-                    rowData.put(col.getName(), buffer.getFloat());
+                    rowData.put(col.name(), buffer.getFloat());
                     break;
                 case CHAR: // CHAR
                 case VARCHAR: // VARCHAR
@@ -188,10 +192,10 @@ public class Serializer {
                     byte[] strBytes = new byte[strLength];
                     // 3. Baca data string ke byte[]
                     buffer.get(strBytes);
-                    rowData.put(col.getName(), new String(strBytes, StandardCharsets.UTF_8));
+                    rowData.put(col.name(), new String(strBytes, StandardCharsets.UTF_8));
                     break;
                 default:
-                    throw new IOException("Tipe data tidak didukung: " + col.getType());
+                    throw new IOException("Tipe data tidak didukung: " + col.type());
             }
         }
         return new Row(rowData);
@@ -205,10 +209,10 @@ public class Serializer {
         int totalSize = 0;
         Map<String, Object> data = row.data();
 
-        for (Column col : schema.getColumns()) {
-            Object value = data.get(col.getName());
+        for (Column col : schema.columns()) {
+            Object value = data.get(col.name());
             
-            switch (col.getType()) {
+            switch (col.type()) {
                 case INTEGER: // INTEGER
                     totalSize += Integer.BYTES; // 4 byte
                     break;

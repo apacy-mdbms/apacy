@@ -1,4 +1,4 @@
-package com.apacy.storagemanager;
+package com.apacy.common.enums;
 
 public enum DataType {
     INTEGER(1),

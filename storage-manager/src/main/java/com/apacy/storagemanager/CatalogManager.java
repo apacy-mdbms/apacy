@@ -7,6 +7,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.apacy.common.dto.Column;
+import com.apacy.common.dto.IndexSchema;
+import com.apacy.common.dto.Schema;
+import com.apacy.common.enums.*;
+
 /**
  * Mengelola metadata database (skema tabel, kolom, dan indeks).
  * Membaca dan menulis ke file biner 'system_catalog.dat'.
@@ -71,21 +76,21 @@ public class CatalogManager {
                     // Buat objek Column Anda
                     columns.add(new Column(colName, colType, colLength));
                 }
-
-                // Buat objek Schema Anda
-                Schema schema = new Schema(columns);
-
-                // Baca Blok Indeks (masih butuh DTO IndexSchema)
-                // List<IndexSchema> indexes = new ArrayList<>();
-                // int indexCount = dis.readInt();
-                // for (int k = 0; k < indexCount; k++) {
-                //     String idxName = dis.readUTF();
-                //     String idxColName = dis.readUTF();
-                //     int idxType = dis.readInt(); 
-                //     String idxFile = dis.readUTF();
-                //     indexes.add(new IndexSchema(idxName, idxColName, idxType, idxFile));
-                // }
                 
+                // Baca Indeks
+                int indexCount = dis.readInt();
+                List<IndexSchema> indexes = new ArrayList<>();
+                for (int k = 0; k < indexCount; k++) {
+                    String idxName = dis.readUTF();
+                    String idxColName = dis.readUTF();
+                    int idxTypeInt = dis.readInt(); 
+                    IndexType idxType = IndexType.fromValue(idxTypeInt);
+                    String idxFile = dis.readUTF();
+                    indexes.add(new IndexSchema(idxName, idxColName, idxType, idxFile));
+                }
+                
+                // Buat record Schema "all-in-one"
+                Schema schema = new Schema(tableName, dataFile, columns, indexes);
                 // Simpan semuanya ke cache memori
                 this.schemaCache.put(tableName, schema);
                 this.dataFileCache.put(tableName, dataFile);
@@ -117,12 +122,12 @@ public class CatalogManager {
                 dos.writeInt(schema.getColumnCount());
 
                 // Loop menggunakan kelas Column Anda
-                for (Column col : schema.getColumns()) {
-                    dos.writeUTF(col.getName());
+                for (Column col : schema.columns()) {
+                    dos.writeUTF(col.name());
                     // Konversi enum DataType Anda ke int
-                    dos.writeInt(col.getType().getValue()); 
+                    dos.writeInt(col.type().getValue()); 
                     // Gunakan getLength() dari kelas Column Anda
-                    dos.writeInt(col.getLength());
+                    dos.writeInt(col.length());
                 }
 
                 // Tulis Blok Indeks
