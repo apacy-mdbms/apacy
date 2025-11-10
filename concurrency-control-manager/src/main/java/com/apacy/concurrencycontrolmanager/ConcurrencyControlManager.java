@@ -53,20 +53,34 @@ public class ConcurrencyControlManager extends DBMSComponent implements IConcurr
 
     @Override
     public Response validateObject(String objectId, int transactionId, Action action) {
-        // Ini adalah logika utamanya: mendelegasikan ke LockManager
+        // Ambil objek Transaction yang sesuai
+        Transaction tx = transactionMap.get(transactionId);
+        if (tx == null) {
+            return new Response(false, "Transaction not found: " + transactionId);
+        }
+
+        // Cek apakah transaksi ini sudah di-abort (berarti kasus WOUND)
+        if (tx.isAborted()) {
+            return new Response(false, "Transaction " + transactionId + " was aborted (Wounded).");
+        }
+
         boolean allowed = false;
         
         if (action == Action.READ) {
-            allowed = lockManager.acquireSharedLock(objectId, String.valueOf(transactionId));
+            allowed = lockManager.acquireSharedLock(objectId, tx);
         } else if (action == Action.WRITE) {
-            allowed = lockManager.acquireExclusiveLock(objectId, String.valueOf(transactionId));
+            allowed = lockManager.acquireExclusiveLock(objectId, tx);
         }
         
         if (allowed) {
             return new Response(true, "Lock acquired");
         } else {
-            // TODO: Implement deadlock detection logic here or in LockManager
-            return new Response(false, "Resource locked by another transaction");
+            // Cek lagi jika transaksi di-abort saat proses acquire (kasus WOUND)
+            if (tx.isAborted()) {
+                return new Response(false, "Transaction " + transactionId + " was aborted (Wounded).");
+            }
+            // Jika tidak di-abort, berarti ini kasus WAIT
+            return new Response(false, "Resource locked by another transaction (Wait)");
         }
     }
     
@@ -86,7 +100,7 @@ public class ConcurrencyControlManager extends DBMSComponent implements IConcurr
         }
         
         // Selalu lepaskan lock, baik commit atau abort
-        lockManager.releaseLocks(String.valueOf(transactionId));
+        lockManager.releaseLocks(tx); // Panggil dengan objek Transaction
         transactionMap.remove(transactionId);
     }
 

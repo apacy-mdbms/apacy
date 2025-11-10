@@ -41,6 +41,18 @@ public class Transaction {
     }
 
     /**
+     * Set the transaction status.
+     * Di-sinkronisasi untuk thread-safety jika di-abort dari thread lain (Wound-Wait).
+     */
+    public synchronized void setStatus(TransactionStatus status) {
+        // Hanya izinkan perubahan jika masih ACTIVE
+        // (Mencegah ABORTED diubah jadi COMMITTED, dll.)
+        if (this.status == TransactionStatus.ACTIVE) {
+            this.status = status;
+        }
+    }
+
+    /**
      * Get the transaction timestamp.
      */
     public long getTimestamp() {
