@@ -9,14 +9,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.text.ParseException;
 import java.util.List;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import com.apacy.common.dto.ParsedQuery;
 import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
 import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
-@Disabled("Disabled karena DeleteParser belum diimplementasi. Hilangkan baris ini untuk mengenable")
 class DeleteParserTest {
 
     // Helper untuk WHERE sederhana: status = 'PENDING'
