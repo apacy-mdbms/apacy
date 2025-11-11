@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 public class MockQueryOptimizer implements IQueryOptimizer {
-    
+
     @Override
     public ParsedQuery parseQuery(String query) {
         if (query.toLowerCase().contains("select")) {
@@ -14,6 +14,7 @@ public class MockQueryOptimizer implements IQueryOptimizer {
                 "SELECT",                                // queryType
                 List.of("users"),                        // targetTables
                 List.of("name", "email"),                // targetColumns
+                null,                                    // values
                 null,                                    // joinConditions
                 null,                                    // whereClause (AST)
                 "name",                                  // orderByColumn
@@ -25,6 +26,7 @@ public class MockQueryOptimizer implements IQueryOptimizer {
                 "UPDATE",                                // queryType
                 List.of("users"),                        // targetTables
                 null,                                    // targetColumns
+                null,                                    // values
                 null,                                    // joinConditions
                 null,                                    // whereClause (AST)
                 null,                                    // orderByColumn
@@ -32,9 +34,9 @@ public class MockQueryOptimizer implements IQueryOptimizer {
                 false                                    // isOptimized
             );
         }
-        
+
         // TODO: Tambahkan skenario "INSERT", "DELETE", "CREATE", dll.
-        
+
         // Default (jika query tidak dikenal)
         return null;
     }
