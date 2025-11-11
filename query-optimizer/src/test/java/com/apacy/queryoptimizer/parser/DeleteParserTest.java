@@ -3,7 +3,6 @@ package com.apacy.queryoptimizer.parser;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.text.ParseException;
@@ -12,14 +11,27 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import com.apacy.common.dto.ParsedQuery;
+import com.apacy.queryoptimizer.ast.expression.ColumnFactor;
+import com.apacy.queryoptimizer.ast.expression.ExpressionNode;
+import com.apacy.queryoptimizer.ast.expression.LiteralFactor;
+import com.apacy.queryoptimizer.ast.expression.TermNode;
 import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
 import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
 class DeleteParserTest {
 
     // Helper untuk WHERE sederhana: status = 'PENDING'
+    // @SuppressWarnings("unused")
     private WhereConditionNode createSimpleWhereNode() {
-        return new ComparisonConditionNode("status", "=", "'PENDING'");
+        ExpressionNode left = new ExpressionNode(
+            new TermNode(new ColumnFactor("status"), List.of()),
+            List.of()
+        );
+        ExpressionNode right = new ExpressionNode(
+            new TermNode(new LiteralFactor("'PENDING'"), List.of()),
+            List.of()
+        );
+        return new ComparisonConditionNode(left, "=", right);
     }
 
     // --- Test Validate ---
