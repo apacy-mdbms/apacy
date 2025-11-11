@@ -1,4 +1,4 @@
-common/                 @apacy-mdbms/qp-Bash @apacy-mdbms/sm-ASM @Aapacy-mdbms/qo-JakselScript @apacy-mdbms/ccm-Lua @apacy-mdbms/frm-R
+common/                 @apacy-mdbms/qp-Bash @apacy-mdbms/sm-ASM @apacy-mdbms/qo-JakselScript @apacy-mdbms/ccm-Lua @apacy-mdbms/frm-R
 
 query-processor/        @apacy-mdbms/qp-Bash
 storage-manager/        @apacy-mdbms/sm-ASM
