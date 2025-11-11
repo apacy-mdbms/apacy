@@ -18,7 +18,6 @@ import com.apacy.queryoptimizer.ast.where.BinaryConditionNode;
 import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
 import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
-@Disabled("Disabled karena SelectParser belum diimplementasi. Hilangkan baris ini untuk mengenable")
 class SelectParserTest {
 
     // Helper untuk membuat AST WHERE yang kompleks: col1 = 10 AND (col2 > 5 OR col3 < 1)
