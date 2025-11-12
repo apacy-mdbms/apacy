@@ -38,43 +38,84 @@ public class ConcurrencyControlManager extends DBMSComponent implements IConcurr
     
     @Override
     public void initialize() throws Exception {
-        // ... (Logika inisialisasi jika ada) ...
+        // Reset internal state biar CCMnya clean
+        transactionMap.clear();
+        transactionCounter.set(0);
     }
 
     @Override
     public void shutdown() {
-        // ... (Logika shutdown jika ada) ...
+        for (Integer txId : transactionMap.keySet()) {
+            Transaction tx = transactionMap.get(txId);
+            if (tx == null) continue;
+
+            // kalo belum final (aborted, failed, commited) paksa fail terus abort
+            try {
+                if (!tx.isFailed() && !tx.isAborted() && !tx.isCommitted()) {
+                    tx.setFailed();
+                    tx.abort();
+                }
+            } catch (RuntimeException ignored) {}
+
+            // release locknya
+            try {
+                lockManager.releaseLocks(tx);
+            } catch (RuntimeException ignored) {}
+
+            try {
+                tx.terminate();
+            } catch (RuntimeException ignored) {}
+
+            transactionMap.remove(txId);
+        }
     }
-    
-    // 4. Implementasi method KONTRAK YANG BENAR
     
     @Override
     public int beginTransaction() {
         int txId = transactionCounter.incrementAndGet();
         Transaction tx = new Transaction(String.valueOf(txId));
         transactionMap.put(txId, tx);
-        
-        // TODO: Jika pakai timestamp, panggil tx.setTimestamp(timestampManager.generateTimestamp())
+   
+        try {
+            if (timestampManager != null) {
+                long ts = timestampManager.generateTimestamp();
+                tx.setTimestamp(ts);
+            }
+        } catch (RuntimeException ignored) {}
         
         return txId;
     }
 
     @Override
     public Response validateObject(String objectId, int transactionId, Action action) {
-        // Ini adalah logika utamanya: mendelegasikan ke LockManager
+        // Ambil objek Transaction yang sesuai
+        Transaction tx = transactionMap.get(transactionId);
+        if (tx == null) {
+            return new Response(false, "Transaction not found: " + transactionId);
+        }
+
+        // Cek apakah transaksi ini sudah di-abort (berarti kasus WOUND)
+        if (tx.isAborted()) {
+            return new Response(false, "Transaction " + transactionId + " was aborted (Wounded).");
+        }
+
         boolean allowed = false;
         
         if (action == Action.READ) {
-            allowed = lockManager.acquireSharedLock(objectId, String.valueOf(transactionId));
+            allowed = lockManager.acquireSharedLock(objectId, tx);
         } else if (action == Action.WRITE) {
-            allowed = lockManager.acquireExclusiveLock(objectId, String.valueOf(transactionId));
+            allowed = lockManager.acquireExclusiveLock(objectId, tx);
         }
         
         if (allowed) {
             return new Response(true, "Lock acquired");
         } else {
-            // TODO: Implement deadlock detection logic here or in LockManager
-            return new Response(false, "Resource locked by another transaction");
+            // Cek lagi jika transaksi di-abort saat proses acquire (kasus WOUND)
+            if (tx.isAborted()) {
+                return new Response(false, "Transaction " + transactionId + " was aborted (Wounded).");
+            }
+            // Jika tidak di-abort, berarti ini kasus WAIT
+            return new Response(false, "Resource locked by another transaction (Wait)");
         }
     }
     
@@ -106,7 +147,7 @@ public class ConcurrencyControlManager extends DBMSComponent implements IConcurr
         
         // Selalu lepaskan lock, baik commit atau abort
         try {
-            lockManager.releaseLocks(String.valueOf(transactionId));
+            lockManager.releaseLocks(tx);
         } catch (RuntimeException ignored) {}
 
         try {
