@@ -1,9 +1,16 @@
 package com.apacy.storagemanager;
 
+import com.apacy.common.dto.Column;
 import com.apacy.common.dto.Row;
+import com.apacy.common.dto.Schema;
+import com.apacy.common.enums.*;
+
 import java.io.IOException;
-import java.nio.ByteBuffer; // Menggunakan ByteBuffer sangat membantu
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -29,7 +36,7 @@ public class Serializer {
      * Mengambil seluruh blok 4KB dan mengurai "Slotted Page"-nya 
      * untuk mengembalikan semua Row yang ada di dalamnya.
      */
-    public List<Row> deserializeBlock(byte[] blockData) throws IOException {
+    public List<Row> deserializeBlock(byte[] blockData, Schema schema) throws IOException {
         List<Row> rowsInBlock = new ArrayList<>();
         ByteBuffer buffer = ByteBuffer.wrap(blockData);
 
@@ -38,36 +45,42 @@ public class Serializer {
 
         // 2. Iterasi melalui "Daftar Isi" (Slot Directory)
         for (int i = 0; i < slotCount; i++) {
-            int slotOffset = BLOCK_HEADER_SIZE + (i * SLOT_SIZE);
-            
-            // 3. Baca info slot
-            int dataOffset = buffer.getInt(slotOffset + SLOT_OFFSET_OFFSET);
-            int dataLength = buffer.getInt(slotOffset + SLOT_LENGTH_OFFSET);
-
-            // 4. Jika slot berisi data (bukan pointer 0)
-            if (dataLength > 0 && dataOffset > 0) {
-                byte[] rowBytes = new byte[dataLength];
-                // Pergi ke lokasi data dan salin byte-nya
-                System.arraycopy(blockData, dataOffset, rowBytes, 0, dataLength);
-                
-                // 5. Gunakan helper 'deserialize' untuk menerjemahkan byte[]
-                rowsInBlock.add(deserialize(rowBytes));
+            Row row = deserializeSlot(blockData, schema, i);
+            if (row != null) {
+                rowsInBlock.add(row);
             }
+            
         }
         return rowsInBlock;
+    }
+
+    public Row deserializeSlot(byte[] blockData, Schema schema, int slotId) throws IOException {
+        ByteBuffer buffer = ByteBuffer.wrap(blockData);
+        int slotCount = buffer.getInt(HEADER_SLOT_COUNT_OFFSET);
+        if (slotId >= slotCount) {
+            throw new IOException("Slot ID " + slotId + " di luar jangkauan (Total: " + slotCount + ")");
+        }
+        int slotOffset = BLOCK_HEADER_SIZE + (slotId * SLOT_SIZE);
+        int dataOffset = buffer.getInt(slotOffset + SLOT_OFFSET_OFFSET);
+        int dataLength = buffer.getInt(slotOffset + SLOT_LENGTH_OFFSET);
+
+        byte[] rowBytes = new byte[dataLength];
+        System.arraycopy(blockData, dataOffset, rowBytes, 0, dataLength);
+        
+        return deserializeRow(rowBytes, schema);
     }
 
     /**
      * Metode UTAMA untuk MENULIS (digunakan oleh Orang 2).
      * Mengambil blok 4KB yang ada, lalu "mengepak" Row baru ke dalamnya.
      * Mengembalikan blok 4KB yang sudah diperbarui.
-     * * @param blockData Byte[] 4KB dari BlockManager
+     * @param blockData Byte[] 4KB dari BlockManager
      * @param newRow Row baru yang ingin dimasukkan
      * @return Byte[] 4KB yang sudah diperbarui
      */
-    public byte[] packRowToBlock(byte[] blockData, Row newRow) throws IOException {
+    public byte[] packRowToBlock(byte[] blockData, Row newRow, Schema schema) throws IOException {
         // 1. Ubah Row baru menjadi byte[]
-        byte[] rowBytes = serialize(newRow);
+        byte[] rowBytes = serializeRow(newRow, schema);
         int rowLength = rowBytes.length;
 
         ByteBuffer buffer = ByteBuffer.wrap(blockData);
@@ -118,49 +131,102 @@ public class Serializer {
         return blockData;
     }
 
-
-    // ====================================================================
-    // METODE ASLI (SEKARANG MENJADI HELPER)
-    // ====================================================================
-
     /**
-     * (HELPER) Serialize SATU Row object ke byte array.
-     * TODO: Implementasikan logika konversi tipe data yang sebenarnya di sini.
+     * (HELPER) Serialize SATU Row ke byte[] (Ukuran Variabel).
      */
-    public byte[] serialize(Row row) throws IOException {
-        // TODO: Implementasi yang sebenarnya (misal: pakai DataOutputStream)
-        // Ini hanya contoh dummy:
-        String dummyData = row.data().toString();
-        return dummyData.getBytes(); 
+    private byte[] serializeRow(Row row, Schema schema) throws IOException {
+        // 1. Hitung ukuran pasti
+        int totalSize = estimateSize(row, schema);
         
-        // throw new UnsupportedOperationException("serialize not implemented yet");
+        // 2. Alokasikan ByteBuffer
+        ByteBuffer buffer = ByteBuffer.allocate(totalSize);
+        Map<String, Object> data = row.data();
+
+        // 3. Tulis data ke buffer
+        for (Column col : schema.columns()) {
+            Object value = data.get(col.name());
+
+            switch (col.type()) {
+                case INTEGER: // INTEGER
+                    buffer.putInt((Integer) value);
+                    break;
+                case FLOAT: // FLOAT
+                    buffer.putFloat((Float) value);
+                    break;
+                case CHAR: // CHAR
+                case VARCHAR: // VARCHAR
+                    byte[] strBytes = ((String) value).getBytes(StandardCharsets.UTF_8);
+                    // 4. Tulis prefix panjang (4 byte int)
+                    buffer.putInt(strBytes.length); 
+                    // 5. Tulis data string
+                    buffer.put(strBytes); 
+                    break;
+                default:
+                    throw new IOException("Tipe data tidak didukung: " + col.type());
+            }
+        }
+        return buffer.array();
     }
     
     /**
      * (HELPER) Deserialize byte array menjadi SATU Row object.
      * TODO: Implementasikan logika konversi tipe data yang sebenarnya di sini.
      */
-    public Row deserialize(byte[] data) throws IOException {
-        // TODO: Implementasi yang sebenarnya (misal: pakai DataInputStream)
-        // Ini hanya contoh dummy:
-        String dummyData = new String(data);
-        // Ini parse dummy, Anda harus parse data asli jadi Map
-        Map<String, Object> map = Map.of("data_dummy", dummyData); 
-        return new Row(map);
-        
-        // throw new UnsupportedOperationException("deserialize not implemented yet");
+    public Row deserializeRow(byte[] data, Schema schema) throws IOException {
+        ByteBuffer buffer = ByteBuffer.wrap(data);
+        Map<String, Object> rowData = new HashMap<>();
+
+        for (Column col : schema.columns()) {
+            switch (col.type()) {
+                case INTEGER: // INTEGER
+                    rowData.put(col.name(), buffer.getInt());
+                    break;
+                case FLOAT: // FLOAT
+                    rowData.put(col.name(), buffer.getFloat());
+                    break;
+                case CHAR: // CHAR
+                case VARCHAR: // VARCHAR
+                    // 1. Baca prefix panjang (4 byte int)
+                    int strLength = buffer.getInt();
+                    // 2. Alokasikan byte[] seukuran panjang itu
+                    byte[] strBytes = new byte[strLength];
+                    // 3. Baca data string ke byte[]
+                    buffer.get(strBytes);
+                    rowData.put(col.name(), new String(strBytes, StandardCharsets.UTF_8));
+                    break;
+                default:
+                    throw new IOException("Tipe data tidak didukung: " + col.type());
+            }
+        }
+        return new Row(rowData);
     }
     
     /**
      * Calculate the estimated size of a serialized Row.
      * TODO: Implement size estimation logic
      */
-    public int estimateSize(Row row) {
-        // TODO: Implementasi ini sekarang sangat penting untuk 'packRowToBlock'
-        
-        // Contoh dummy:
-        return row.data().toString().getBytes().length;
-        
-        // throw new UnsupportedOperationException("estimateSize not implemented yet");
+    public int estimateSize(Row row, Schema schema) {
+        int totalSize = 0;
+        Map<String, Object> data = row.data();
+
+        for (Column col : schema.columns()) {
+            Object value = data.get(col.name());
+            
+            switch (col.type()) {
+                case INTEGER: // INTEGER
+                    totalSize += Integer.BYTES; // 4 byte
+                    break;
+                case FLOAT: // FLOAT
+                    totalSize += Float.BYTES; // 4 byte
+                    break;
+                case CHAR: // VARCHAR
+                case VARCHAR: // TEXT
+                    // 4 byte (untuk prefix panjang int) + N byte (data UTF-8)
+                    totalSize += Integer.BYTES; 
+                    totalSize += ((String) value).getBytes(StandardCharsets.UTF_8).length;
+                    break;
+            }
+        }
+        return totalSize;
     }
 }

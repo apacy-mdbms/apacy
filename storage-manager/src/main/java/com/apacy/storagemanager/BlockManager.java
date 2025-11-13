@@ -1,6 +1,10 @@
 package com.apacy.storagemanager;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Arrays;
 
 /**
  * Boilerplate Block Manager for low-level block operations.
@@ -21,6 +25,17 @@ public class BlockManager {
         this.dataDirectory = dataDirectory;
         this.blockSize = blockSize;
         // TODO: Initialize file management structures and create directory if needed
+
+        try{
+            Files.createDirectories(Paths.get(this.dataDirectory));
+        } catch (IOException e) {
+            throw new RuntimeException("Gagal membuat direktori data : " + dataDirectory, e);
+        }
+    }
+
+    // Helper //
+    private Path getFilePath(String fileName) {
+        return Paths.get(dataDirectory, fileName);
     }
     
     /**
@@ -29,7 +44,33 @@ public class BlockManager {
      */
     public byte[] readBlock(String fileName, long blockNumber) throws IOException {
         // TODO: Implement block reading logic
-        throw new UnsupportedOperationException("readBlock not implemented yet");
+        Path filePath = getFilePath(fileName);
+        if(!Files.exists(filePath)) {
+            throw new FileNotFoundException("File tidak ditemukan : " + fileName);
+        }
+
+        try (RandomAccessFile raf = new RandomAccessFile(filePath.toFile(), "r")) {
+            long fileLength = raf.length();
+            long position = blockNumber * blockSize;
+
+            if (position >= fileLength) {
+                throw new IOException("Nomor blok " + blockNumber + " di luar batas file " + fileName + " (panjang: " + fileLength + " bytes)");
+            }
+
+            raf.seek(position);
+
+            byte[] blockData = new byte[blockSize];
+            int bytesRead = raf.read(blockData);
+
+            if (bytesRead < blockSize && bytesRead != -1) {
+                // Ini bisa terjadi jika blok terakhir tidak penuh (corrupt/partial write)
+                // Kita kembalikan data yang terbaca, sisa array akan 0 (default)
+                System.err.println("Peringatan: readBlock membaca kurang dari ukuran blok penuh di " + fileName + ", blok " + blockNumber);
+            }
+
+            return blockData;
+        }
+        // throw new UnsupportedOperationException("readBlock not implemented yet");
     }
     
     /**
@@ -38,7 +79,30 @@ public class BlockManager {
      */
     public void writeBlock(String fileName, long blockNumber, byte[] data) throws IOException {
         // TODO: Implement block writing logic
-        throw new UnsupportedOperationException("writeBlock not implemented yet");
+        if (data.length > blockSize) {
+            throw new IOException("Data ( " + data.length + " bytes) lebih besar dari blockSize (" + blockSize + " bytes)");
+        }
+
+        Path filePath = getFilePath(fileName);
+        
+        try (RandomAccessFile raf = new RandomAccessFile(filePath.toFile(), "rw")) {
+            long position = blockNumber * blockSize;
+            
+            // Pindah ke posisi blok
+            raf.seek(position);
+            
+            // Tulis data
+            raf.write(data);
+            
+            // (PENTING) Jika data lebih kecil dari ukuran blok,
+            // kita harus menulis padding agar file tetap sinkron.
+            if (data.length < blockSize) {
+                byte[] padding = new byte[blockSize - data.length];
+                // Arrays.fill(padding, (byte) 0); // (default-nya sudah 0)
+                raf.write(padding);
+            }
+        }
+        // throw new UnsupportedOperationException("writeBlock not implemented yet");
     }
     
     /**
@@ -47,7 +111,10 @@ public class BlockManager {
      */
     public long appendBlock(String fileName, byte[] data) throws IOException {
         // TODO: Implement block appending logic
-        throw new UnsupportedOperationException("appendBlock not implemented yet");
+        long newBlockNumber = getBlockCount(fileName);
+        writeBlock(fileName, newBlockNumber, data);
+        return newBlockNumber;
+        // throw new UnsupportedOperationException("appendBlock not implemented yet");
     }
     
     /**
@@ -56,7 +123,18 @@ public class BlockManager {
      */
     public long getBlockCount(String fileName) throws IOException {
         // TODO: Implement block count logic
-        throw new UnsupportedOperationException("getBlockCount not implemented yet");
+        Path filePath = getFilePath(fileName);
+        if (!Files.exists(filePath)) {
+            return 0;
+        }
+
+        try (RandomAccessFile raf = new RandomAccessFile(filePath.toFile(), "r")){
+            long fileLength = raf.length();
+            if(fileLength == 0 ){
+                return 0;
+            }
+            return (fileLength + blockSize - 1) / blockSize;
+        }
     }
     
     /**
@@ -65,7 +143,8 @@ public class BlockManager {
      */
     public void flush() throws IOException {
         // TODO: Implement flush logic
-        throw new UnsupportedOperationException("flush not implemented yet");
+        return;
+        // throw new UnsupportedOperationException("flush not implemented yet");
     }
     
     /**
@@ -74,7 +153,8 @@ public class BlockManager {
      */
     public void close() {
         // TODO: Implement resource cleanup
-        throw new UnsupportedOperationException("close not implemented yet");
+        return;
+        // throw new UnsupportedOperationException("close not implemented yet");
     }
     
     /**
