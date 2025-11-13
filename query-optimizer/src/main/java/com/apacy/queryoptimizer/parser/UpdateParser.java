@@ -69,8 +69,7 @@ public class UpdateParser extends AbstractParser {
             false);
     };
 
-
-
+    @Override
     public boolean validate() {
         try {
             consume(TokenType.UPDATE);

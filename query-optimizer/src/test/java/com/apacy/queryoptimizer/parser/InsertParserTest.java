@@ -1,69 +1,64 @@
 package com.apacy.queryoptimizer.parser;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
-import java.text.ParseException;
 import java.util.List;
 
-import org.junit.jupiter.api.Disabled;
+import static org.junit.jupiter.api.Assertions.assertEquals; // Import parser utama
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.apacy.common.dto.ParsedQuery;
+import com.apacy.queryoptimizer.QueryParser;
 
-@Disabled("Disabled karena InsertParser belum diimplementasi. Hilangkan baris ini untuk mengenable")
 class InsertParserTest {
 
-    // --- Test Validate ---
+    private QueryParser parser; // Kita uji melalui QueryParser utama
 
-    @Test
-    void validate_ValidInsertQuery_ShouldReturnTrue() {
-        /**
-         * INSERT INTO logs VALUES ('INFO', 'Started');
-         */
-        List<Token> tokens = List.of(
-            new Token(TokenType.INSERT, "INSERT"), new Token(TokenType.INTO, "INTO"), new Token(TokenType.IDENTIFIER, "logs"),
-            new Token(TokenType.VALUES, "VALUES"), new Token(TokenType.LPARENTHESIS, "("), new Token(TokenType.STRING_LITERAL, "'INFO'"), new Token(TokenType.COMMA, ","), new Token(TokenType.STRING_LITERAL, "'Started'"), new Token(TokenType.RPARENTHESIS, ")"),
-            new Token(TokenType.SEMICOLON, ";"), new Token(TokenType.EOF, null)
-        );
-
-        assertTrue(new InsertParser(tokens).validate(), "Valid INSERT query should pass validation.");
+    @BeforeEach
+    void setUp() {
+        parser = new QueryParser();
     }
 
     @Test
-    void validate_InvalidInsertSyntax_ShouldReturnFalse() {
-        /**
-         * query: INSERT logs VALUES
-         */
-        List<Token> tokens = List.of(
-            new Token(TokenType.INSERT, "INSERT"), new Token(TokenType.IDENTIFIER, "logs"),
-            new Token(TokenType.VALUES, "VALUES"), new Token(TokenType.EOF, null)
-        );
+    void testParseInsert_Success() throws Exception {
+        String query = "INSERT INTO users (id, name, age) VALUES ('user1', 'Budi', 25);";
+        ParsedQuery pq = parser.parse(query);
 
-        assertFalse(new InsertParser(tokens).validate(), "Invalid INSERT query should not pass validation.");
+        assertNotNull(pq);
+        assertEquals("INSERT", pq.queryType());
+        assertEquals("users", pq.targetTables().get(0));
+        assertEquals(List.of("id", "name", "age"), pq.targetColumns());
+        
+        // Cek field 'values' yang baru
+        assertEquals(List.of("'user1'", "'Budi'", "25"), pq.values());
     }
 
-    // --- Test Parse ---
+    @Test
+    void testParseInsert_Fail_MismatchCount() {
+        String query = "INSERT INTO users (id, name) VALUES ('user1')"; // Kolom 2, Nilai 1
+        
+        // Panggil parser.parse() di dalam assertThrows
+        Exception exception = assertThrows(Exception.class, () -> {
+            parser.parse(query);
+        });
+        
+        // Cek bahwa pesan error-nya benar
+        assertTrue(exception.getMessage().contains("Jumlah kolom tidak cocok"));
+    }
+    
+    // Test baru untuk method validate()
+    @Test
+    void testValidateInsert_Success() {
+        String query = "INSERT INTO users (id, name, age) VALUES ('user1', 'Budi', 25);";
+        assertTrue(parser.validate(query));
+    }
 
     @Test
-    void parse_BasicInsertQuery_ShouldMatchExpectedParsedQuery() throws ParseException {
-        /**
-         * query: INSERT INTO products VALUES  ('Laptop', 1500);
-         */
-        List<Token> tokens = List.of(
-            new Token(TokenType.INSERT, "INSERT"), new Token(TokenType.INTO, "INTO"), new Token(TokenType.IDENTIFIER, "products"),
-            new Token(TokenType.LPARENTHESIS, "("), new Token(TokenType.IDENTIFIER, "name"), new Token(TokenType.COMMA, ","), new Token(TokenType.IDENTIFIER, "price"), new Token(TokenType.RPARENTHESIS, ")"),
-            new Token(TokenType.VALUES, "VALUES"), new Token(TokenType.LPARENTHESIS, "("), new Token(TokenType.STRING_LITERAL, "'Laptop'"), new Token(TokenType.COMMA, ","), new Token(TokenType.NUMBER_LITERAL, "1500"), new Token(TokenType.RPARENTHESIS, ")"),
-            new Token(TokenType.SEMICOLON, ";"), new Token(TokenType.EOF, null)
-        );
-
-        ParsedQuery actual = new InsertParser(tokens).parse();
-        assertEquals("INSERT", actual.queryType());
-        assertEquals(List.of("products"), actual.targetTables());
-        assertEquals(List.of("name", "price"), actual.targetColumns());
-
-        assertThrows(UnsupportedOperationException.class, () -> new InsertParser(tokens).parse());
+    void testValidateInsert_Fail() {
+        String query = "INSERT INTO users (id, name) VALUES ('user1');"; // Jumlah tidak cocok
+        assertFalse(parser.validate(query));
     }
 }
