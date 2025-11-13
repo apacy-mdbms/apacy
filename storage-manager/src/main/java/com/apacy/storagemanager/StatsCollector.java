@@ -1,116 +1,140 @@
 package com.apacy.storagemanager;
 
+import com.apacy.common.dto.Column;
+import com.apacy.common.dto.IndexSchema;
 import com.apacy.common.dto.Row;
+import com.apacy.common.dto.Schema;
 import com.apacy.common.dto.Statistic;
+import com.apacy.common.enums.IndexType;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Statistics Collector gathers and maintains database statistics for query optimization.
- * TODO: Implement table statistics collection, caching, and persistence
+ * Mengimplementasikan logika untuk get_stats()[cite: 793].
  */
 public class StatsCollector {
     
-    private final String statsDirectory;
+    // StatsCollector butuh akses ke semua komponen internal SM
+    private final CatalogManager catalogManager;
     private final BlockManager blockManager;
     private final Serializer serializer;
 
-    public StatsCollector() {
-        this(
-            "data/stats", 
-            new BlockManager("data/stats"),
-            new Serializer());
-    }
-
-    public StatsCollector(String statsDirectory, BlockManager blockManager, Serializer serializer) {
-        this.statsDirectory = statsDirectory;
+    public StatsCollector(CatalogManager catalogManager, BlockManager blockManager, Serializer serializer) {
+        this.catalogManager = catalogManager;
         this.blockManager = blockManager;
         this.serializer = serializer;
-        // TODO: Initialize statistics cache and ensure directory exists
     }
     
-    
     /**
-     * Collect statistics for a specific table.
-     * TODO: Implement table scanning and statistics collection with caching
+     * Dipanggil oleh StorageManager.getAllStats().
+     * Mengumpulkan statistik untuk SEMUA tabel yang ada di katalog.
      */
-    // public Statistic collectStats(String tableName) {
-    //     // Ini adalah logika utama Anda.
-    //     // Untuk saat ini, kita akan melakukan full scan pada file tabel.
+    public Map<String, Statistic> getAllStats() {
+        Map<String, Statistic> allStats = new HashMap<>();
+        // Ambil semua skema dari catalog manager
+        Collection<Schema> allSchemas = catalogManager.getAllSchemas();
+
+        // Iterasi setiap tabel dan kumpulkan statistiknya
+        for (Schema schema : allSchemas) {
+            try {
+                Statistic stats = collectStatsForTable(schema);
+                allStats.put(schema.tableName(), stats);
+            } catch (IOException e) {
+                System.err.println("StatsCollector: Gagal mengumpulkan statistik untuk tabel " + schema.tableName() + ": " + e.getMessage());
+                // Masukkan statistik kosong jika gagal
+                allStats.put(schema.tableName(), new Statistic(0, 0, 0, 0, Map.of(), Map.of()));
+            }
+        }
+        return allStats;
+    }
+
+    /**
+     * Logika utama: Melakukan Full Table Scan untuk 1 tabel dan menghitung metriknya.
+     * (Sesuai spesifikasi IF3140 )
+     */
+    private Statistic collectStatsForTable(Schema schema) throws IOException {
+        String tableName = schema.tableName();
+        String dataFile = schema.dataFile();
+
+        int nr = 0; // jumlah tuple [cite: 795]
+        long br = 0; // jumlah blok [cite: 796]
+        long totalRowSize = 0; // total ukuran byte semua tuple (untuk menghitung lr)
         
-    //     // Asumsi nama file = nama tabel + .dat (sesuaikan dengan Orang 1 & 2)
-    //     String tableFileName = tableName + ".dat"; 
+        // Map untuk V(A,r): Map<NamaKolom, Set<NilaiUnik>> [cite: 799]
+        Map<String, Set<Object>> distinctValues = new HashMap<>();
+        // Inisialisasi Set untuk setiap kolom di tabel ini
+        for (Column col : schema.columns()) {
+            distinctValues.put(col.name(), new HashSet<>());
+        }
 
-    //     int nr = 0; // jumlah tuple
-    //     long br = 0; // jumlah blok
-    //     long totalSize = 0; // total ukuran byte semua tuple
-        
-    //     // Map untuk V(A,r): Map<NamaKolom, Set<NilaiUnik>>
-    //     Map<String, Set<Object>> distinctValues = new HashMap<>();
+        // 1. Dapatkan jumlah blok (br)
+        br = blockManager.getBlockCount(dataFile);
 
-    //     try {
-    //         // 1. Dapatkan jumlah blok (br) dari BlockManager (Orang 1)
-    //         br = blockManager.getBlockCount(tableFileName);
+        // 2. Iterasi setiap blok untuk menghitung nr, lr, dan V(A,r)
+        for (long blockNumber = 0; blockNumber < br; blockNumber++) {
+            byte[] blockData = blockManager.readBlock(dataFile, blockNumber);
+            
+            // 3. Deserialize blok (mendapatkan List<Row>)
+            // Kita perlu serializer untuk membaca struktur Slotted Page
+            List<Row> rowsInBlock = serializer.deserializeBlock(blockData, schema);
 
-    //         // 2. Iterasi setiap blok untuk menghitung nr, lr, dan V(A,r)
-    //         for (long i = 0; i < br; i++) {
-    //             byte[] blockData = blockManager.readBlock(tableFileName, i);
-                
-    //             // TODO: BlockManager mungkin mengembalikan 1 blok, tapi isinya
-    //             // bisa banyak row. Kita perlu cara untuk mem-parse row
-    //             // dari dalam 1 blok.
-    //             // Untuk SAAT INI, kita asumsikan 1 blok = 1 row (TIDAK EFISIEN, TAPI OK UNTUK DRAF)
+            if (rowsInBlock != null && !rowsInBlock.isEmpty()) {
+                for (Row row : rowsInBlock) {
+                    // 4. Hitung nr (jumlah row)
+                    nr++;
+                    
+                    // 5. Akumulasi total ukuran (menggunakan estimator serializer)
+                    totalRowSize += serializer.estimateSize(row, schema);
 
-    //             if (blockData != null && blockData.length > 0) {
-    //                 // 3. Deserialize data (dari Orang 1)
-    //                 Row row = serializer.deserialize(blockData);
-    //                 nr++;
-    //                 totalSize += blockData.length;
-
-    //                 // 4. Kumpulkan nilai unik untuk V(A,r)
-    //                 for (Map.Entry<String, Object> entry : row.data().entrySet()) {
-    //                     String columnName = entry.getKey();
-    //                     Object value = entry.getValue();
+                    // 6. Kumpulkan nilai unik untuk V(A,r)
+                    for (Map.Entry<String, Object> entry : row.data().entrySet()) {
+                        String columnName = entry.getKey();
+                        Object value = entry.getValue();
                         
-    //                     // Jika kolom ini belum dilacak, buatkan Set baru
-    //                     distinctValues.putIfAbsent(columnName, new HashSet<>());
-    //                     // Tambahkan nilai ke Set (duplikat akan diabaikan)
-    //                     distinctValues.get(columnName).add(value);
-    //                 }
-    //             }
-    //         }
+                        // Tambahkan nilai ke Set (duplikat akan diabaikan oleh HashSet)
+                        if (distinctValues.containsKey(columnName)) {
+                            distinctValues.get(columnName).add(value);
+                        }
+                    }
+                }
+            }
+        }
 
-    //         // 5. Hitung statistik final
-    //         int lr = (nr == 0) ? 0 : (int) (totalSize / nr); // ukuran rata-rata tuple
-    //         int blockSize = blockManager.getBlockSize();
-    //         int fr = (lr == 0) ? 0 : (blockSize / lr); // blocking factor
+        // 7. Hitung statistik final (lr, fr)
+        // lr: ukuran rata-rata tuple [cite: 797]
+        int lr = (nr == 0) ? 0 : (int) (totalRowSize / nr); 
+        
+        int blockSize = blockManager.getBlockSize();
+        
+        // fr: blocking factor [cite: 798]
+        int fr = (lr == 0) ? 0 : (blockSize / lr); 
 
-    //         // 6. Konversi Map<String, Set<Object>> ke Map<String, Integer> untuk V(A,r)
-    //         Map<String, Integer> V = new HashMap<>();
-    //         for (Map.Entry<String, Set<Object>> entry : distinctValues.entrySet()) {
-    //             V.put(entry.getKey(), entry.getValue().size());
-    //         }
+        // 8. Konversi Map<String, Set<Object>> ke Map<String, Integer> untuk V(A,r) [cite: 799]
+        Map<String, Integer> V = new HashMap<>();
+        for (Map.Entry<String, Set<Object>> entry : distinctValues.entrySet()) {
+            V.put(entry.getKey(), entry.getValue().size());
+        }
 
-    //         Map<String, String> ic = new HashMap<>();
+        // 9. Dapatkan info indeks dari skema
+        // (Ini tidak diminta secara eksplisit oleh spek get_stats, tapi ada di DTO Anda)
+        Map<String, IndexType> indexedColumn = schema.indexes().stream()
+            .collect(Collectors.toMap(
+                IndexSchema::columnName, 
+                IndexSchema::indexType,
+                (existingType, newType) -> existingType // Jaga-jaga jika ada duplikat
+            ));
 
-    //         // 7. Kembalikan objek Statistic
-    //         return new Statistic(nr, (int) br, lr, fr, V, ic);
-
-    //     } catch (IOException e) {
-    //         // TODO: Handle exception
-    //         e.printStackTrace();
-    //         // Kembalikan statistik kosong jika gagal
-    //         return new Statistic(0, 0, 0, 0, Map.of());
-    //     } catch (UnsupportedOperationException e) {
-    //         // Ini akan terjadi jika Orang 1 belum selesai
-    //         System.err.println("StatsCollector: Menunggu implementasi BlockManager/Serializer.");
-    //         throw e; // Lemparkan lagi agar test gagal
-    //     }
-    // }
+        // 10. Kembalikan objek Statistic
+        return new Statistic(nr, (int) br, lr, fr, V, indexedColumn);
+    }
     
     /**
      * Update statistics for a table incrementally.
@@ -155,14 +179,5 @@ public class StatsCollector {
     public void clearCache() {
         // TODO: Implement cache clear
         throw new UnsupportedOperationException("clearCache not implemented yet");
-    }
-    
-    /**
-     * Get all cached table statistics.
-     * TODO: Implement retrieval of all cached statistics
-     */
-    public Map<String, Statistic> getAllStats() {
-        // TODO: Implement all stats retrieval
-        throw new UnsupportedOperationException("getAllStats not implemented yet");
     }
 }

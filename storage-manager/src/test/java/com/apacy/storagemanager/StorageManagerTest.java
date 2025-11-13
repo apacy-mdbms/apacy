@@ -1,81 +1,69 @@
 package com.apacy.storagemanager;
 
-import com.apacy.common.dto.DataDeletion;
-import com.apacy.common.dto.DataRetrieval;
+import com.apacy.common.dto.*;
 import com.apacy.common.enums.*;
-import com.apacy.common.dto.DataWrite;
-import com.apacy.common.dto.Row;
-import com.apacy.common.dto.Statistic;
+import org.junit.jupiter.api.*;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Unit test komprehensif untuk StorageManager.
+ * Menguji integrasi CatalogManager, BlockManager, Serializer, dan StatsCollector.
+ */
 class StorageManagerTest {
 
     private StorageManager storageManager;
-    private CatalogManager catalogManager;
     private final String TEST_DIR = "storage_test_data_" + UUID.randomUUID().toString().substring(0, 8);
-    private final String TEST_CATALOG_FILE = TEST_DIR + "/system_catalog.dat";
-    private final String TEST_STUDENT_FILE = TEST_DIR + "/students.dat";
+
+    // Skema untuk pengujian
+    private Schema studentsSchema;
+    private Schema coursesSchema;
 
     /**
      * Set up:
      * 1. Buat direktori tes sementara.
-     * 2. Buat file system_catalog.dat BINER palsu (dummy).
-     * 3. Inisialisasi StorageManager, yang akan memuat katalog palsu tsb.
+     * 2. Inisialisasi StorageManager (ini akan memuat/membuat catalog).
+     * 3. Gunakan createTable() untuk membuat skema "students" dan "courses".
      */
     @BeforeEach
     void setUp() throws Exception {
-        // 1. Buat direktori
-        new File(TEST_DIR).mkdirs();
-
-        // 2. Buat file system_catalog.dat biner palsu
-        try (DataOutputStream dos = new DataOutputStream(new FileOutputStream(TEST_CATALOG_FILE))) {
-            // Header Katalog
-            dos.writeInt(0xACDB01); // Magic Number
-            dos.writeInt(1); // Jumlah Tabel = 1
-
-            // --- Definisi Tabel "students" ---
-            dos.writeUTF("students"); // Nama Tabel
-            dos.writeUTF(TEST_STUDENT_FILE); // Data File
-            dos.writeInt(3); // Jumlah Kolom = 3
-
-            // Kolom 1: id (INTEGER)
-            dos.writeUTF("id");
-            dos.writeInt(DataType.INTEGER.getValue());
-            dos.writeInt(0); // Length (0 untuk int)
-
-            // Kolom 2: name (VARCHAR)
-            dos.writeUTF("name");
-            dos.writeInt(DataType.VARCHAR.getValue());
-            dos.writeInt(50); // Length 50
-
-            // Kolom 3: gpa (FLOAT)
-            dos.writeUTF("gpa");
-            dos.writeInt(DataType.FLOAT.getValue());
-            dos.writeInt(0); // Length (0 untuk float)
-
-            // Indeks
-            dos.writeInt(0); // Jumlah Indeks = 0
-        }
-
-        // 3. Inisialisasi StorageManager
-        // Ini akan memanggil initialize() -> catalogManager.loadCatalog()
+        // 1. Inisialisasi StorageManager
         storageManager = new StorageManager(TEST_DIR);
-        storageManager.initialize();
-        
-        // Simpan referensi ke katalog untuk pengujian
-        catalogManager = storageManager.getCatalogManager();
+        storageManager.initialize(); // Memuat catalog (atau membuat yang kosong)
+
+        // 2. Definisikan dan BUAT skema "students"
+        studentsSchema = new Schema(
+            "students",
+            "students.dat", // Nama file data
+            List.of(
+                new Column("id", DataType.INTEGER),
+                new Column("name", DataType.VARCHAR, 50),
+                new Column("gpa", DataType.FLOAT)
+            ),
+            List.of(
+                // Tambahkan info indeks untuk pengujian statistik
+                new IndexSchema("idx_id", "id", IndexType.Hash, "students_id.idx")
+            )
+        );
+        storageManager.createTable(studentsSchema);
+
+        // 3. Definisikan dan BUAT skema "courses" (untuk tes multi-tabel)
+        coursesSchema = new Schema(
+            "courses",
+            "courses.dat",
+            List.of(
+                new Column("course_id", DataType.VARCHAR, 10),
+                new Column("credits", DataType.INTEGER)
+            ),
+            List.of() // Tidak ada indeks
+        );
+        storageManager.createTable(coursesSchema);
     }
 
     /**
@@ -88,19 +76,30 @@ class StorageManagerTest {
         deleteDirectory(new File(TEST_DIR));
     }
 
-    /**
-     * Tes Integrasi Inti: Tulis satu baris, lalu baca kembali (Full Scan).
-     * Ini menguji: CatalogManager, Serializer(pack), BlockManager(write),
-     * BlockManager(read), Serializer(deserializeBlock), dan StorageManager(readBlock).
-     */
+    // --- Helper untuk Teardown ---
+    private void deleteDirectory(File directory) {
+        File[] allContents = directory.listFiles();
+        if (allContents != null) {
+            for (File file : allContents) {
+                deleteDirectory(file);
+            }
+        }
+        directory.delete();
+    }
+
+    // ========================================================================
+    // --- Tes Fungsionalitas CRUD (Read/Write) ---
+    // ========================================================================
+
     @Test
+    @DisplayName("Test: Tulis dan Baca Satu Baris (Integrasi CRUD)")
     void testWriteAndReadSingleRow() {
         System.out.println("--- testWriteAndReadSingleRow ---");
         
-        // 1. Buat Row (Data Variabel)
+        // 1. Buat Row
         Map<String, Object> data = Map.of(
             "id", 101,
-            "name", "Budi", // String pendek
+            "name", "Budi",
             "gpa", 3.5f
         );
         Row newRow = new Row(data);
@@ -124,40 +123,19 @@ class StorageManagerTest {
         assertEquals(3.5f, resultRow.data().get("gpa"));
     }
 
-    /**
-     * Tes penulisan beberapa baris (termasuk logika 'append block').
-     */
     @Test
-    void testWriteMultipleRows() throws IOException {
-        System.out.println("--- testWriteMultipleRows ---");
-        
-        // Tulis 2 baris
-        storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 1, "name", "Row 1", "gpa", 1.0f)), null));
-        storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 2, "name", "Row 2", "gpa", 2.0f)), null));
-
-        // Baca kembali
-        DataRetrieval readReq = new DataRetrieval("students", List.of("*"), null, false);
+    @DisplayName("Test: Baca dari Tabel Kosong")
+    void testReadFromEmptyTable() {
+         // Langsung baca dari 'courses' yang baru dibuat (pasti kosong)
+        DataRetrieval readReq = new DataRetrieval("courses", List.of("*"), null, false);
         List<Row> results = storageManager.readBlock(readReq);
-
-        assertEquals(2, results.size(), "Harus ada 2 baris");
-
-        // Tes logika 'append block' (jika 1 blok penuh)
-        // Buat data besar yang akan memenuhi blok
-        String longName = "NamaPanjang".repeat(200); // ~4000+ byte, pasti butuh blok baru
-        storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 3, "name", longName, "gpa", 3.0f)), null));
-
-        results = storageManager.readBlock(readReq);
-        assertEquals(3, results.size(), "Harus ada 3 baris (termasuk yang di blok baru)");
         
-        // Verifikasi baris terakhir
-        Row lastRow = results.stream().filter(r -> r.data().get("id").equals(3)).findFirst().get();
-        assertEquals(longName, lastRow.data().get("name"));
+        assertNotNull(results, "Hasil baca tidak boleh null");
+        assertEquals(0, results.size(), "Membaca dari tabel kosong harus mengembalikan list kosong");
     }
 
-    /**
-     * Tes Proyeksi (Kolom): Memastikan `readBlock` hanya mengembalikan kolom yang diminta.
-     */
     @Test
+    @DisplayName("Test: Proyeksi (Kolom) saat Read")
     void testReadWithProjection() {
         System.out.println("--- testReadWithProjection ---");
         
@@ -178,57 +156,183 @@ class StorageManagerTest {
         assertFalse(resultRow.data().containsKey("name"), "'name' seharusnya tidak ada (terproyeksi keluar)");
     }
 
-    // /**
-    //  * Tes Statistik: Memastikan `getStats` (Orang 4) berfungsi.
-    //  */
-    // @Test
-    // void testGetStats() {
-    //     System.out.println("--- testGetStats ---");
-
-    //     // Tulis 2 baris
-    //     storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 1, "name", "Row 1", "gpa", 1.0f)), null));
-    //     storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 2, "name", "Row 2", "gpa", 2.0f)), null));
-        
-    //     // Panggil getStats (yang diimplementasikan oleh Orang 4)
-    //     Statistic stats = storageManager.getAllStats();
-
-    //     assertNotNull(stats, "Statistik tidak boleh null");
-    //     assertEquals(2, stats.nr(), "nr (jumlah row) harus 2");
-    //     assertEquals(1, stats.br(), "br (jumlah blok) harus 1 (karena 2 row kecil muat)");
-        
-    //     // Cek V(A,r) - Jumlah nilai unik
-    //     assertEquals(2, stats.V().get("id"));
-    //     assertEquals(2, stats.V().get("name"));
-    //     assertEquals(2, stats.V().get("gpa"));
-        
-    //     // Cek info indeks (dari katalog)
-    //     assertEquals(0, stats.indexedColumns().size(), "indexedColumns harus 0 (sesuai katalog palsu)");
-    // }
-
-    /**
-     * Tes Delete: Memastikan deleteBlock melempar error (karena implementasi rewrite berbahaya).
-     * Ganti tes ini jika Anda mengimplementasikan delete-by-slot.
-     */
     @Test
+    @DisplayName("Test: Penulisan Multi-Blok (Memicu Append Block)")
+    void testWriteCausesBlockAppend() throws IOException {
+        System.out.println("--- testWriteCausesBlockAppend ---");
+
+        // Ukuran blok default adalah 4096 bytes.
+        // Header blok 8 bytes, Slot 8 bytes.
+        
+        // Buat data besar (String 3000 char -> 4 byte prefix + 3000 byte data)
+        String longName1 = "A".repeat(3000);
+        // Ukuran row1 ~ 4 (id) + (4 + 3000) (name) + 4 (gpa) = 3012 bytes
+        // Ukuran slot1 = 8 bytes. Total = 3020 bytes. Sisa spasi = 4096 - 8 (header) - 3020 = 1068
+        Row row1 = new Row(Map.of("id", 1, "name", longName1, "gpa", 1.0f));
+        
+        // Buat data kedua yang PASTI tidak muat
+        String longName2 = "B".repeat(1500);
+        // Ukuran row2 ~ 4 (id) + (4 + 1500) (name) + 4 (gpa) = 1512 bytes
+        // Ukuran slot2 = 8 bytes. Total dibutuhkan = 1520 bytes.
+        // 1520 > 1068 (sisa spasi), jadi ini akan gagal dan memicu appendBlock.
+        Row row2 = new Row(Map.of("id", 2, "name", longName2, "gpa", 2.0f));
+
+        // Tulis blok pertama
+        storageManager.writeBlock(new DataWrite("students", row1, null));
+        
+        // Cek dulu: harus ada 1 blok
+        String dataFile = studentsSchema.dataFile();
+        assertEquals(1, storageManager.getBlockManager().getBlockCount(dataFile), "Harus ada 1 blok data setelah row pertama");
+
+        // Tulis blok kedua (ini akan memicu append)
+        storageManager.writeBlock(new DataWrite("students", row2, null));
+
+        // Cek lagi: harus ada 2 blok
+        assertEquals(2, storageManager.getBlockManager().getBlockCount(dataFile), "Harus ada 2 blok data setelah row kedua");
+
+        // Cek apakah kedua data bisa dibaca kembali (Full Table Scan)
+        List<Row> results = storageManager.readBlock(new DataRetrieval("students", List.of("*"), null, false));
+        assertEquals(2, results.size(), "Harus ada 2 baris total dari 2 blok");
+        
+        // Verifikasi datanya
+        assertTrue(results.stream().anyMatch(r -> r.data().get("id").equals(1) && r.data().get("name").equals(longName1)));
+        assertTrue(results.stream().anyMatch(r -> r.data().get("id").equals(2) && r.data().get("name").equals(longName2)));
+    }
+
+
+    // ========================================================================
+    // --- Tes Fungsionalitas Statistik (get_stats) ---
+    // ========================================================================
+
+    @Test
+    @DisplayName("Test: getAllStats pada Tabel Kosong")
+    void testGetAllStats_EmptyTables() {
+        System.out.println("--- testGetAllStats_EmptyTables ---");
+        
+        Map<String, Statistic> statsMap = storageManager.getAllStats();
+        
+        assertNotNull(statsMap);
+        assertTrue(statsMap.containsKey("students"), "Harus ada statistik untuk 'students'");
+        assertTrue(statsMap.containsKey("courses"), "Harus ada statistik untuk 'courses'");
+        
+        // Verifikasi 'students' (kosong)
+        Statistic studentStats = statsMap.get("students");
+        assertEquals(0, studentStats.nr(), "nr (jumlah row) harus 0");
+        // Catatan: createTable() membuat 1 blok header kosong
+        assertEquals(1, studentStats.br(), "br (jumlah blok) harus 1 (blok header awal)");
+        assertEquals(0, studentStats.lr(), "lr (ukuran tuple) harus 0");
+        assertEquals(0, studentStats.fr(), "fr (blocking factor) harus 0");
+        
+        // Verifikasi 'courses' (kosong)
+        Statistic courseStats = statsMap.get("courses");
+        assertEquals(0, courseStats.nr(), "courses: nr harus 0");
+        assertEquals(1, courseStats.br(), "courses: br harus 1");
+    }
+
+    @Test
+    @DisplayName("Test: getAllStats dengan Data (nr, br, V(A,r), lr, fr)")
+    void testGetAllStats_WithData() {
+        System.out.println("--- testGetAllStats_WithData ---");
+
+        // Tulis 3 baris ke 'students'
+        storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 1, "name", "Ani", "gpa", 4.0f)), null));
+        storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 2, "name", "Budi", "gpa", 3.5f)), null));
+        storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 3, "name", "Ani", "gpa", 3.8f)), null)); // Nama 'Ani' duplikat
+
+        // Tulis 2 baris ke 'courses'
+        storageManager.writeBlock(new DataWrite("courses", new Row(Map.of("course_id", "IF3140", "credits", 3)), null));
+        storageManager.writeBlock(new DataWrite("courses", new Row(Map.of("course_id", "IF3110", "credits", 4)), null));
+
+        // Panggil getAllStats
+        Map<String, Statistic> statsMap = storageManager.getAllStats();
+
+        // --- Verifikasi 'students' ---
+        Statistic studentStats = statsMap.get("students");
+        // nr: jumlah tuple [cite: 795]
+        assertEquals(3, studentStats.nr(), "students: nr (jumlah row) harus 3");
+        // br: jumlah blok [cite: 796]
+        assertEquals(1, studentStats.br(), "students: br (jumlah blok) harus 1 (3 row kecil muat)");
+
+        // V(A,r): jumlah nilai distinct [cite: 799]
+        assertNotNull(studentStats.V());
+        assertEquals(3, studentStats.V().get("id"), "students: V(id) harus 3");
+        assertEquals(2, studentStats.V().get("name"), "students: V(name) harus 2 ('Ani' duplikat)");
+        assertEquals(3, studentStats.V().get("gpa"), "students: V(gpa) harus 3");
+
+        // lr: ukuran tuple (rata-rata) [cite: 797]
+        // Perkiraan ukuran:
+        // Row1: id(4) + name(4+3) + gpa(4) = 15
+        // Row2: id(4) + name(4+4) + gpa(4) = 16
+        // Row3: id(4) + name(4+3) + gpa(4) = 15
+        // Total = 46. Rata-rata (lr) = 46/3 = 15 (integer division)
+        int expected_lr = 15; 
+        assertEquals(expected_lr, studentStats.lr(), "students: lr (ukuran rata-rata) harus sekitar 15");
+        
+        // fr: blocking factor [cite: 798]
+        // fr = blockSize / lr = 4096 / 15 = 273
+        int expected_fr = (expected_lr == 0) ? 0 : (BlockManager.DEFAULT_BLOCK_SIZE / expected_lr);
+        assertEquals(expected_fr, studentStats.fr(), "students: fr (blocking factor) harus 273");
+        
+        // Cek info indeks (dari DTO, bukan dari spek get_stats)
+        assertNotNull(studentStats.indexedColumn());
+        assertTrue(studentStats.indexedColumn().containsKey("id"));
+        assertEquals(IndexType.Hash, studentStats.indexedColumn().get("id"));
+
+        // --- Verifikasi 'courses' ---
+        Statistic courseStats = statsMap.get("courses");
+        assertEquals(2, courseStats.nr(), "courses: nr harus 2");
+        assertEquals(1, courseStats.br(), "courses: br harus 1");
+        assertEquals(2, courseStats.V().get("course_id"), "courses: V(course_id) harus 2");
+        assertEquals(2, courseStats.V().get("credits"), "courses: V(credits) harus 2");
+        assertTrue(courseStats.indexedColumn().isEmpty(), "courses: indexedColumn harus kosong");
+    }
+
+
+    // ========================================================================
+    // --- Tes Error Handling & Stubbed Methods (Wajib) ---
+    // ========================================================================
+
+    @Test
+    @DisplayName("Test: Operasi pada Tabel Non-Eksisten")
+    void testOperationsOnNonExistentTable() {
+        System.out.println("--- testOperationsOnNonExistentTable ---");
+        
+        DataRetrieval readReq = new DataRetrieval("nonexistent", List.of("*"), null, false);
+        // readBlock harus mengembalikan list kosong dan mencetak error, bukan melempar exception
+        assertDoesNotThrow(() -> {
+            List<Row> results = storageManager.readBlock(readReq);
+            assertEquals(0, results.size());
+        }, "readBlock dari tabel non-eksisten harus mengembalikan list kosong");
+
+        DataWrite writeReq = new DataWrite("nonexistent", new Row(Map.of("col", 1)), null);
+        // writeBlock harus mengembalikan 0 dan mencetak error
+        assertDoesNotThrow(() -> {
+            int affected = storageManager.writeBlock(writeReq);
+            assertEquals(0, affected);
+        }, "writeBlock ke tabel non-eksisten harus mengembalikan 0");
+    }
+
+    @Test
+    @DisplayName("Test: Method 'deleteBlock' (Wajib) Melempar UnsupportedOperationException")
     void testDeleteBlockThrowsException() {
         System.out.println("--- testDeleteBlockThrowsException ---");
         
         DataDeletion delReq = new DataDeletion("students", "id=1"); // Filter dummy
         
-        // Memverifikasi bahwa implementasi default (berbahaya) melempar error
+        // Memverifikasi bahwa implementasi default melempar error
         assertThrows(UnsupportedOperationException.class, () -> {
             storageManager.deleteBlock(delReq);
-        }, "Implementasi deleteBlock (rewrite) harusnya di-disable");
+        }, "Implementasi deleteBlock (wajib) harusnya di-disable atau belum dibuat");
     }
 
-    // --- Helper untuk Teardown ---
-    private void deleteDirectory(File directory) {
-        File[] allContents = directory.listFiles();
-        if (allContents != null) {
-            for (File file : allContents) {
-                deleteDirectory(file);
-            }
-        }
-        directory.delete();
+    @Test
+    @DisplayName("Test: Method 'setIndex' (Wajib) Melempar UnsupportedOperationException")
+    void testSetIndexThrowsException() {
+        System.out.println("--- testSetIndexThrowsException ---");
+
+        // Memverifikasi bahwa implementasi default melempar error
+        assertThrows(UnsupportedOperationException.class, () -> {
+            storageManager.setIndex("students", "name", "BPlusTree");
+        }, "Implementasi setIndex (wajib) harusnya di-disable atau belum dibuat");
     }
 }

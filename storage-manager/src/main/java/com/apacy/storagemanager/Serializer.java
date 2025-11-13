@@ -19,6 +19,7 @@ import java.util.Map;
  * DAN juga mengelola struktur "Slotted Page" di dalam blok.
  */
 public class Serializer {
+    private CatalogManager catalogManager;
 
     // --- Konstanta untuk Slotted Page Header ---
     // Header Blok: [Jumlah Slot (int: 4 byte)][Pointer Free Space (int: 4 byte)]
@@ -30,6 +31,10 @@ public class Serializer {
     private static final int SLOT_SIZE = 8; // 4 + 4
     private static final int SLOT_OFFSET_OFFSET = 0;
     private static final int SLOT_LENGTH_OFFSET = 4;
+
+    public Serializer(CatalogManager catalogManager) {
+        this.catalogManager = catalogManager;
+    }
 
     /**
      * Metode UTAMA untuk MEMBACA (digunakan oleh Orang 2 & 4).
