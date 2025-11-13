@@ -10,16 +10,17 @@ import java.util.Map;
  * TODO: Implement sophisticated cost estimation using statistics and cardinality estimation
  */
 public class CostEstimator {
-    
+
     /**
      * Estimate the execution cost of a query.
      * TODO: Implement cost calculation based on I/O, CPU, and memory usage
      */
     public double estimate(ParsedQuery query, Map<String, Statistic> allStats) {
         // TODO: Calculate cost using table statistics and query complexity
-        throw new UnsupportedOperationException("estimate not implemented yet");
+        // return dummy value
+        return 1.0;
     }
-    
+
     /**
      * Estimate selectivity of a WHERE clause.
      * TODO: Implement selectivity estimation using column statistics and histograms
