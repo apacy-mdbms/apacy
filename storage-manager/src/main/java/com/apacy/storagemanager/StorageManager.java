@@ -208,16 +208,6 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         return this.statsCollector.getAllStats();
     }
 
-    /** 
-     * Konversi nama tabel ke nama file
-     * format ditentukannya "tableName_table.dat"
-     * @param tableName as nama tablenya
-     * @return fileName as nama filenya 
-     */
-    private String getFileNameForTable(String tableName) {
-        return tableName + "_table.dat";
-    }
-
     /**
      * Apply filter condition ke sebuah row
      * @param row as row yang mau difilter

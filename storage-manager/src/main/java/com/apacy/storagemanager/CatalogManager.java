@@ -19,7 +19,7 @@ import com.apacy.common.enums.*;
 public class CatalogManager {
 
     private final String catalogFilePath;
-    private final int MAGIC_NUMBER = 0xACDB01; 
+    private final int MAGIC_NUMBER = 0xACDB0101; 
 
     // PERBAIKAN: Hanya satu cache yang diperlukan
     private Map<String, Schema> schemaCache;
