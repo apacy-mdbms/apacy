@@ -12,6 +12,7 @@ import com.apacy.common.dto.Statistic;
 import com.apacy.common.enums.DataType;
 import com.apacy.common.enums.IndexType;
 import com.apacy.common.interfaces.IStorageManager;
+import com.apacy.storagemanager.index.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Collections;
@@ -30,7 +31,7 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
     private final Serializer serializer;
     private final StatsCollector statsCollector;
     private final CatalogManager catalogManager;
-    // private final IndexManager indexManager; // Helper class untuk B+Tree/Hash
+    private final IndexManager indexManager; // Helper class untuk B+Tree/Hash
 
     public StorageManager(String dataDirectory) {
         super("Storage Manager");
@@ -38,6 +39,7 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         this.blockManager = new BlockManager(dataDirectory);
         this.serializer = new Serializer(this.catalogManager);
         this.statsCollector = new StatsCollector(this.catalogManager, this.blockManager, this.serializer);
+        this.indexManager = new IndexManager();
         // ... inisialisasi komponen internal
     }
 
@@ -45,8 +47,7 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
     public void initialize() {
         try {
             this.catalogManager.loadCatalog();
-            // TODO: Inisialisasi/Rebuild indeks
-            // this.indexManager.initialize();
+            this.indexManager.loadAll();
         } catch (Exception e) {
             System.err.println("Gagal menginitialize Storage Manager! " + e.getMessage());
         }
@@ -56,11 +57,11 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
     public void shutdown() {
         // TODO: Implement storage manager shutdown logic
         // (e.g., flush buffers, close files)
-        try {
-            blockManager.flush();
-        } catch (IOException e) {
-            System.err.println("Error flushing blocks during shutdown: " + e.getMessage());
-        }
+        indexManager.flushAll();
+            // blockManager.flush();
+        // } catch (IOException e) {
+        //     System.err.println("Error flushing blocks during shutdown: " + e.getMessage());
+
     }
 
     public CatalogManager getCatalogManager() {
@@ -74,8 +75,6 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
             if (schema == null) {
                 throw new IOException("Tabel tidak ditemukan di katalog: " + dataRetrieval.tableName());
             }
-
-            // PERBAIKAN: Nama file diambil dari skema
             String fileName = schema.dataFile(); 
             List<Row> allRows = new ArrayList<>();
             
@@ -88,7 +87,6 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
             for (long blockNumber = 0; blockNumber < blockCount; blockNumber++) {
                 byte[] blockData = blockManager.readBlock(fileName, blockNumber);
                 
-                // PERBAIKAN: Berikan skema ke deserializer
                 List<Row> rowsOfBlock = serializer.deserializeBlock(blockData, schema);
                 allRows.addAll(rowsOfBlock);
             }
@@ -135,7 +133,6 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
             }
             int newSlotId = -1; // TODO: Serializer harus mengembalikan ini
             try {
-                // PERBAIKAN: Berikan skema
                 byte[] updatedBlockData = serializer.packRowToBlock(blockData, dataWrite.newData(), schema);
                 blockManager.writeBlock(fileName, targetBlockNumber, updatedBlockData);
                 // newSlotId = serializer.getLastPackedSlotId(updatedBlockData); 
@@ -143,7 +140,6 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
             } catch (IOException ex) { // Blok terakhir penuh
                 byte[] newBlockData = serializer.initializeNewBlock();
                 
-                // PERBAIKAN: Berikan skema
                 newBlockData = serializer.packRowToBlock(newBlockData, dataWrite.newData(), schema);
                 
                 targetBlockNumber = blockManager.appendBlock(fileName, newBlockData); 
@@ -152,10 +148,17 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
             
             blockManager.flush();
             
-            // TODO: Update Index
-            // RID rid = new RID(targetBlockNumber, newSlotId);
-            // indexManager.insert(schema.tableName(), dataWrite.newData(), rid);
-            
+            // TODO: (SELANJUTNYA) Update Index
+            // Dapatkan semua indeks untuk tabel ini
+            // for (IndexSchema idxSchema : schema.indexes()) {
+            //    IIndex index = indexManager.get(schema.tableName(), idxSchema.columnName(), idxSchema.indexType().toString());
+            //    if (index != null) {
+            //       Object key = dataWrite.newData().get(idxSchema.columnName());
+            //       Object value = ... (perlu RID: new RID(targetBlockNumber, newSlotId))
+            //       index.insertData(key, value);
+            //    }
+            // }
+
             return 1; 
 
         } catch (IOException e) {
@@ -178,7 +181,11 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         blockManager.writeBlock(newSchema.dataFile(), 0, initialBlock);
         
         // 4. TODO: Buat file .idx (jika ada indeks)
-        // indexManager.createIndexFiles(newSchema.indexes());
+        for (IndexSchema idxSchema : newSchema.indexes()) {
+            IIndex<?, ?> index = createIndexInstance(newSchema, idxSchema);
+            indexManager.register(newSchema.tableName(), idxSchema.columnName(), idxSchema.indexType().toString(), index);
+            index.writeToFile(); // Tulis file .idx kosong
+        }
         
         System.out.println("StorageManager: Tabel " + newSchema.tableName() + " berhasil dibuat di disk.");
     }
@@ -232,6 +239,33 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         return false;
     }
 
+    private IIndex<?, ?> createIndexInstance(Schema tableSchema, IndexSchema idxSchema) throws IOException {
+        Column col = tableSchema.getColumnByName(idxSchema.columnName());
+        if (col == null) {
+            throw new IOException("Kolom '" + idxSchema.columnName() + "' untuk indeks tidak ditemukan.");
+        }
+        
+        DataType keyType = col.type();
+        DataType valueType = DataType.INTEGER; 
+
+        if (idxSchema.indexType() == IndexType.Hash) {
+            return new HashIndex<>(
+                tableSchema.tableName(),
+                col.name(),
+                idxSchema.indexFile(),
+                keyType,
+                valueType, // Tipe V (Value) -> Asumsi kita simpan Integer (RID)
+                this.blockManager,
+                this.serializer
+            );
+        } else if (idxSchema.indexType() == IndexType.BPlusTree) {
+            // return new BPlusIndex<>(...); // (Implementasi BPlusIndex masih stub)
+            throw new UnsupportedOperationException("BPlusTree index belum didukung.");
+        } else {
+            throw new UnsupportedOperationException("Tipe indeks tidak dikenal: " + idxSchema.indexType());
+        }
+    }
+
     private Row projectColumns(Row fullRow, List<String> requestedColumns) {
         if (requestedColumns == null || requestedColumns.contains("*")) {
             return fullRow; // Kembalikan semua jika minta "*"
@@ -254,7 +288,6 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         
         // --- 1. Inisialisasi ---
         System.out.println("--- 1. Inisialisasi StorageManager ---");
-        // PERBAIKAN: Berikan path ke DIREKTORI, bukan FILE
         String dataDir = "storage-manager/data"; 
         StorageManager sm = new StorageManager(dataDir);
         try {
