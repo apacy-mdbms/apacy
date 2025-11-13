@@ -23,10 +23,12 @@ public class Main {
         try {
             System.out.println("Initializing components...");
             
-            StorageManager storageManager = new StorageManager("./storage-manager/data");
+            StorageManager storageManager = new StorageManager("../data");
             QueryOptimizer queryOptimizer = new QueryOptimizer();
             ConcurrencyControlManager concurrencyManager = new ConcurrencyControlManager();
             FailureRecoveryManager recoveryManager = new FailureRecoveryManager();
+
+            storageManager.initialize();
             
             // Initialize QueryProcessor with real components
             QueryProcessor queryProcessor = new QueryProcessor(

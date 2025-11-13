@@ -1,4 +1,0 @@
-# Sample employee data (binary format placeholder)
-# This file contains employee records in binary format
-# Structure: ID|Name|Department|Salary
-# Each record is stored as a fixed-size block

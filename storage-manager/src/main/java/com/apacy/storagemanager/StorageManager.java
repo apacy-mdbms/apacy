@@ -73,6 +73,7 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         try {
             Schema schema = catalogManager.getSchema(dataRetrieval.tableName());
             if (schema == null) {
+                System.out.println(catalogManager.getAllSchemas());
                 throw new IOException("Tabel tidak ditemukan di katalog: " + dataRetrieval.tableName());
             }
             String fileName = schema.dataFile(); 
@@ -288,7 +289,7 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         
         // --- 1. Inisialisasi ---
         System.out.println("--- 1. Inisialisasi StorageManager ---");
-        String dataDir = "storage-manager/data"; 
+        String dataDir = "../data"; 
         StorageManager sm = new StorageManager(dataDir);
         try {
             sm.initialize();
