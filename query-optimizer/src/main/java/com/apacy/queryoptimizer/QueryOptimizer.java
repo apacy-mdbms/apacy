@@ -4,6 +4,7 @@ import com.apacy.common.DBMSComponent;
 import com.apacy.common.dto.*;
 import com.apacy.common.interfaces.IQueryOptimizer;
 
+import java.text.ParseException;
 import java.util.Map;
 
 public class QueryOptimizer extends DBMSComponent implements IQueryOptimizer {
@@ -29,11 +30,14 @@ public class QueryOptimizer extends DBMSComponent implements IQueryOptimizer {
     public void shutdown() {
         // ... (Logika shutdown jika ada) ...
     }
-    
+
     @Override
     public ParsedQuery parseQuery(String query) {
-        // 5. Delegasikan tugas ke helper
-        return this.parser.parse(query);
+        try {
+            return this.parser.parse(query);
+        } catch (ParseException pe)  {
+            return null;
+        }
     }
 
     @Override

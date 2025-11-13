@@ -1,5 +1,6 @@
 package com.apacy.queryoptimizer.parser;
 
+import java.text.ParseException;
 import java.util.List;
 
 import com.apacy.common.dto.ParsedQuery;
@@ -13,8 +14,15 @@ public class InsertParser extends AbstractParser {
         super(tokens);
     }
 
-    public ParsedQuery parse() {
+    @Override
+    public ParsedQuery parse() throws ParseException {
         // TODO: parse INSERT query and return ParsedQuery object
         throw new UnsupportedOperationException("parse() for INSERT not implemented yet");
     };
+
+    @Override
+    public boolean validate() {
+        // TODO: parse INSERT query and validate syntax
+        throw new UnsupportedOperationException("validate() for INSERT not implemented yet");
+    }
 }
