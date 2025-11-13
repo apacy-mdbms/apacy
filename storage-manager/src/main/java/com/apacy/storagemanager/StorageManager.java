@@ -1,20 +1,26 @@
 package com.apacy.storagemanager;
 
 import com.apacy.common.DBMSComponent;
+import com.apacy.common.dto.Column;
 import com.apacy.common.dto.DataDeletion;
 import com.apacy.common.dto.DataRetrieval;
 import com.apacy.common.dto.DataWrite;
+import com.apacy.common.dto.IndexSchema;
 import com.apacy.common.dto.Row;
 import com.apacy.common.dto.Schema;
 import com.apacy.common.dto.Statistic;
+import com.apacy.common.enums.DataType;
+import com.apacy.common.enums.IndexType;
 import com.apacy.common.interfaces.IStorageManager;
 import java.util.List;
 import java.util.Map;
 import java.util.Collections;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.stream.Collectors;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 
 
@@ -22,7 +28,7 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
 
     private final BlockManager blockManager;
     private final Serializer serializer;
-    private final StatsCollector statsCollector;
+    // private final StatsCollector statsCollector;
     private final CatalogManager catalogManager;
     // private final IndexManager indexManager; // Helper class untuk B+Tree/Hash
 
@@ -30,20 +36,19 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         super("Storage Manager");
         this.catalogManager = new CatalogManager(dataDirectory + "/system_catalog.dat");
         this.blockManager = new BlockManager(dataDirectory);
-        this.serializer = new Serializer();
-        this.statsCollector = new StatsCollector();
+        this.serializer = new Serializer(this.catalogManager);
+        // this.statsCollector = new StatsCollector();
         // ... inisialisasi komponen internal
     }
 
     @Override
-    public void initialize() throws Exception {
+    public void initialize() {
         try {
             this.catalogManager.loadCatalog();
             // TODO: Inisialisasi/Rebuild indeks
             // this.indexManager.initialize();
-        } catch (IOException e) {
-            System.err.println("FATAL: Gagal memuat System Catalog! " + e.getMessage());
-            throw new Exception("Gagal memuat System Catalog!", e);
+        } catch (Exception e) {
+            System.err.println("Gagal menginitialize Storage Manager! " + e.getMessage());
         }
     }
 
@@ -64,31 +69,34 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
 
     @Override
     public List<Row> readBlock(DataRetrieval dataRetrieval) {
-        // TODO:
-        // 1. Panggil blockManager.readBlock(...)
-        // 2. Untuk tiap blok, panggil serializer.deserialize(...)
-        // 3. Filter hasilnya sesuai dataRetrieval.filterCondition
-        // 4. Kembalikan List<Row>
         try {
             Schema schema = catalogManager.getSchema(dataRetrieval.tableName());
             if (schema == null) {
                 throw new IOException("Tabel tidak ditemukan di katalog: " + dataRetrieval.tableName());
             }
 
-            String fileName = getFileNameForTable(dataRetrieval.tableName());
+            // PERBAIKAN: Nama file diambil dari skema
+            String fileName = schema.dataFile(); 
             List<Row> allRows = new ArrayList<>();
             
+            // TODO: Implementasi Index Scan
+            // if (dataRetrieval.indexName() != null) { ... }
+
+            // --- Alur Full Table Scan ---
             long blockCount = blockManager.getBlockCount(fileName);
 
             for (long blockNumber = 0; blockNumber < blockCount; blockNumber++) {
                 byte[] blockData = blockManager.readBlock(fileName, blockNumber);
+                
+                // PERBAIKAN: Berikan skema ke deserializer
                 List<Row> rowsOfBlock = serializer.deserializeBlock(blockData, schema);
                 allRows.addAll(rowsOfBlock);
             }
-            List<String> requestedColumns = dataRetrieval.columns();
 
+            List<String> requestedColumns = dataRetrieval.columns();
+            
             return allRows.stream()
-                .filter((Row row) -> applyFilter(row, dataRetrieval))
+                .filter((Row row) -> applyFilter(row, dataRetrieval)) 
                 .map((Row row) -> projectColumns(row, requestedColumns))
                 .collect(Collectors.toList());
 
@@ -96,7 +104,6 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
             System.err.println("Error reading block: " + e.getMessage());
             return Collections.emptyList();
         }
-        // throw new UnsupportedOperationException("readBlock not implemented yet");
     }
 
     @Override
@@ -111,7 +118,7 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
             if (schema == null) {
                 throw new IOException("Tabel tidak ditemukan: " + dataWrite.tableName());
             }
-            String fileName = getFileNameForTable(dataWrite.tableName());
+            String fileName = schema.dataFile();
 
             long blockCount = blockManager.getBlockCount(fileName);
             byte[] blockData;
@@ -126,32 +133,54 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
                 targetBlockNumber = blockCount - 1;
                 blockData = blockManager.readBlock(fileName, targetBlockNumber);
             }
+            int newSlotId = -1; // TODO: Serializer harus mengembalikan ini
             try {
-                blockData = serializer.packRowToBlock(blockData, dataWrite.newData(), schema);
-                blockManager.writeBlock(fileName, targetBlockNumber, blockData);
-                blockManager.flush();
-                // TODO: index update kondisional
-                // TODO: stats update
-                return 1;
+                // PERBAIKAN: Berikan skema
+                byte[] updatedBlockData = serializer.packRowToBlock(blockData, dataWrite.newData(), schema);
+                blockManager.writeBlock(fileName, targetBlockNumber, updatedBlockData);
+                // newSlotId = serializer.getLastPackedSlotId(updatedBlockData); 
 
-            } catch (IOException ex) {
-                if (blockCount > 0) {
-                    blockData = serializer.initializeNewBlock();
-                    blockData = serializer.packRowToBlock(blockData, dataWrite.newData(), schema);
-                    long newBlockNumber = blockManager.appendBlock(fileName, blockData);
-                    // TODO: update index dengan dengan newblock
-                    // TODO: update stats dengan newblock
-                    System.out.println("Appended new block number: " + newBlockNumber);
-                    blockManager.flush();
-                    return 1;
-                }
-                throw ex;
+            } catch (IOException ex) { // Blok terakhir penuh
+                byte[] newBlockData = serializer.initializeNewBlock();
+                
+                // PERBAIKAN: Berikan skema
+                newBlockData = serializer.packRowToBlock(newBlockData, dataWrite.newData(), schema);
+                
+                targetBlockNumber = blockManager.appendBlock(fileName, newBlockData); 
+                newSlotId = 0; // Slot pertama di blok baru
             }
+            
+            blockManager.flush();
+            
+            // TODO: Update Index
+            // RID rid = new RID(targetBlockNumber, newSlotId);
+            // indexManager.insert(schema.tableName(), dataWrite.newData(), rid);
+            
+            return 1; 
+
         } catch (IOException e) {
             System.err.println("Error writing block: " + e.getMessage());
             return 0;
         }
         // throw new UnsupportedOperationException("writeBlock not implemented yet");
+    }
+
+    public void createTable(Schema newSchema) throws IOException {
+        System.out.println("StorageManager: Menerima perintah CREATE TABLE untuk: " + newSchema.tableName());
+        // 1. Tambahkan skema baru ke cache memori Katalog
+        catalogManager.addSchemaToCache(newSchema);
+        
+        // 2. Tulis ulang (flush) seluruh katalog ke disk
+        catalogManager.writeCatalog();
+        
+        // 3. Buat file .dat kosong (dengan 1 blok header)
+        byte[] initialBlock = serializer.initializeNewBlock();
+        blockManager.writeBlock(newSchema.dataFile(), 0, initialBlock);
+        
+        // 4. TODO: Buat file .idx (jika ada indeks)
+        // indexManager.createIndexFiles(newSchema.indexes());
+        
+        System.out.println("StorageManager: Tabel " + newSchema.tableName() + " berhasil dibuat di disk.");
     }
 
     @Override
@@ -225,5 +254,109 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
             }
         }
         return new Row(projectedData);
+    }
+
+    public static void main(String[] args) {
+        
+        // --- 1. Inisialisasi ---
+        System.out.println("--- 1. Inisialisasi StorageManager ---");
+        // PERBAIKAN: Berikan path ke DIREKTORI, bukan FILE
+        String dataDir = "storage-manager/data"; 
+        StorageManager sm = new StorageManager(dataDir);
+        try {
+            sm.initialize();
+            System.out.println("Storage Manager berhasil diinisialisasi.");
+        } catch (Exception e) {
+            System.err.println("Gagal inisialisasi:");
+            e.printStackTrace();
+            return; // Keluar jika inisialisasi gagal
+        }
+        
+        System.out.println("\n--- 2. Membuat Tabel Baru 'dosen' ---");
+        try {
+            // Definisikan skema untuk tabel baru
+            List<Column> dosenColumns = List.of(
+                new Column("nidn", DataType.VARCHAR, 10),
+                new Column("nama_dosen", DataType.VARCHAR, 100),
+                new Column("email", DataType.VARCHAR, 100)
+            );
+            
+            // Definisikan indeks untuk tabel baru
+            List<IndexSchema> dosenIndexes = List.of(
+                new IndexSchema("idx_dosen_nidn", "nidn", IndexType.Hash, "dosen_nidn.idx")
+            );
+            
+            Schema dosenSchema = new Schema(
+                "dosen",
+                "dosen_table.dat", // Nama file datanya
+                dosenColumns,
+                dosenIndexes
+            );
+            
+            // Panggil metode createTable
+            sm.createTable(dosenSchema);
+            
+        } catch (IOException e) {
+            System.err.println("Gagal membuat tabel 'dosen': " + e.getMessage());
+        }
+        
+        System.out.println("\n--- 3. Mengisi (INSERT) 3 Nilai ke 'dosen' ---");
+        try {
+            Row row1 = new Row(Map.of("nidn", "12345", "nama_dosen", "Dr. Budi", "email", "budi@if.itb.ac.id"));
+            Row row2 = new Row(Map.of("nidn", "67890", "nama_dosen", "Dr. Ani", "email", "ani@if.itb.ac.id"));
+            Row row3 = new Row(Map.of("nidn", "10101", "nama_dosen", "Dr. Candra", "email", "candra@if.itb.ac.id"));
+            
+            DataWrite write1 = new DataWrite("dosen", row1, null);
+            DataWrite write2 = new DataWrite("dosen", row2, null);
+            DataWrite write3 = new DataWrite("dosen", row3, null);
+            
+            sm.writeBlock(write1);
+            sm.writeBlock(write2);
+            sm.writeBlock(write3);
+            
+            System.out.println("3 baris berhasil di-INSERT ke tabel 'dosen'.");
+            
+        } catch (Exception e) {
+            System.err.println("Gagal INSERT ke tabel 'dosen': " + e.getMessage());
+        }
+
+        System.out.println("\n--- 4. Membaca (READ) 3 Nilai dari 'dosen' ---");
+        try {
+            // Buat DTO DataRetrieval untuk SELECT * FROM dosen
+            DataRetrieval readReq = new DataRetrieval(
+                "dosen",          // tableName
+                List.of("*"),     // columns ("*")
+                null,             // filters (null)
+                false              // indexName (null = Full Scan)
+            );
+            
+            List<Row> results = sm.readBlock(readReq);
+            
+            System.out.println("Hasil Full Table Scan 'dosen' (ditemukan " + results.size() + " baris):");
+            for (Row row : results) {
+                System.out.println("  -> " + row.data());
+            }
+
+            // Uji Proyeksi (hanya NIDN dan Email)
+            System.out.println("\n--- 5. Membaca (READ) dengan Proyeksi ---");
+            DataRetrieval readReqProject = new DataRetrieval(
+                "dosen",
+                List.of("nidn","email"), // Hanya minta 2 kolom
+                null,
+                false
+            );
+            
+            List<Row> projectedResults = sm.readBlock(readReqProject);
+            System.out.println("Hasil Proyeksi 'dosen' (ditemukan " + projectedResults.size() + " baris):");
+            for (Row row : projectedResults) {
+                System.out.println("  -> " + row.data());
+            }
+
+        } catch (Exception e) {
+            System.err.println("Gagal READ dari tabel 'dosen': " + e.getMessage());
+        }
+        
+        System.out.println("\n--- 6. Shutdown ---");
+        sm.shutdown();
     }
 }
