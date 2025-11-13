@@ -17,4 +17,29 @@ public record ParsedQuery(
     String orderByColumn,
     boolean isDescending,
     boolean isOptimized
-) {}
+) {
+    public String toString() {
+        return """
+        Query: %s
+        Tables: %s
+        Columns: %s
+        Values: %s
+        Join: %s
+        Where: %s
+        OrderBy: %s
+        isDescending: %b
+        isOptimized: %b
+
+                """.formatted(
+                    queryType,
+                    targetTables != null ? targetTables.toString() : "none",
+                    targetColumns != null ? targetColumns.toString() : "none",
+                    values != null ? values.toString() : "none",
+                    joinConditions != null ? joinConditions.toString() : "none",
+                    whereClause != null ? whereClause.toString() : "none",
+                    orderByColumn,
+                    isDescending,
+                    isOptimized
+                    );
+    }
+}
