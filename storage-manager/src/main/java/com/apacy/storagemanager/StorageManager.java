@@ -28,7 +28,7 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
 
     private final BlockManager blockManager;
     private final Serializer serializer;
-    // private final StatsCollector statsCollector;
+    private final StatsCollector statsCollector;
     private final CatalogManager catalogManager;
     // private final IndexManager indexManager; // Helper class untuk B+Tree/Hash
 
@@ -37,7 +37,7 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         this.catalogManager = new CatalogManager(dataDirectory + "/system_catalog.dat");
         this.blockManager = new BlockManager(dataDirectory);
         this.serializer = new Serializer(this.catalogManager);
-        // this.statsCollector = new StatsCollector();
+        this.statsCollector = new StatsCollector(this.catalogManager, this.blockManager, this.serializer);
         // ... inisialisasi komponen internal
     }
 
@@ -205,7 +205,7 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         // TODO:
         // 1. Panggil statsCollector.collectStats()
         // 2. Kembalikan map dari String, Statistic (Nama tabel dan statistiknya)
-        throw new UnsupportedOperationException("getStats not implemented yet");
+        return this.statsCollector.getAllStats();
     }
 
     /** 
@@ -254,6 +254,10 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
             }
         }
         return new Row(projectedData);
+    }
+
+    public BlockManager getBlockManager() {
+        return this.blockManager;
     }
 
     public static void main(String[] args) {
