@@ -1,23 +1,29 @@
 package com.apacy.concurrencycontrolmanager;
 
+import com.apacy.common.dto.Row;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Internal Transaction object for tracking transaction status.
- * TODO: Implement transaction status tracking (active, abort, commit).
  */
 public class Transaction {
 
     public enum TransactionStatus {
-        ACTIVE, COMMITTED, ABORTED
+        ACTIVE, PARTIALLY_COMMITTED, COMMITTED, FAILED, ABORTED, TERMINATED
     }
 
     private final String transactionId;
     private TransactionStatus status;
     private long timestamp;
 
+    private final List<Row> loggedObjects = Collections.synchronizedList(new ArrayList<>());
+
     public Transaction(String transactionId) {
         this.transactionId = transactionId;
         this.status = TransactionStatus.ACTIVE;
-        // TODO: Initialize transaction with proper timestamp
+        this.timestamp = 0L;
     }
 
     /**
@@ -36,11 +42,14 @@ public class Transaction {
 
     /**
      * Set the transaction status.
-     * TODO: Implement status change logic with proper validation
+     * Di-sinkronisasi untuk thread-safety jika di-abort dari thread lain (Wound-Wait).
      */
-    public void setStatus(TransactionStatus status) {
-        // TODO: Add validation and logging for status changes
-        this.status = status;
+    public synchronized void setStatus(TransactionStatus status) {
+        // Hanya izinkan perubahan jika masih ACTIVE
+        // (Mencegah ABORTED diubah jadi COMMITTED, dll.)
+        if (this.status == TransactionStatus.ACTIVE) {
+            this.status = status;
+        }
     }
 
     /**
@@ -50,12 +59,9 @@ public class Transaction {
         return timestamp;
     }
 
-    /**
-     * Set the transaction timestamp.
-     * TODO: Implement timestamp setting with validation
-     */
     public void setTimestamp(long timestamp) {
-        // TODO: Add validation for timestamp setting
+        if (this.timestamp != 0L)
+            throw new IllegalStateException("Timestamp already set for this transaction.");
         this.timestamp = timestamp;
     }
 
@@ -64,6 +70,14 @@ public class Transaction {
      */
     public boolean isActive() {
         return status == TransactionStatus.ACTIVE;
+    }
+
+    public boolean isFailed() {
+        return status == TransactionStatus.FAILED;
+    }
+
+    public boolean isPartiallyCommitted() {
+        return status == TransactionStatus.PARTIALLY_COMMITTED;
     }
 
     /**
@@ -80,25 +94,71 @@ public class Transaction {
         return status == TransactionStatus.ABORTED;
     }
 
-    /**
-     * Commit the transaction.
-     * TODO: Implement commit logic
-     */
-    public void commit() {
-        throw new UnsupportedOperationException("commit not implemented yet");
+    public boolean isTerminated() {
+        return status == TransactionStatus.TERMINATED;
     }
 
-    /**
-     * Abort the transaction.
-     * TODO: Implement abort logic
-     */
+    public void setPartiallyCommitted() {
+        if (status != TransactionStatus.ACTIVE) {
+            throw new IllegalStateException("Can only move to PARTIALLY_COMMITTED from ACTIVE.");
+        }
+        updateStatus(TransactionStatus.PARTIALLY_COMMITTED);
+    }
+
+    public void commit() {
+        if (status != TransactionStatus.PARTIALLY_COMMITTED) {
+            throw new IllegalStateException("Can only commit from PARTIALLY_COMMITTED state.");
+        }
+        updateStatus(TransactionStatus.COMMITTED);
+    }
+
+    public void setFailed() {
+        if (status != TransactionStatus.ACTIVE && status != TransactionStatus.PARTIALLY_COMMITTED) {
+            throw new IllegalStateException("Can only set FAILED from ACTIVE or PARTIALLY_COMMITTED.");
+        }
+        updateStatus(TransactionStatus.FAILED);
+    }
+
     public void abort() {
-        throw new UnsupportedOperationException("abort not implemented yet");
+        if (status != TransactionStatus.FAILED) {
+            throw new IllegalStateException("Can only abort from FAILED state.");
+        }
+        updateStatus(TransactionStatus.ABORTED);
+    }
+
+    public void terminate() {
+        if (status != TransactionStatus.COMMITTED && status != TransactionStatus.ABORTED) {
+            throw new IllegalStateException("Can only terminate from COMMITTED or ABORTED.");
+        }
+        updateStatus(TransactionStatus.TERMINATED);
+    }
+
+    private void updateStatus(TransactionStatus newStatus) {
+        TransactionStatus oldStatus = this.status;
+        this.status = newStatus;
+        log("Status changed: " + oldStatus + " to " + newStatus);
+    }
+
+    private void log(String message) {
+        System.out.println("[Transaction " + transactionId + "] " + message);
+    }
+
+    public void addLog(Row row) {
+        if (row != null) {
+            loggedObjects.add(row);
+            System.out.println("[Transaction " + transactionId + "] Logged object: " + row);
+        }
+    }
+
+    public List<Row> getLoggedObjects() {
+        synchronized (loggedObjects) {
+            return new ArrayList<>(loggedObjects);
+        }
     }
 
     @Override
     public String toString() {
-        return String.format("Transaction{id='%s', status=%s, timestamp=%d}", 
-                           transactionId, status, timestamp);
+        return String.format("Transaction{id='%s', status=%s, timestamp=%d}",
+                transactionId, status, timestamp);
     }
 }
