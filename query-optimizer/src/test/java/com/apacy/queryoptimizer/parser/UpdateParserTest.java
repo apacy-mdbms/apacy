@@ -13,6 +13,10 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import com.apacy.common.dto.ParsedQuery;
+import com.apacy.queryoptimizer.ast.expression.ExpressionNode;
+import com.apacy.queryoptimizer.ast.expression.TermNode;
+import com.apacy.queryoptimizer.ast.expression.LiteralFactor;
+import com.apacy.queryoptimizer.ast.expression.ColumnFactor;
 import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
 import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
@@ -21,7 +25,7 @@ class UpdateParserTest {
 
     // Helper untuk WHERE sederhana: id = 5
     private WhereConditionNode createSimpleWhereNode() {
-        return new ComparisonConditionNode("id", "=", 5);
+        return new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("id"), null), null), "=", new ExpressionNode(new TermNode(new LiteralFactor(5), null), null));
     }
 
     // --- Test Validate ---

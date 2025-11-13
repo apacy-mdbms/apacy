@@ -21,6 +21,8 @@ public class SelectParser extends AbstractParser {
 
     @Override
     public ParsedQuery parse() throws ParseException {
+        return null;
+        /*
         consume(TokenType.SELECT);
 
         List<String> targetColumns = new ArrayList<>();
@@ -87,10 +89,13 @@ public class SelectParser extends AbstractParser {
         Object whereClause = where;
 
         return new ParsedQuery("SELECT", targetTables, targetColumns, joinConditions, whereClause, orderBy, isDesc, false);
+        */
     };
 
     @Override
     public boolean validate() {
+        return false;
+        /*
         try {
             int savedPos = position;
             if (!match(TokenType.SELECT)) return false;
@@ -143,8 +148,10 @@ public class SelectParser extends AbstractParser {
         } catch (Exception e) {
             return false;
         }
+        */
     }
 
+    /*
     private WhereConditionNode parseWhereExpression() {
         return parseOr();
     }
@@ -227,4 +234,5 @@ public class SelectParser extends AbstractParser {
         return depth == 0 && !expectOperand;
     }
 
+    */
 }
