@@ -38,4 +38,21 @@ class QueryProcessorTest {
     void testShutdown() {
         assertDoesNotThrow(() -> queryProcessor.shutdown());
     }
+
+    @Test
+    void test_executeQuery_SELECT_Success(){
+        ExecutionResult result = queryProcessor.executeQuery("SELECT * FROM users");
+
+        assertNotNull(result);
+        System.out.println(result);
+        assertTrue(result.success());
+
+        assertEquals("SELECT executed successfully", result.message());
+        assertEquals("SELECT", result.operation());
+        assertEquals(5, result.affectedRows()); // affectedRows harusnya = jumlah row
+        
+        // Cek datanya
+        assertNotNull(result.rows());
+        assertEquals(5, result.rows().size());
+    }
 }

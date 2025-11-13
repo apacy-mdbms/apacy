@@ -1,0 +1,33 @@
+# Database Metadata File
+# Contains table schemas, constraints, and other metadata
+
+[TABLES]
+employee:
+  columns:
+    - id: INTEGER, PRIMARY_KEY, NOT_NULL
+    - name: VARCHAR(100), NOT_NULL
+    - department_id: INTEGER, FOREIGN_KEY(department.id)
+    - salary: DECIMAL(10,2)
+    - hire_date: DATE
+  indexes:
+    - PRIMARY: id
+    - IDX_DEPT: department_id
+
+department:
+  columns:
+    - id: INTEGER, PRIMARY_KEY, NOT_NULL
+    - name: VARCHAR(50), NOT_NULL, UNIQUE
+    - manager_id: INTEGER, FOREIGN_KEY(employee.id)
+    - budget: DECIMAL(15,2)
+  indexes:
+    - PRIMARY: id
+    - UNQ_NAME: name
+
+[CONSTRAINTS]
+FK_EMP_DEPT: employee.department_id -> department.id
+FK_DEPT_MGR: department.manager_id -> employee.id
+
+[SETTINGS]
+block_size: 4096
+max_varchar_length: 255
+default_encoding: UTF-8

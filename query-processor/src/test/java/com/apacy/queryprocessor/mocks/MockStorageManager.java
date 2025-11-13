@@ -1,55 +1,150 @@
 package com.apacy.queryprocessor.mocks;
 
 import com.apacy.common.dto.*;
+import com.apacy.common.enums.IndexType;
 import com.apacy.common.interfaces.IStorageManager;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 public class MockStorageManager implements IStorageManager {
-
+    
     @Override
     public List<Row> readBlock(DataRetrieval dataRetrieval) {
+        // Handle null case for backward compatibility with tests that pass null
+        if (dataRetrieval == null) {
+            return getEmployeeDataLegacy();
+        }
         
-        List<Row> dummy = new ArrayList<>();
-
-        Row row1 = new Row(Map.of(
+        String tableName = dataRetrieval.tableName();
+        
+        // Route to appropriate table data
+        switch (tableName) {
+            case "employees":
+                return getEmployeeData();
+            case "departments":
+                return getDepartmentData();
+            default:
+                // BACKWARD COMPATIBILITY: Return original employee data for any unknown table
+                // This matches the old behavior where it always returned employee data
+                return getEmployeeDataLegacy();
+        }
+    }
+    
+    /**
+     * Legacy employee data (without dept_id) for backward compatibility.
+     * This is the ORIGINAL format that was always returned before multi-table support.
+     */
+    private List<Row> getEmployeeDataLegacy() {
+        List<Row> employees = new ArrayList<>();
+        
+        employees.add(new Row(Map.of(
             "id", 1,
             "name", "Naufarrel",
             "salary", 20000
-        ));
-
-        Row row2 = new Row(Map.of(
+        )));
+        
+        employees.add(new Row(Map.of(
             "id", 2,
             "name", "Weka",
             "salary", 30000
-        ));
-
-        Row row3 = new Row(Map.of(
+        )));
+        
+        employees.add(new Row(Map.of(
             "id", 3,
             "name", "Kinan",
             "salary", 40000
-        ));
-
-        Row row4 = new Row(Map.of(
+        )));
+        
+        employees.add(new Row(Map.of(
             "id", 4,
             "name", "Farrel",
             "salary", 50000
-        ));
-
-        Row row5 = new Row(Map.of(
+        )));
+        
+        employees.add(new Row(Map.of(
             "id", 5,
             "name", "Bayu",
             "salary", 60000
-        ));
+        )));
         
-        dummy.add(row1);
-        dummy.add(row2);
-        dummy.add(row3);
-        dummy.add(row4);
-        dummy.add(row5);
-
-        return dummy;
+        return employees;
+    }
+    
+    /**
+     * New employee data with dept_id for join operations.
+     * Explicitly request with tableName = "employees"
+     */
+    private List<Row> getEmployeeData() {
+        List<Row> employees = new ArrayList<>();
+        
+        employees.add(new Row(Map.of(
+            "id", 1,
+            "name", "Naufarrel",
+            "salary", 20000,
+            "dept_id", 1
+        )));
+        
+        employees.add(new Row(Map.of(
+            "id", 2,
+            "name", "Weka",
+            "salary", 30000,
+            "dept_id", 2
+        )));
+        
+        employees.add(new Row(Map.of(
+            "id", 3,
+            "name", "Kinan",
+            "salary", 40000,
+            "dept_id", 1
+        )));
+        
+        employees.add(new Row(Map.of(
+            "id", 4,
+            "name", "Farrel",
+            "salary", 50000,
+            "dept_id", 3
+        )));
+        
+        employees.add(new Row(Map.of(
+            "id", 5,
+            "name", "Bayu",
+            "salary", 60000,
+            "dept_id", 2
+        )));
+        
+        return employees;
+    }
+    
+    private List<Row> getDepartmentData() {
+        List<Row> departments = new ArrayList<>();
+        
+        departments.add(new Row(Map.of(
+            "dept_id", 1,
+            "dept_name", "Engineering",
+            "location", "Building A"
+        )));
+        
+        departments.add(new Row(Map.of(
+            "dept_id", 2,
+            "dept_name", "Sales",
+            "location", "Building B"
+        )));
+        
+        departments.add(new Row(Map.of(
+            "dept_id", 3,
+            "dept_name", "Marketing",
+            "location", "Building C"
+        )));
+        
+        departments.add(new Row(Map.of(
+            "dept_id", 4,
+            "dept_name", "HR",
+            "location", "Building D"
+        )));
+        
+        return departments;
     }
 
     @Override
@@ -69,6 +164,31 @@ public class MockStorageManager implements IStorageManager {
 
     @Override
     public Map<String, Statistic> getAllStats() {
-        throw new UnsupportedOperationException("getStats not implemented yet");
+        System.out.println("[MOCK-SM] getAllStats() dipanggil. Mengembalikan statistik palsu.");
+
+        Map<String, Statistic> mockStatsMap = new HashMap<>();
+
+        Statistic employeeStats = new Statistic(
+            5,  // nr (jumlah tuple) - updated to match employee data
+            1,  // br (jumlah blok)
+            120, // lr (ukuran tuple) - larger due to more columns
+            34, // fr (blocking factor)
+            Map.of("id", 5, "name", 5, "salary", 5, "dept_id", 3), // V (nilai unik untuk setiap kolom)
+            Map.of("id", IndexType.Hash, "salary", IndexType.BPlusTree) // indexedColumn parameter
+        );
+
+        Statistic deptStats = new Statistic(
+            4, // nr (jumlah tuple) - updated to match department data
+            1, // br (jumlah blok) 
+            80, // lr (ukuran tuple)
+            50, // fr (blocking factor)
+            Map.of("dept_id", 4, "dept_name", 4, "location", 4), // V (nilai unik untuk setiap kolom)
+            Map.of("dept_id", IndexType.Hash) // indexedColumn parameter
+        );
+
+        mockStatsMap.put("employees", employeeStats);
+        mockStatsMap.put("departments", deptStats);
+
+        return mockStatsMap;
     }
 }
