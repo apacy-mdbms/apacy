@@ -7,49 +7,137 @@ import java.util.List;
 import java.util.Map;
 
 public class MockStorageManager implements IStorageManager {
-
+    
     @Override
     public List<Row> readBlock(DataRetrieval dataRetrieval) {
+        String tableName = dataRetrieval.tableName();
         
-        List<Row> dummy = new ArrayList<>();
-
-        Row row1 = new Row(Map.of(
+        // Route to appropriate table data
+        switch (tableName) {
+            case "employees":
+                return getEmployeeData();
+            case "departments":
+                return getDepartmentData();
+            default:
+                // BACKWARD COMPATIBILITY: Return original employee data for any unknown table
+                // This matches the old behavior where it always returned employee data
+                return getEmployeeDataLegacy();
+        }
+    }
+    
+    /**
+     * Legacy employee data (without dept_id) for backward compatibility.
+     * This is the ORIGINAL format that was always returned before multi-table support.
+     */
+    private List<Row> getEmployeeDataLegacy() {
+        List<Row> employees = new ArrayList<>();
+        
+        employees.add(new Row(Map.of(
             "id", 1,
             "name", "Naufarrel",
             "salary", 20000
-        ));
-
-        Row row2 = new Row(Map.of(
+        )));
+        
+        employees.add(new Row(Map.of(
             "id", 2,
             "name", "Weka",
             "salary", 30000
-        ));
-
-        Row row3 = new Row(Map.of(
+        )));
+        
+        employees.add(new Row(Map.of(
             "id", 3,
             "name", "Kinan",
             "salary", 40000
-        ));
-
-        Row row4 = new Row(Map.of(
+        )));
+        
+        employees.add(new Row(Map.of(
             "id", 4,
             "name", "Farrel",
             "salary", 50000
-        ));
-
-        Row row5 = new Row(Map.of(
+        )));
+        
+        employees.add(new Row(Map.of(
             "id", 5,
             "name", "Bayu",
             "salary", 60000
-        ));
+        )));
         
-        dummy.add(row1);
-        dummy.add(row2);
-        dummy.add(row3);
-        dummy.add(row4);
-        dummy.add(row5);
-
-        return dummy;
+        return employees;
+    }
+    
+    /**
+     * New employee data with dept_id for join operations.
+     * Explicitly request with tableName = "employees"
+     */
+    private List<Row> getEmployeeData() {
+        List<Row> employees = new ArrayList<>();
+        
+        employees.add(new Row(Map.of(
+            "id", 1,
+            "name", "Naufarrel",
+            "salary", 20000,
+            "dept_id", 1
+        )));
+        
+        employees.add(new Row(Map.of(
+            "id", 2,
+            "name", "Weka",
+            "salary", 30000,
+            "dept_id", 2
+        )));
+        
+        employees.add(new Row(Map.of(
+            "id", 3,
+            "name", "Kinan",
+            "salary", 40000,
+            "dept_id", 1
+        )));
+        
+        employees.add(new Row(Map.of(
+            "id", 4,
+            "name", "Farrel",
+            "salary", 50000,
+            "dept_id", 3
+        )));
+        
+        employees.add(new Row(Map.of(
+            "id", 5,
+            "name", "Bayu",
+            "salary", 60000,
+            "dept_id", 2
+        )));
+        
+        return employees;
+    }
+    
+    private List<Row> getDepartmentData() {
+        List<Row> departments = new ArrayList<>();
+        
+        departments.add(new Row(Map.of(
+            "dept_id", 1,
+            "dept_name", "Engineering",
+            "location", "Building A"
+        )));
+        
+        departments.add(new Row(Map.of(
+            "dept_id", 2,
+            "dept_name", "Sales",
+            "location", "Building B"
+        )));
+        
+        departments.add(new Row(Map.of(
+            "dept_id", 3,
+            "dept_name", "Marketing",
+            "location", "Building C"
+        )));
+        
+        departments.add(new Row(Map.of(
+            "dept_id", 4,
+            "dept_name", "HR",
+            "location", "Building D"
+        )));
+        
+        return departments;
     }
 
     @Override
