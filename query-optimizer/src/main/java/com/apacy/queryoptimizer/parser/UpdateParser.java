@@ -1,9 +1,11 @@
 package com.apacy.queryoptimizer.parser;
 
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.apacy.common.dto.ParsedQuery;
+import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
 /**
  * Parser for UPDATE query
@@ -16,13 +18,88 @@ public class UpdateParser extends AbstractParser {
 
     @Override
     public ParsedQuery parse() throws ParseException {
-        // TODO: parse UPDATE query and return ParsedQuery object
-        throw new UnsupportedOperationException("parse() for UPDATE not implemented yet");
+        consume(TokenType.UPDATE);
+
+        Token targetTable = consume(TokenType.IDENTIFIER);
+
+        consume(TokenType.SET);
+
+        List<String> targetColumns = new ArrayList<String>();
+        List<Object> writeValues = new ArrayList<Object>();
+
+        do {
+            targetColumns.add(consume(TokenType.IDENTIFIER).getValue());
+
+            String operator = consume(TokenType.OPERATOR).getValue();
+            if (!operator.equals("=")) {
+                throw new ParseException("Expected = operator after column name", position);
+            }
+
+            // if (match(TokenType.STRING_LITERAL)) {
+            //     writeValues.add(consume(TokenType.STRING_LITERAL).getValue());
+            // } else if(match(TokenType.NUMBER_LITERAL)) {
+            //     writeValues.add(consume(TokenType.NUMBER_LITERAL).getValue());
+            // } else {
+            //     throw new ParseException("Expected literal after = " + peek().getType().toString() + peek().getValue().toString(), position);
+            // }
+            writeValues.add(parseExpression());
+
+            if (!match(TokenType.COMMA)) {
+                break;
+            }
+        } while (true);
+
+
+        WhereConditionNode where = null;
+        if (match(TokenType.WHERE)) {
+            where = parseWhereExpression();
+        }
+
+        Object whereClause = where;
+
+        return new ParsedQuery(
+            "UPDATE",
+            List.of(targetTable.getValue()),
+            targetColumns,
+            writeValues,
+            null,
+            whereClause,
+            null,
+            false,
+            false);
     };
 
-    @Override
+
+
     public boolean validate() {
-        // TODO: parse UPDATE query and validate syntax
-        throw new UnsupportedOperationException("validate() for UPDATE not implemented yet");
+        try {
+            consume(TokenType.UPDATE);
+            consume(TokenType.IDENTIFIER);
+            consume(TokenType.SET);
+            do {
+                consume(TokenType.IDENTIFIER).getValue();
+
+                String operator = consume(TokenType.OPERATOR).getValue();
+                if (!operator.equals("=")) {
+                    return false;
+                }
+                parseExpression();
+
+                if (!match(TokenType.COMMA)) {
+                    break;
+                }
+            } while (true);
+
+
+            if (match(TokenType.WHERE)) {
+                parseWhereExpression();
+            }
+
+            return true;
+
+        } catch (Exception e) {
+
+            return false;
+        }
     }
 }

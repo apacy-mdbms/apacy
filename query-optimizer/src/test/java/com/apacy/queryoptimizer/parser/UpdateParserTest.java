@@ -20,7 +20,6 @@ import com.apacy.queryoptimizer.ast.expression.ColumnFactor;
 import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
 import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
-@Disabled("Disabled karena UpdateParser belum diimplementasi. Hilangkan baris ini untuk mengenable")
 class UpdateParserTest {
 
     // Helper untuk WHERE sederhana: id = 5
