@@ -1,4 +1,0 @@
-# Sample department data (binary format placeholder)
-# This file contains department records in binary format
-# Structure: ID|Name|Manager|Budget
-# Each record is stored as a fixed-size block
