@@ -4,17 +4,18 @@ import com.apacy.common.DBMSComponent;
 import com.apacy.common.dto.*;
 import com.apacy.common.interfaces.IFailureRecoveryManager;
 
+import com.apacy.storagemanager.*;
+
 public class FailureRecoveryManager extends DBMSComponent implements IFailureRecoveryManager {
 
     // Gunakan helper class internal yang sudah dibuat
     private final LogWriter logWriter;
     private final LogReplayer logReplayer;
     private final CheckpointManager checkpointManager;
+    private final StorageManager storageManager;
 
-    public FailureRecoveryManager() {
-        super("Failure Recovery Manager");
-        
-        // Inisialisasi helper-nya
+    public FailureRecoveryManager(StorageManager storageManager) {
+        this.storageManager = storageManager;
         this.logWriter = new LogWriter();
         this.logReplayer = new LogReplayer();
         this.checkpointManager = new CheckpointManager();
