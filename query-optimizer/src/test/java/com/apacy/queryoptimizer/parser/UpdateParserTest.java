@@ -3,13 +3,11 @@ package com.apacy.queryoptimizer.parser;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.text.ParseException;
 import java.util.List;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import com.apacy.common.dto.ParsedQuery;
@@ -22,9 +20,9 @@ import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
 class UpdateParserTest {
 
-    // Helper untuk WHERE sederhana: id = 5
+    // Helper untuk WHERE sederhana: id > 10
     private WhereConditionNode createSimpleWhereNode() {
-        return new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("id"), null), null), "=", new ExpressionNode(new TermNode(new LiteralFactor(5), null), null));
+        return new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("id"), List.of()), List.of()), ">", new ExpressionNode(new TermNode(new LiteralFactor(10), List.of()), List.of()));
     }
 
     // --- Test Validate ---
@@ -80,6 +78,9 @@ class UpdateParserTest {
         assertEquals(List.of("products"), actual.targetTables());
         assertNotNull(actual.whereClause());
         assertTrue(actual.whereClause() instanceof ComparisonConditionNode, "WHERE id > 10 should be ComparisonConditionNode");
-        // ... (Cek WHERE clause)
+        WhereConditionNode expected = createSimpleWhereNode();
+        assertEquals(
+            ((ComparisonConditionNode)expected),
+            ((ComparisonConditionNode)actual.whereClause()));
     }
 }

@@ -13,7 +13,6 @@ import com.apacy.queryoptimizer.parser.UpdateParser;
 
 /**
  * SQL Query Parser that converts SQL strings into ParsedQuery objects.
- * TODO: Implement syntax parsing, and AST generation for SQL queries
  */
 public class QueryParser {
 

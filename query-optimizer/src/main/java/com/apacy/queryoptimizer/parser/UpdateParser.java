@@ -35,13 +35,6 @@ public class UpdateParser extends AbstractParser {
                 throw new ParseException("Expected = operator after column name", position);
             }
 
-            // if (match(TokenType.STRING_LITERAL)) {
-            //     writeValues.add(consume(TokenType.STRING_LITERAL).getValue());
-            // } else if(match(TokenType.NUMBER_LITERAL)) {
-            //     writeValues.add(consume(TokenType.NUMBER_LITERAL).getValue());
-            // } else {
-            //     throw new ParseException("Expected literal after = " + peek().getType().toString() + peek().getValue().toString(), position);
-            // }
             writeValues.add(parseExpression());
 
             if (!match(TokenType.COMMA)) {

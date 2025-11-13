@@ -27,14 +27,17 @@ public class InsertParser extends AbstractParser {
         String tableName = tableToken.getValue();
 
         // Parsing ( ColumnList )
-        consume(TokenType.LPARENTHESIS);
-        List<String> columns = parseColumnList();
-        consume(TokenType.RPARENTHESIS);
+        // berdasarkan spek, harusnya opsional karena semua kolom harus diisi
+        List<String> columns = null;
+        if (match(TokenType.LPARENTHESIS)) {
+            columns = parseColumnList();
+            consume(TokenType.RPARENTHESIS);
+        }
 
         // Parsing VALUES ( ValueList )
         consume(TokenType.VALUES);
         consume(TokenType.LPARENTHESIS);
-        List<Object> values = parseValueList(); 
+        List<Object> values = parseValueList();
         consume(TokenType.RPARENTHESIS);
 
         // (Opsional) Cek semicolon di akhir
@@ -43,7 +46,7 @@ public class InsertParser extends AbstractParser {
         }
 
         // Validasi
-        if (columns.size() != values.size()) {
+        if (columns != null && columns.size() != values.size()) {
             throw new RuntimeException("Jumlah kolom tidak cocok dengan jumlah nilai untuk INSERT.");
         }
 
@@ -53,7 +56,7 @@ public class InsertParser extends AbstractParser {
             "INSERT",            // queryType
             List.of(tableName),  // targetTables
             columns,             // targetColumns
-            values,              // values 
+            values,              // values
             null,                // joinConditions
             null,                // whereClause
             null,                // orderByColumn
@@ -83,7 +86,7 @@ public class InsertParser extends AbstractParser {
      */
     private List<String> parseColumnList() {
         List<String> columns = new ArrayList<>();
-        
+
         // Ambil kolom pertama
         columns.add(consume(TokenType.IDENTIFIER).getValue());
 
@@ -103,26 +106,16 @@ public class InsertParser extends AbstractParser {
         List<Object> values = new ArrayList<>();
 
         // Ambil nilai pertama
-        values.add(parseLiteral());
+        // values.add(parseLiteral());
+        values.add(parseExpression());
 
         // Cek jika ada nilai berikutnya (dipisah koma)
         while (match(TokenType.COMMA)) {
-            values.add(parseLiteral());
+            // values.add(parseLiteral());
+            values.add(parseExpression());
         }
 
         return values;
     }
-    
-    /**
-     * Helper untuk mengambil nilai literal (String atau Angka)
-     */
-    private Object parseLiteral() {
-        if (peek().getType() == TokenType.STRING_LITERAL) {
-            return consume(TokenType.STRING_LITERAL).getValue();
-        } else if (peek().getType() == TokenType.NUMBER_LITERAL) {
-            return consume(TokenType.NUMBER_LITERAL).getValue();
-        }
-        
-        throw new RuntimeException("Diharapkan STRING_LITERAL atau NUMBER_LITERAL, tapi ditemukan: " + peek().getType());
-    }
+
 }
