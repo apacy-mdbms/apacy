@@ -1,6 +1,7 @@
 package com.apacy.queryprocessor.execution;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 import com.apacy.common.dto.Row;
@@ -20,7 +21,7 @@ public class SortStrategy {
             return rows;
         }
 
-        Comparator customComparator = createColumnComparator(columnName, ascending);
+        Comparator<Row> customComparator = createColumnComparator(columnName, ascending);
 
         List<Row> listToSort = new ArrayList<>(rows);
 
@@ -41,7 +42,7 @@ public class SortStrategy {
             throw new IllegalArgumentException("Jumlah kolom dan flag 'ascending' harus sama.");
         }
 
-        Comparator multiComparator = (r1, r2) -> {
+        Comparator<Row> multiComparator = (r1, r2) -> {
             for (int i = 0; i < columnNames.length; i++) {
                 int result = compareValues(r1.get(columnNames[i]), r2.get(columnNames[i]));
                 if (result != 0) {
@@ -59,7 +60,7 @@ public class SortStrategy {
     }
 
     // Quicksort Algorithm
-    private static void quicksort(List<Row> list, int low, int high, Comparator comparator) {
+    private static void quicksort(List<Row> list, int low, int high, Comparator<Row> comparator) {
         if (low < high) {
             int pivotIndex = partition(list, low, high, comparator);
 
@@ -68,7 +69,7 @@ public class SortStrategy {
         }
     }
 
-    private static int partition(List<Row> list, int low, int high, Comparator comparator) {
+    private static int partition(List<Row> list, int low, int high, Comparator<Row> comparator) {
         Row pivot = list.get(high);
         
         int i = (low - 1); 
@@ -101,13 +102,8 @@ public class SortStrategy {
         throw new UnsupportedOperationException("externalSort not implemented yet");
     }
 
-    // Helper buat perbandingan row
-    private interface Comparator {
-        int compare(Row r1, Row r2);
-    }
-
-    private static Comparator createColumnComparator(String columnName, boolean ascending) {
-        Comparator comp = (r1, r2) -> compareValues(r1.get(columnName), r2.get(columnName));
+    private static Comparator<Row> createColumnComparator(String columnName, boolean ascending) {
+        Comparator<Row> comp = (r1, r2) -> compareValues(r1.get(columnName), r2.get(columnName));
         if (ascending) return comp;
         else return (r1, r2) -> -comp.compare(r1, r2); 
     }
@@ -120,7 +116,7 @@ public class SortStrategy {
         if (v1 instanceof Comparable && v2 instanceof Comparable) {
             if (v1.getClass().equals(v2.getClass())) {
                 try {
-                    return ((Comparable) v1).compareTo(v2);
+                    return ((Comparable<Object>) v1).compareTo(v2);
                 } catch (Exception e) { /* fallback */ }
             }
         }

@@ -1,6 +1,7 @@
 package com.apacy.queryprocessor.mocks;
 
 import com.apacy.common.dto.*;
+import com.apacy.common.enums.IndexType;
 import com.apacy.common.interfaces.IStorageManager;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,6 +12,11 @@ public class MockStorageManager implements IStorageManager {
     
     @Override
     public List<Row> readBlock(DataRetrieval dataRetrieval) {
+        // Handle null case for backward compatibility with tests that pass null
+        if (dataRetrieval == null) {
+            return getEmployeeDataLegacy();
+        }
+        
         String tableName = dataRetrieval.tableName();
         
         // Route to appropriate table data
@@ -162,19 +168,25 @@ public class MockStorageManager implements IStorageManager {
 
         Map<String, Statistic> mockStatsMap = new HashMap<>();
 
-        Statistic userStats = new Statistic(
-            3,  // nr (jumlah tuple)
+        Statistic employeeStats = new Statistic(
+            5,  // nr (jumlah tuple) - updated to match employee data
             1,  // br (jumlah blok)
-            50, // lr (ukuran tuple)
-            10, // fr (blocking factor)
-            Map.of("id", 3, "salary", 2) // V (nilai unik)
+            120, // lr (ukuran tuple) - larger due to more columns
+            34, // fr (blocking factor)
+            Map.of("id", 5, "name", 5, "salary", 5, "dept_id", 3), // V (nilai unik untuk setiap kolom)
+            Map.of("id", IndexType.Hash, "salary", IndexType.BPlusTree) // indexedColumn parameter
         );
 
         Statistic deptStats = new Statistic(
-            2, 1, 30, 10, Map.of("dept_id", 2)
+            4, // nr (jumlah tuple) - updated to match department data
+            1, // br (jumlah blok) 
+            80, // lr (ukuran tuple)
+            50, // fr (blocking factor)
+            Map.of("dept_id", 4, "dept_name", 4, "location", 4), // V (nilai unik untuk setiap kolom)
+            Map.of("dept_id", IndexType.Hash) // indexedColumn parameter
         );
 
-        mockStatsMap.put("users", userStats);
+        mockStatsMap.put("employees", employeeStats);
         mockStatsMap.put("departments", deptStats);
 
         return mockStatsMap;
