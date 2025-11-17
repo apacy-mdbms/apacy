@@ -86,6 +86,12 @@ public class QueryProcessor extends DBMSComponent {
 
                     List<Row> rows = sm.readBlock(dataRetrieval);
 
+                    if (parsedQuery.orderByColumn() != null) {
+                        // SortStrategy.sort butuh parameter 'ascending', ParsedQuery punya 'isDescending'
+                        boolean ascending = !parsedQuery.isDescending();
+                        rows = SortStrategy.sort(rows, parsedQuery.orderByColumn(), ascending);
+                    }
+
                     ccm.endTransaction(txId, true);
                     
                     ExecutionResult result = new ExecutionResult(
@@ -97,7 +103,7 @@ public class QueryProcessor extends DBMSComponent {
                         rows         // data List<Row>
                     );
                     
-                    frm.writeLog(result);
+                    // frm.writeLog(result);
                     
                     return result;
 

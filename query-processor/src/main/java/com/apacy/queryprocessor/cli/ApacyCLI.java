@@ -142,38 +142,76 @@ public class ApacyCLI {
             return;
         }
         
-        System.out.println("\nQuery Results:");
-        System.out.println("┌" + "─".repeat(60) + "┐");
+        System.out.println();
         
-        for (int i = 0; i < rows.size(); i++) {
-            Row row = rows.get(i);
-            System.out.println("│ Row " + (i + 1) + ": " + formatRowCompact(row));
+        // Get column names from first row
+        java.util.List<String> columnNames = new java.util.ArrayList<>(rows.get(0).data().keySet());
+        
+        // Calculate column widths
+        java.util.Map<String, Integer> columnWidths = new java.util.LinkedHashMap<>();
+        for (String col : columnNames) {
+            int width = col.length();
+            for (Row row : rows) {
+                Object value = row.get(col);
+                int valueLength = value != null ? value.toString().length() : 4;
+                width = Math.max(width, valueLength);
+            }
+            columnWidths.put(col, Math.max(width, 4));
         }
         
-        System.out.println("└" + "─".repeat(60) + "┘");
-        System.out.println("(" + rows.size() + " row(s) returned)");
+        // Print header
+        printTableHeader(columnNames, columnWidths);
+        
+        // Print separator
+        printTableSeparator(columnNames, columnWidths);
+        
+        // Print rows
+        for (Row row : rows) {
+            printTableRow(row, columnNames, columnWidths);
+        }
+        
+        System.out.println("(" + rows.size() + " row" + (rows.size() == 1 ? "" : "s") + ")");
     }
     
-    private String formatRowCompact(Row row) {
-        StringBuilder sb = new StringBuilder();
+    private void printTableHeader(java.util.List<String> columnNames, java.util.Map<String, Integer> columnWidths) {
+        StringBuilder header = new StringBuilder();
         boolean first = true;
-        
-        for (String key : row.data().keySet()) {
+        for (String col : columnNames) {
             if (!first) {
-                sb.append(", ");
+                header.append(" | ");
             }
-            Object value = row.get(key);
-            sb.append(key).append("=").append(value);
+            header.append(String.format("%-" + columnWidths.get(col) + "s", col));
             first = false;
         }
-        
-        // Ensure the string fits in the table width
-        String result = sb.toString();
-        if (result.length() > 50) {
-            result = result.substring(0, 47) + "...";
+        System.out.println(header.toString());
+    }
+    
+    private void printTableSeparator(java.util.List<String> columnNames, java.util.Map<String, Integer> columnWidths) {
+        StringBuilder separator = new StringBuilder();
+        boolean first = true;
+        for (String col : columnNames) {
+            if (!first) {
+                separator.append("-+-");
+            }
+            separator.append("─".repeat(columnWidths.get(col)));
+            first = false;
         }
-        
-        return String.format("%-50s", result) + " │";
+        System.out.println(separator.toString());
+    }
+    
+    private void printTableRow(Row row, java.util.List<String> columnNames, java.util.Map<String, Integer> columnWidths) {
+        StringBuilder rowStr = new StringBuilder();
+        boolean first = true;
+        for (String col : columnNames) {
+            if (!first) {
+                rowStr.append(" | ");
+            }
+            Object value = row.get(col);
+            String valueStr = value != null ? value.toString() : "(null)";
+            rowStr.append(String.format("%-" + columnWidths.get(col) + "s", valueStr));
+            first = false;
+        }
+        System.out.println(rowStr.toString());
     }
     
     private void showHelp() {
