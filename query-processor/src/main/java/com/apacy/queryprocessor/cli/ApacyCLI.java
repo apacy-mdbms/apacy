@@ -278,12 +278,13 @@ public class ApacyCLI {
         System.out.println();
         
         try {
-            long startTime = System.currentTimeMillis();
+            long startTime = System.nanoTime();
             ExecutionResult result = queryProcessor.executeQuery(query);
-            long endTime = System.currentTimeMillis();
-            
+            long endTime = System.nanoTime();
+
             displayResult(result);
-            System.out.printf("Execution Time: %.3f ms%n", (endTime - startTime));
+            double elapsedMs = (endTime - startTime) / 1_000_000.0;
+            System.out.printf("Execution Time: %.3f ms%n", elapsedMs);
             
         } catch (Exception e) {
             System.err.println("ERROR: " + e.getMessage());
@@ -309,7 +310,7 @@ public class ApacyCLI {
         }
         
         if (result.affectedRows() > 0) {
-            System.out.println("\n " + result.affectedRows() + " row(s) affected");
+            System.out.println("\n" + result.affectedRows() + " row(s) affected");
         }
     }
     
