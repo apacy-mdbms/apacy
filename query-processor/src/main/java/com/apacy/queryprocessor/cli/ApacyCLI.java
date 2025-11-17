@@ -336,7 +336,7 @@ public class ApacyCLI {
         boolean first = true;
         for (String col : columnNames) {
             if (!first) {
-                separator.append("-+-");
+                separator.append("─+─");
             }
             separator.append("─".repeat(columnWidths.get(col)));
             first = false;

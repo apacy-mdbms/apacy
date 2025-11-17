@@ -8,12 +8,14 @@ import com.apacy.common.enums.Action;
 import com.apacy.queryprocessor.execution.JoinStrategy;
 import com.apacy.queryprocessor.execution.SortStrategy;
 
-import java.util.List;
+import com.apacy.queryoptimizer.ast.join.*;
+import com.apacy.queryoptimizer.ast.where.*;
+import com.apacy.queryoptimizer.ast.expression.*;
 
+import java.util.List;
 
 /**
  * Main Query Processor that coordinates all database operations.
- * TODO: Implement query processing pipeline with parsing, optimization, and execution coordination
  */
 public class QueryProcessor extends DBMSComponent {
     private final IQueryOptimizer qo;
@@ -44,50 +46,43 @@ public class QueryProcessor extends DBMSComponent {
         this.sortStrategy = new SortStrategy();
     }
     
-    /**
-     * Initialize the query processor and all its components.
-     */
     @Override
     public void initialize() throws Exception {
         this.initialized = true;
         System.out.println("Query Processor has been initialized.");
     }
     
-    /**
-     * Shutdown the query processor and all its components.
-     * TODO: Implement graceful shutdown of all components with proper resource cleanup
-     */
     @Override
     public void shutdown() {
         this.initialized = false;
         System.out.println("Query Processor has been shutdown.");
     }
     
-    /**
-     * Execute a SQL query and return the result.
-     * TODO: Implement complete query execution pipeline with parsing, optimization, and execution
-     */
     public ExecutionResult executeQuery(String sqlQuery) {
-        // TODO: Implement query execution pipeline
+        // 1. Parsing & Optimization
         ParsedQuery parsedQuery = qo.optimizeQuery(qo.parseQuery(sqlQuery), sm.getAllStats());
         int txId = ccm.beginTransaction();
+        
         try {
             switch (parsedQuery.queryType()){
-                case "SELECT" :
+                case "SELECT":
+                    List<Row> rows;
 
-                    // maaf gue implementasi tipis buat testing
-                    DataRetrieval dataRetrieval = 
-                        planTranslator.translateToRetrieval(parsedQuery, String.valueOf(txId));
-                    String objectId = "TABLE::" + dataRetrieval.tableName();
+                    if (parsedQuery.joinConditions() != null) {
+                        rows = evaluateJoinTree((JoinOperand) parsedQuery.joinConditions());
+                    } else {
+                        DataRetrieval retrieval = planTranslator.translateToRetrieval(parsedQuery, String.valueOf(txId));
+                        
+                        String objectId = "TABLE::" + retrieval.tableName();
+                        Response res = ccm.validateObject(objectId, txId, Action.READ);
+                        if (!res.isAllowed()) { 
+                            throw new Exception("Lock denied: " + res.reason()); 
+                        }
 
-                    Response res = ccm.validateObject(objectId, txId, Action.READ);
-
-                    if (!res.isAllowed()) { throw new Exception(res.reason()); }
-
-                    List<Row> rows = sm.readBlock(dataRetrieval);
+                        rows = sm.readBlock(retrieval);
+                    }
 
                     if (parsedQuery.orderByColumn() != null) {
-                        // SortStrategy.sort butuh parameter 'ascending', ParsedQuery punya 'isDescending'
                         boolean ascending = !parsedQuery.isDescending();
                         rows = SortStrategy.sort(rows, parsedQuery.orderByColumn(), ascending);
                     }
@@ -99,11 +94,15 @@ public class QueryProcessor extends DBMSComponent {
                         "SELECT executed successfully", 
                         txId, 
                         "SELECT", 
-                        rows.size(), // affectedRows adalah jumlah row yang diambil
-                        rows         // data List<Row>
+                        rows.size(),
+                        rows
                     );
                     
-                    // frm.writeLog(result);
+                    try {
+                        frm.writeLog(result);
+                    } catch (Exception e) {
+                        System.err.println("[WARNING] Log failed: " + e.getMessage());
+                    }
                     
                     return result;
 
@@ -112,10 +111,42 @@ public class QueryProcessor extends DBMSComponent {
             }
 
         } catch (Exception e) {
-            ccm.endTransaction(txId, false);
-            frm.recover(new RecoveryCriteria("UNDO_TRANSACTION", String.valueOf(txId), null));
+            try {
+                ccm.endTransaction(txId, false);
+                frm.recover(new RecoveryCriteria("UNDO_TRANSACTION", String.valueOf(txId), null));
+            } catch (Exception ex) {
 
+            }
             return new ExecutionResult(false, e.getMessage(), txId, parsedQuery.queryType(), 0, null);
         }
+    }
+
+    private List<Row> evaluateJoinTree(JoinOperand operand) {
+        // Base
+        if (operand instanceof TableNode tableNode) {
+            String tableName = tableNode.tableName();
+            DataRetrieval req = new DataRetrieval(tableName, List.of("*"), null, false);
+            return sm.readBlock(req);
+        }
+        // Recursion
+        else if (operand instanceof JoinConditionNode joinNode) {
+            List<Row> leftRows = evaluateJoinTree(joinNode.left());
+            List<Row> rightRows = evaluateJoinTree(joinNode.right());
+
+            String joinCol = extractJoinColumn(joinNode.conditions());
+
+            return JoinStrategy.nestedLoopJoin(leftRows, rightRows, joinCol);
+        } 
+        throw new IllegalArgumentException("Unknown JoinOperand type");
+    }
+
+    private String extractJoinColumn(WhereConditionNode condition) {
+        if (condition instanceof ComparisonConditionNode comp) {
+            if (comp.leftOperand().term().factor() instanceof ColumnFactor col) {
+                String fullName = col.columnName();
+                return fullName.contains(".") ? fullName.split("\\.")[1] : fullName;
+            }
+        }
+        return "id";
     }
 }
