@@ -16,12 +16,16 @@ public class ApacyCLI {
     private final QueryProcessor queryProcessor;
     private boolean running;
     private String currentQuery;
+    private final java.util.List<String> commandHistory;
+    private int historyIndex;
     
     public ApacyCLI(QueryProcessor queryProcessor) {
         this.scanner = new Scanner(System.in);
         this.queryProcessor = queryProcessor;
         this.running = true;
         this.currentQuery = "";
+        this.commandHistory = new java.util.ArrayList<>();
+        this.historyIndex = -1;
     }
     
     public void start() {
@@ -32,9 +36,9 @@ public class ApacyCLI {
             
             while (running) {
                 showPrompt();
-                String input = scanner.nextLine().trim();
+                String input = readInputWithHistory();
                 
-                if (input.isEmpty()) {
+                if (input == null || input.isEmpty()) {
                     continue;
                 }
                 
@@ -47,6 +51,147 @@ public class ApacyCLI {
         } finally {
             cleanup();
         }
+    }
+    
+    private String readInputWithHistory() {
+        StringBuilder inputBuffer = new StringBuilder();
+        boolean crReceived = false;
+        
+        try {
+            // Enable raw mode for terminal to capture arrow keys properly
+            ProcessBuilder pb = new ProcessBuilder("stty", "-echo", "raw");
+            pb.inheritIO();
+            Process sttyProcess = pb.start();
+            sttyProcess.waitFor();
+            
+            try {
+                while (true) {
+                    int c = System.in.read();
+                    
+                    // Handle escape sequences (arrow keys)
+                    if (c == 27) { // ESC character
+                        byte[] escapeSeq = new byte[2];
+                        int bytesRead = System.in.read(escapeSeq);
+                        
+                        if (bytesRead >= 2 && escapeSeq[0] == '[') {
+                            if (escapeSeq[1] == 'A') { // Up arrow
+                                String historyCommand = getHistoryUp();
+                                if (historyCommand != null) {
+                                    // Clear current input and display history command
+                                    for (int i = 0; i < inputBuffer.length(); i++) {
+                                        System.out.print("\b \b");
+                                    }
+                                    inputBuffer = new StringBuilder(historyCommand);
+                                    System.out.print(historyCommand);
+                                    System.out.flush();
+                                }
+                                continue;
+                            } else if (escapeSeq[1] == 'B') { // Down arrow
+                                String historyCommand = getHistoryDown();
+                                if (historyCommand != null) {
+                                    // Clear current input and display history command
+                                    for (int i = 0; i < inputBuffer.length(); i++) {
+                                        System.out.print("\b \b");
+                                    }
+                                    inputBuffer = new StringBuilder(historyCommand);
+                                    System.out.print(historyCommand);
+                                    System.out.flush();
+                                } else if (historyCommand == null && historyIndex >= 0) {
+                                    // Clear to empty when going below history
+                                    for (int i = 0; i < inputBuffer.length(); i++) {
+                                        System.out.print("\b \b");
+                                    }
+                                    inputBuffer = new StringBuilder();
+                                    historyIndex = commandHistory.size();
+                                    System.out.flush();
+                                }
+                                continue;
+                            }
+                        }
+                    }
+                    
+                    // Handle regular input
+                    if (c == '\r') { // Carriage return
+                        crReceived = true;
+                        // Echo CR+LF to move to next line, column 1
+                        System.out.print("\r\n");
+                        System.out.flush();
+                        String result = inputBuffer.toString();
+                        if (!result.isEmpty()) {
+                            commandHistory.add(result);
+                            historyIndex = commandHistory.size();
+                        }
+                        return result;
+                    } else if (c == '\n') { // Line feed only
+                        // If we got LF without CR, treat it as enter too
+                        System.out.print("\r\n");
+                        System.out.flush();
+                        String result = inputBuffer.toString();
+                        if (!result.isEmpty()) {
+                            commandHistory.add(result);
+                            historyIndex = commandHistory.size();
+                        }
+                        return result;
+                    } else if (c == 127 || c == '\b') { // Backspace
+                        if (inputBuffer.length() > 0) {
+                            inputBuffer.deleteCharAt(inputBuffer.length() - 1);
+                            System.out.print("\b \b");
+                            System.out.flush();
+                        }
+                    } else if (c == 3) { // Ctrl+C
+                        System.out.print("\r\n");
+                        System.out.flush();
+                        running = false;
+                        return "";
+                    } else if (c >= 32 && c <= 126) { // Printable ASCII
+                        inputBuffer.append((char) c);
+                        System.out.print((char) c);
+                        System.out.flush();
+                    }
+                }
+            } finally {
+                // Restore terminal to cooked mode
+                pb = new ProcessBuilder("stty", "echo", "-raw");
+                pb.inheritIO();
+                sttyProcess = pb.start();
+                sttyProcess.waitFor();
+            }
+        } catch (Exception e) {
+            System.err.println("Input error: " + e.getMessage());
+            return scanner.nextLine().trim();
+        }
+    }
+    
+    private String getHistoryUp() {
+        if (commandHistory.isEmpty()) {
+            return null;
+        }
+        
+        if (historyIndex > 0) {
+            historyIndex--;
+            return commandHistory.get(historyIndex);
+        } else if (historyIndex == commandHistory.size()) {
+            historyIndex = commandHistory.size() - 1;
+            return commandHistory.get(historyIndex);
+        }
+        
+        return null;
+    }
+    
+    private String getHistoryDown() {
+        if (commandHistory.isEmpty()) {
+            return null;
+        }
+        
+        if (historyIndex < commandHistory.size() - 1) {
+            historyIndex++;
+            return commandHistory.get(historyIndex);
+        } else if (historyIndex == commandHistory.size() - 1) {
+            historyIndex++;
+            return null; // Move to empty state
+        }
+        
+        return null;
     }
     
     private void showWelcomeMessage() {
