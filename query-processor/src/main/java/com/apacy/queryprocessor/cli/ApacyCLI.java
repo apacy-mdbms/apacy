@@ -55,7 +55,7 @@ public class ApacyCLI {
     
     private String readInputWithHistory() {
         StringBuilder inputBuffer = new StringBuilder();
-        boolean crReceived = false;
+        int cursorPosition = 0; // Position within the input buffer
         
         try {
             // Enable raw mode for terminal to capture arrow keys properly
@@ -82,6 +82,7 @@ public class ApacyCLI {
                                         System.out.print("\b \b");
                                     }
                                     inputBuffer = new StringBuilder(historyCommand);
+                                    cursorPosition = inputBuffer.length();
                                     System.out.print(historyCommand);
                                     System.out.flush();
                                 }
@@ -94,6 +95,7 @@ public class ApacyCLI {
                                         System.out.print("\b \b");
                                     }
                                     inputBuffer = new StringBuilder(historyCommand);
+                                    cursorPosition = inputBuffer.length();
                                     System.out.print(historyCommand);
                                     System.out.flush();
                                 } else if (historyCommand == null && historyIndex >= 0) {
@@ -102,7 +104,22 @@ public class ApacyCLI {
                                         System.out.print("\b \b");
                                     }
                                     inputBuffer = new StringBuilder();
+                                    cursorPosition = 0;
                                     historyIndex = commandHistory.size();
+                                    System.out.flush();
+                                }
+                                continue;
+                            } else if (escapeSeq[1] == 'C') { // Right arrow
+                                if (cursorPosition < inputBuffer.length()) {
+                                    cursorPosition++;
+                                    System.out.print("\033[C"); // Move cursor right
+                                    System.out.flush();
+                                }
+                                continue;
+                            } else if (escapeSeq[1] == 'D') { // Left arrow
+                                if (cursorPosition > 0) {
+                                    cursorPosition--;
+                                    System.out.print("\033[D"); // Move cursor left
                                     System.out.flush();
                                 }
                                 continue;
@@ -112,7 +129,6 @@ public class ApacyCLI {
                     
                     // Handle regular input
                     if (c == '\r') { // Carriage return
-                        crReceived = true;
                         // Echo CR+LF to move to next line, column 1
                         System.out.print("\r\n");
                         System.out.flush();
@@ -133,9 +149,18 @@ public class ApacyCLI {
                         }
                         return result;
                     } else if (c == 127 || c == '\b') { // Backspace
-                        if (inputBuffer.length() > 0) {
-                            inputBuffer.deleteCharAt(inputBuffer.length() - 1);
-                            System.out.print("\b \b");
+                        if (cursorPosition > 0) {
+                            inputBuffer.deleteCharAt(cursorPosition - 1);
+                            cursorPosition--;
+                            // Move cursor left and erase the character
+                            System.out.print("\b");
+                            // Print the rest of the line and erase
+                            String remainingText = inputBuffer.substring(cursorPosition);
+                            System.out.print(remainingText + " ");
+                            // Move cursor back to correct position
+                            for (int i = 0; i < remainingText.length() + 1; i++) {
+                                System.out.print("\b");
+                            }
                             System.out.flush();
                         }
                     } else if (c == 3) { // Ctrl+C
@@ -144,8 +169,15 @@ public class ApacyCLI {
                         running = false;
                         return "";
                     } else if (c >= 32 && c <= 126) { // Printable ASCII
-                        inputBuffer.append((char) c);
-                        System.out.print((char) c);
+                        inputBuffer.insert(cursorPosition, (char) c);
+                        cursorPosition++;
+                        // Print the character and everything after it
+                        String remainingText = inputBuffer.substring(cursorPosition - 1);
+                        System.out.print(remainingText);
+                        // Move cursor back to the correct position
+                        for (int i = 1; i < remainingText.length(); i++) {
+                            System.out.print("\b");
+                        }
                         System.out.flush();
                     }
                 }
