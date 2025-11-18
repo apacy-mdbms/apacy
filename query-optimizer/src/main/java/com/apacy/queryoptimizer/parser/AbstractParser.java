@@ -5,11 +5,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.apacy.common.dto.ParsedQuery;
+import com.apacy.common.dto.plan.FilterNode;
+import com.apacy.common.dto.plan.JoinNode;
+import com.apacy.common.dto.plan.PlanNode;
+import com.apacy.common.dto.plan.ProjectNode;
+import com.apacy.common.dto.plan.ScanNode;
 import com.apacy.queryoptimizer.ast.expression.ColumnFactor;
 import com.apacy.queryoptimizer.ast.expression.ExpressionNode;
 import com.apacy.queryoptimizer.ast.expression.FactorNode;
 import com.apacy.queryoptimizer.ast.expression.LiteralFactor;
 import com.apacy.queryoptimizer.ast.expression.TermNode;
+import com.apacy.queryoptimizer.ast.join.JoinConditionNode;
+import com.apacy.queryoptimizer.ast.join.TableNode;
 import com.apacy.queryoptimizer.ast.where.BinaryConditionNode;
 import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
 import com.apacy.queryoptimizer.ast.where.UnaryConditionNode;
@@ -227,6 +234,26 @@ public abstract class AbstractParser {
         try { return Integer.parseInt(value); } catch (NumberFormatException e) {}
         try { return Double.parseDouble(value); } catch (NumberFormatException e) {}
         return value;
+    }
+
+
+    protected PlanNode generatePlanNode(JoinConditionNode joinCondition, WhereConditionNode whereCondition, List<String> targetColumns) {
+        PlanNode fromTree = buildJoinTree(joinCondition);
+
+        // Step 2: WHERE -> selection
+        if (whereCondition != null)
+            fromTree = new FilterNode(fromTree, whereCondition);
+
+        // Step 3: PROJECTION
+        if (targetColumns.isEmpty())
+            fromTree = new ProjectNode(fromTree, targetColumns);
+
+        return fromTree;
+    }
+
+    protected JoinNode buildJoinTree(JoinConditionNode node) {
+        if (node == null) return null;
+        return null;
     }
 
 }

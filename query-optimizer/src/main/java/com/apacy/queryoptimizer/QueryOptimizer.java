@@ -17,8 +17,8 @@ public class QueryOptimizer extends DBMSComponent implements IQueryOptimizer {
         super("Query Optimizer");
         // Inisialisasi helper
         this.parser = new QueryParser();
-        this.optimizer = new HeuristicOptimizer();
         this.estimator = new CostEstimator();
+        this.optimizer = new HeuristicOptimizer(estimator);
     }
 
     @Override

@@ -1,9 +1,13 @@
 package com.apacy.queryoptimizer;
 
+import java.util.List;
+import java.util.Map;
+
 import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.Statistic;
-
-import java.util.Map;
+import com.apacy.common.dto.plan.PlanNode;
+import com.apacy.queryoptimizer.rewriter.FilterPushdownRewriter;
+import com.apacy.queryoptimizer.rewriter.PlanRewriter;
 
 /**
  * Heuristic-based query optimizer that applies optimization rules.
@@ -11,14 +15,45 @@ import java.util.Map;
  */
 public class HeuristicOptimizer {
 
+    private CostEstimator costEstimator;
+    private List<PlanRewriter> rules = List.of();
+
+    public HeuristicOptimizer(CostEstimator costEstimator) {
+        this.costEstimator = costEstimator;
+        rules = List.of(
+            new FilterPushdownRewriter(costEstimator)
+        );
+    }
+
     /**
      * Optimize a parsed query using heuristic rules.
-     * TODO: Implement predicate pushdown, join reordering, and index utilization
      */
     public ParsedQuery optimize(ParsedQuery query, Map<String, Statistic> allStats) {
-        // TODO: Apply optimization rules based on heuristics
-        // dummy output
-        return query;
+        PlanNode curr = query.planRoot();
+        boolean changed;
+
+        do {
+            changed = false;
+            for (PlanRewriter rule : rules) {
+                PlanNode rewritten = rule.rewrite(curr, allStats);
+                if (!rewritten.equals(curr)) {
+                    changed = true;
+                    curr = rewritten;
+                }
+            }
+        } while (changed);
+
+        return new ParsedQuery(
+            query.queryType(),
+            curr,
+            query.targetTables(),
+            query.targetColumns(),
+            query.values(),
+            query.joinConditions(),
+            query.whereClause(),
+            query.orderByColumn(),
+            query.isDescending(),
+            true);
     }
 
     /**
