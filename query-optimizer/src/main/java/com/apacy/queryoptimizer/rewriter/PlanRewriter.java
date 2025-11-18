@@ -3,6 +3,7 @@ package com.apacy.queryoptimizer.rewriter;
 import java.util.Map;
 
 import com.apacy.common.dto.Statistic;
+import com.apacy.common.dto.plan.CartesianNode;
 import com.apacy.common.dto.plan.FilterNode;
 import com.apacy.common.dto.plan.JoinNode;
 import com.apacy.common.dto.plan.LimitNode;
@@ -36,6 +37,8 @@ public class PlanRewriter {
             return visitSort(n, allStats);
         } else if (node instanceof LimitNode n) {
             return visitLimit(n, allStats);
+        } else if (node instanceof CartesianNode n) {
+            return visitCartesian(n, allStats);
         }
         // add other type of PlanNode if needed
 
@@ -71,6 +74,25 @@ public class PlanRewriter {
             return new JoinNode(left, newRight, node.joinCondition(), node.joinType());
         } else {
             return new JoinNode(newLeft, newRight, node.joinCondition(), node.joinType());
+        }
+
+    }
+
+    protected PlanNode visitCartesian(CartesianNode node, Map<String, Statistic> allStats) {
+        PlanNode left = node.left();
+        PlanNode newLeft = rewrite(left, allStats);
+
+        PlanNode right = node.right();
+        PlanNode newRight = rewrite(right, allStats);
+
+        if (left == newLeft && right == newRight) {
+            return node;
+        } else if (left != newLeft) {
+            return new CartesianNode(newLeft, right);
+        } else if (right != newRight) {
+            return new CartesianNode(left, newRight);
+        } else {
+            return new CartesianNode(newLeft, newRight);
         }
 
     }
