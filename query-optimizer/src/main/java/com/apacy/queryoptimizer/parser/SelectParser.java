@@ -98,7 +98,7 @@ public class SelectParser extends AbstractParser {
 
         Object joinConditions = joinAst;
         Object whereClause = where;
-    return new ParsedQuery("SELECT", targetTables, targetColumns,
+    return new ParsedQuery("SELECT", null, targetTables, targetColumns,
                 (List<Object>) null, joinConditions, whereClause,
                 orderBy, isDesc, false);
     };
