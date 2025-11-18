@@ -2,6 +2,8 @@ package com.apacy.common.dto;
 
 import java.util.List;
 
+import com.apacy.common.dto.plan.PlanNode;
+
 /**
  * Dihasilkan oleh QO. Ini adalah representasi query string
  * dalam bentuk OBJEK (Abstract Syntax Tree).
@@ -9,9 +11,12 @@ import java.util.List;
  */
 public record ParsedQuery(
     String queryType, // SELECT, UPDATE, CREATE, ...
+    PlanNode planRoot,
     List<String> targetTables,
     List<String> targetColumns,
     List<Object> values, // write values buat INSERT / UPDATE
+
+    // LEGACY
     Object joinConditions, // Bisa jadi record/class sendiri
     Object whereClause,    // Sebaiknya merujuk ke class/record AST internal QO
     String orderByColumn,

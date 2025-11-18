@@ -37,8 +37,8 @@ public class DeleteParser extends AbstractParser {
         if (peek().getType() == TokenType.SEMICOLON) {
             consume(TokenType.SEMICOLON);
         }
-        
-        return new ParsedQuery("DELETE", targetTables, null,
+
+        return new ParsedQuery("DELETE", null, targetTables, null,
                                 null, null, where,
                                 null, false, false);
     };

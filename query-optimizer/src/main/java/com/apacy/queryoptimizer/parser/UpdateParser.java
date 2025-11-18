@@ -52,6 +52,7 @@ public class UpdateParser extends AbstractParser {
 
         return new ParsedQuery(
             "UPDATE",
+            null,
             List.of(targetTable.getValue()),
             targetColumns,
             writeValues,
