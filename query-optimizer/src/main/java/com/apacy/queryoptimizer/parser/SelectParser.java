@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.apacy.common.dto.ParsedQuery;
+import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.queryoptimizer.ast.expression.ColumnFactor;
 import com.apacy.queryoptimizer.ast.expression.ExpressionNode;
 import com.apacy.queryoptimizer.ast.expression.LiteralFactor;
@@ -98,7 +99,9 @@ public class SelectParser extends AbstractParser {
 
         Object joinConditions = joinAst;
         Object whereClause = where;
-    return new ParsedQuery("SELECT", null, targetTables, targetColumns,
+
+        PlanNode planRoot = generatePlanNode((JoinConditionNode)joinAst, where, targetColumns);
+        return new ParsedQuery("SELECT", planRoot, targetTables, targetColumns,
                 (List<Object>) null, joinConditions, whereClause,
                 orderBy, isDesc, false);
     };

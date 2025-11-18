@@ -240,20 +240,30 @@ public abstract class AbstractParser {
     protected PlanNode generatePlanNode(JoinConditionNode joinCondition, WhereConditionNode whereCondition, List<String> targetColumns) {
         PlanNode fromTree = buildJoinTree(joinCondition);
 
-        // Step 2: WHERE -> selection
         if (whereCondition != null)
             fromTree = new FilterNode(fromTree, whereCondition);
 
-        // Step 3: PROJECTION
-        if (targetColumns.isEmpty())
+        if (targetColumns != null && !targetColumns.isEmpty())
             fromTree = new ProjectNode(fromTree, targetColumns);
+
 
         return fromTree;
     }
 
     protected JoinNode buildJoinTree(JoinConditionNode node) {
         if (node == null) return null;
-        return null;
+
+
+        PlanNode left = node.left() instanceof TableNode
+            ? new ScanNode(((TableNode)node.left()).tableName(), "")
+            : buildJoinTree((JoinConditionNode)node.left());
+
+        PlanNode right = node.right() instanceof TableNode
+            ? new ScanNode(((TableNode)node.right()).tableName(), "")
+            : buildJoinTree((JoinConditionNode)node.right());
+
+        return new JoinNode(left, right, node.conditions(), node.joinType());
+
     }
 
 }
