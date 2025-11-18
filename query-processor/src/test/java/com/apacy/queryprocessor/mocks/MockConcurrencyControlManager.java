@@ -4,6 +4,8 @@ import com.apacy.common.dto.*;
 import com.apacy.common.enums.Action;
 import com.apacy.common.interfaces.IConcurrencyControlManager;
 
+import java.util.List;
+
 public class MockConcurrencyControlManager implements IConcurrencyControlManager {
 
     private boolean forceFail = false;
@@ -21,6 +23,20 @@ public class MockConcurrencyControlManager implements IConcurrencyControlManager
         
         System.out.println("[MOCK-CCM] validateObject SUKSES untuk: " + objectId);
         return new Response(true, "Mock OK");
+    }
+
+    public Response validateObjects(List<String> objectIds, int transactionId, Action action) {
+        for (String objectId : objectIds) {
+            Response response = validateObject(objectId, transactionId, action);
+
+            if (!response.isAllowed()) {
+                return new Response(false,
+                    "Failed on object '" + objectId + "': " + response.reason());
+            }
+        }
+
+        // Tidak ada validateObject yang ggal
+        return new Response(true, "All locks acquired for transaction " + transactionId);
     }
     
     @Override

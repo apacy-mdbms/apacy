@@ -8,6 +8,7 @@ import com.apacy.common.interfaces.IConcurrencyControlManager;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.List;
 
 public class ConcurrencyControlManager extends DBMSComponent implements IConcurrencyControlManager {
     private final LockManager lockManager;
@@ -118,6 +119,23 @@ public class ConcurrencyControlManager extends DBMSComponent implements IConcurr
             return new Response(false, "Resource locked by another transaction (Wait)");
         }
     }
+
+    @Override
+    public Response validateObjects(List<String> objectIds, int transactionId, Action action) {
+        for (String objectId : objectIds) {
+            Response response = validateObject(objectId, transactionId, action);
+
+            // Jika gagal, langsung hentikan dan kembalikan respons gagal
+            if (!response.isAllowed()) {
+                return new Response(false,
+                    "Failed on object '" + objectId + "': " + response.reason());
+            }
+        }
+
+        // Tidak ada validateObject yang ggal
+        return new Response(true, "All locks acquired for transaction " + transactionId);
+    }
+
     
     @Override
     public void endTransaction(int transactionId, boolean commit) {

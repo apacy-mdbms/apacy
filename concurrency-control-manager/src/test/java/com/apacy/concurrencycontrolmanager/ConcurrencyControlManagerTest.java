@@ -36,14 +36,14 @@ class ConcurrencyControlManagerTest {
     void testShutdown() {
         int t1 = manager.beginTransaction();
 
-        Response r1 = manager.validateObject("T_SH", t1, Action.WRITE);
+        Response r1 = manager.validateObjects(List.of("T_SH"), t1, Action.WRITE);
         assertNotNull(r1);
         assertTrue(tryIsSuccess(r1), "Should acquire Exclusive lock");
         assertDoesNotThrow(() -> manager.shutdown());
 
         int t2 = manager.beginTransaction();
         
-        Response r2 = manager.validateObject("T_SH", t2, Action.WRITE);
+        Response r2 = manager.validateObjects(List.of("T_SH"), t2, Action.WRITE);
         assertNotNull(r2);
         assertTrue(tryIsSuccess(r2), "Should acquire Exclusive lock");
     }
@@ -54,18 +54,17 @@ class ConcurrencyControlManagerTest {
         int t2 = manager.beginTransaction();
         assertEquals(t1 + 1, t2);
 
-        Response r1 = manager.validateObject("R1", t1, Action.READ);
+        Response r1 = manager.validateObjects(List.of("R1"), t1, Action.READ);
         assertNotNull(r1);
-
         assertTrue(tryIsSuccess(r1));
 
-        Response r2 = manager.validateObject("W1", t1, Action.WRITE);
+        Response r2 = manager.validateObjects(List.of("W1"), t1, Action.WRITE);
         assertNotNull(r2);
 
         int t3 = manager.beginTransaction();
-        Response t1w = manager.validateObject("X", t1, Action.WRITE);
+        Response t1w = manager.validateObjects(List.of("X"), t1, Action.WRITE);
         assertNotNull(t1w);
-        Response t3r = manager.validateObject("X", t3, Action.READ);
+        Response t3r = manager.validateObjects(List.of("X"), t3, Action.READ);
         assertNotNull(t3r);
 
         boolean t1wSuccess = tryIsSuccess(t1w);
@@ -75,7 +74,7 @@ class ConcurrencyControlManagerTest {
 
         assertDoesNotThrow(() -> manager.endTransaction(t1, true));
 
-        Response t3readAfter = manager.validateObject("X", t3, Action.READ);
+        Response t3readAfter = manager.validateObjects(List.of("X"), t3, Action.READ);
         assertNotNull(t3readAfter);
         assertTrue(tryIsSuccess(t3readAfter));
 
@@ -88,8 +87,8 @@ class ConcurrencyControlManagerTest {
         int t1 = manager.beginTransaction();
         int t2 = manager.beginTransaction();
 
-        Response r1 = manager.validateObject("S_RES", t1, Action.READ);
-        Response r2 = manager.validateObject("S_RES", t2, Action.READ);
+        Response r1 = manager.validateObjects(List.of("S_RES"), t1, Action.READ);
+        Response r2 = manager.validateObjects(List.of("S_RES"), t2, Action.READ);
 
         assertNotNull(r1);
         assertNotNull(r2);
@@ -105,17 +104,17 @@ class ConcurrencyControlManagerTest {
         int t1 = manager.beginTransaction();
         int t2 = manager.beginTransaction();
 
-        Response t1w = manager.validateObject("Z_RES", t1, Action.WRITE);
+        Response t1w = manager.validateObjects(List.of("Z_RES"), t1, Action.WRITE);
         assertNotNull(t1w);
         assertTrue(tryIsSuccess(t1w));
 
-        Response t2r = manager.validateObject("Z_RES", t2, Action.READ);
+        Response t2r = manager.validateObjects(List.of("Z_RES"), t2, Action.READ);
         assertNotNull(t2r);
         assertFalse(tryIsSuccess(t2r));
 
         assertDoesNotThrow(() -> manager.endTransaction(t1, false));
 
-        Response t2rAfter = manager.validateObject("Z_RES", t2, Action.READ);
+        Response t2rAfter = manager.validateObjects(List.of("Z_RES"), t2, Action.READ);
         assertNotNull(t2rAfter);
         assertTrue(tryIsSuccess(t2rAfter));
 
@@ -138,28 +137,28 @@ class ConcurrencyControlManagerTest {
         int t1 = manager.beginTransaction();
         int t2 = manager.beginTransaction();
 
-        Response r2 = manager.validateObject("WOUND_RES", t2, Action.WRITE);
+        Response r2 = manager.validateObjects(List.of("WOUND_RES"), t2, Action.WRITE);
         assertNotNull(r2);
         assertTrue(tryIsSuccess(r2), "Younger transaction should acquire the lock");
 
-        Response r1 = manager.validateObject("WOUND_RES", t1, Action.READ);
+        Response r1 = manager.validateObjects(List.of("WOUND_RES"), t1, Action.READ);
         assertNotNull(r1);
 
         assertFalse(tryIsSuccess(r1), "Older T's request should fail (WAIT)");
         assertEquals(Transaction.TransactionStatus.ABORTED, getTransactionStatus(t2), "Younger transaction should've been 'Wounded' (ABORTED)");
 
         assertDoesNotThrow(() -> manager.endTransaction(t1, false)); 
-        assertDoesNotThrow(() -> manager.endTransaction(t2, false));
+        assertDoesNotThrow(() -> manager.endTransaction(t2, true));
     }
 
     @Test
     void testLockUpgradeScenario() {
         int t1 = manager.beginTransaction();
-        Response read = manager.validateObject("UP_RES", t1, Action.READ);
+        Response read = manager.validateObjects(List.of("UP_RES"), t1, Action.READ);
         assertNotNull(read);
         assertTrue(tryIsSuccess(read), "Should acquire shared lock");
 
-        Response write = manager.validateObject("UP_RES", t1, Action.WRITE);
+        Response write = manager.validateObjects(List.of("UP_RES"), t1, Action.WRITE);
         assertNotNull(write);
         assertTrue(tryIsSuccess(write), "Should successfully upgrade to exclusive lock");
 
@@ -171,11 +170,11 @@ class ConcurrencyControlManagerTest {
         int t1 = manager.beginTransaction();
         int t2 = manager.beginTransaction();
 
-        Response r1 = manager.validateObject("RES_SX", t1, Action.READ);
+        Response r1 = manager.validateObjects(List.of("RES_SX"), t1, Action.READ);
         assertNotNull(r1);
         assertTrue(tryIsSuccess(r1), "Older T's should acquire the shared lock");
 
-        Response r2 = manager.validateObject("RES_SX", t2, Action.WRITE);
+        Response r2 = manager.validateObjects(List.of("RES_SX"), t2, Action.WRITE);
         assertNotNull(r2);
         assertFalse(tryIsSuccess(r2), "Younger transaction should fail to acquire the exclusive lock (WAIT)");
 
