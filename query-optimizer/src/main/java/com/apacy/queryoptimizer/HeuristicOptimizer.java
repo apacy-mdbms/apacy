@@ -15,11 +15,9 @@ import com.apacy.queryoptimizer.rewriter.PlanRewriter;
  */
 public class HeuristicOptimizer {
 
-    private CostEstimator costEstimator;
     private List<PlanRewriter> rules = List.of();
 
     public HeuristicOptimizer(CostEstimator costEstimator) {
-        this.costEstimator = costEstimator;
         rules = List.of(
             new FilterPushdownRewriter(costEstimator)
         );
