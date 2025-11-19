@@ -2,6 +2,7 @@ package com.apacy.common.interfaces;
 
 import com.apacy.common.dto.*;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Kontrak untuk: Storage Manager
@@ -17,5 +18,5 @@ public interface IStorageManager {
 
     void setIndex(String table, String column, String indexType);
 
-    Statistic getStats();
+    Map<String, Statistic> getAllStats(); // returns statistic of each tables. String == Table name
 }
