@@ -13,6 +13,7 @@ import com.apacy.queryoptimizer.ast.where.*;
 import com.apacy.queryoptimizer.ast.expression.*;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Main Query Processor that coordinates all database operations.
@@ -59,76 +60,52 @@ public class QueryProcessor extends DBMSComponent {
     }
     
     public ExecutionResult executeQuery(String sqlQuery) {
-        // 1. Parsing & Optimization
-        ParsedQuery parsedQuery = qo.optimizeQuery(qo.parseQuery(sqlQuery), sm.getAllStats());
         int txId = ccm.beginTransaction();
+        ParsedQuery parsedQuery = null;
         
         try {
-            switch (parsedQuery.queryType()){
+            ParsedQuery initialQuery = qo.parseQuery(sqlQuery);
+            
+            if (initialQuery == null) {
+                throw new IllegalArgumentException("Query tidak valid atau tidak dikenali.");
+            }
+
+            parsedQuery = qo.optimizeQuery(initialQuery, sm.getAllStats());
+
+            switch (parsedQuery.queryType()) {
                 case "SELECT":
-                    List<Row> rows;
-
-                    if (parsedQuery.joinConditions() != null) {
-                        rows = evaluateJoinTree((JoinOperand) parsedQuery.joinConditions());
-                    } else {
-                        DataRetrieval retrieval = planTranslator.translateToRetrieval(parsedQuery, String.valueOf(txId));
-                        
-                        String objectId = "TABLE::" + retrieval.tableName();
-                        Response res = ccm.validateObject(objectId, txId, Action.READ);
-                        if (!res.isAllowed()) { 
-                            throw new Exception("Lock denied: " + res.reason()); 
-                        }
-
-                        rows = sm.readBlock(retrieval);
-                    }
-
-                    if (parsedQuery.orderByColumn() != null) {
-                        boolean ascending = !parsedQuery.isDescending();
-                        rows = SortStrategy.sort(rows, parsedQuery.orderByColumn(), ascending);
-                    }
-
-                    ccm.endTransaction(txId, true);
+                    return executeSelect(parsedQuery, txId);
                     
-                    ExecutionResult result = new ExecutionResult(
-                        true, 
-                        "SELECT executed successfully", 
-                        txId, 
-                        "SELECT", 
-                        rows.size(),
-                        rows
-                    );
+                case "INSERT":
+                case "UPDATE":
+                    return executeWrite(parsedQuery, txId);
                     
-                    try {
-                        frm.writeLog(result);
-                    } catch (Exception e) {
-                        System.err.println("[WARNING] Log failed: " + e.getMessage());
-                    }
-                    
-                    return result;
+                case "DELETE":
+                    return executeDelete(parsedQuery, txId);
 
                 default:
                     throw new UnsupportedOperationException("Query type '" + parsedQuery.queryType() + "' not supported yet.");             
             }
 
         } catch (Exception e) {
-            try {
-                ccm.endTransaction(txId, false);
-                frm.recover(new RecoveryCriteria("UNDO_TRANSACTION", String.valueOf(txId), null));
-            } catch (Exception ex) {
+            ccm.endTransaction(txId, false);
+            frm.recover(new RecoveryCriteria("UNDO_TRANSACTION", String.valueOf(txId), null));
+            
+            String opType = (parsedQuery != null) ? parsedQuery.queryType() : "UNKNOWN";
 
-            }
-            return new ExecutionResult(false, e.getMessage(), txId, parsedQuery.queryType(), 0, null);
+            return new ExecutionResult(false, e.getMessage(), txId, opType, 0, null);
         }
     }
 
+    // --- Helper Methods for Join Execution ---
+
     private List<Row> evaluateJoinTree(JoinOperand operand) {
-        // Base
         if (operand instanceof TableNode tableNode) {
             String tableName = tableNode.tableName();
             DataRetrieval req = new DataRetrieval(tableName, List.of("*"), null, false);
             return sm.readBlock(req);
         }
-        // Recursion
+        // Recursive Case: Join Node
         else if (operand instanceof JoinConditionNode joinNode) {
             List<Row> leftRows = evaluateJoinTree(joinNode.left());
             List<Row> rightRows = evaluateJoinTree(joinNode.right());
@@ -137,16 +114,126 @@ public class QueryProcessor extends DBMSComponent {
 
             return JoinStrategy.nestedLoopJoin(leftRows, rightRows, joinCol);
         } 
-        throw new IllegalArgumentException("Unknown JoinOperand type");
+        
+        throw new IllegalArgumentException("Unknown JoinOperand type: " + operand.getClass().getSimpleName());
     }
 
     private String extractJoinColumn(WhereConditionNode condition) {
         if (condition instanceof ComparisonConditionNode comp) {
             if (comp.leftOperand().term().factor() instanceof ColumnFactor col) {
                 String fullName = col.columnName();
+                // Jika format "table.column", ambil "column"-nya saja
                 return fullName.contains(".") ? fullName.split("\\.")[1] : fullName;
             }
         }
+        // Fallback
         return "id";
+    }
+
+    // --- Main Execution Logic ---
+    private ExecutionResult executeSelect(ParsedQuery query, int txId) throws Exception {
+        List<String> targetTables = query.targetTables();
+        
+        if (targetTables != null && !targetTables.isEmpty()) {
+            List<String> objectIds = targetTables.stream()
+                .map(tableName -> "TABLE::" + tableName)
+                .toList();
+
+            Response res = ccm.validateObjects(objectIds, txId, Action.READ);
+            
+            if (!res.isAllowed()) { 
+                throw new Exception("Lock denied: " + res.reason()); 
+            }
+        }
+
+        List<Row> rows;
+
+        // 2. Execution Strategy (Join vs Single Table)
+        if (query.joinConditions() != null && query.joinConditions() instanceof JoinOperand) {
+            rows = evaluateJoinTree((JoinOperand) query.joinConditions());
+        } else {
+            DataRetrieval dataRetrieval = planTranslator.translateToRetrieval(query, String.valueOf(txId));
+            rows = sm.readBlock(dataRetrieval);
+        }
+        
+        // 3. Sorting (ORDER BY)
+        if (query.orderByColumn() != null) {
+            boolean ascending = !query.isDescending();
+            rows = SortStrategy.sort(rows, query.orderByColumn(), ascending);
+        }
+
+        // 4. Commit & Return
+        ccm.endTransaction(txId, true);
+        
+        ExecutionResult result = new ExecutionResult(
+            true, 
+            "SELECT executed successfully", 
+            txId, 
+            "SELECT", 
+            rows.size(), 
+            rows
+        );
+        
+        return result;
+    }
+
+    private ExecutionResult executeWrite(ParsedQuery query, int txId) throws Exception {
+        boolean isUpdate = "UPDATE".equalsIgnoreCase(query.queryType());
+        DataWrite dataWrite = planTranslator.translateToWrite(query, String.valueOf(txId), isUpdate);
+        
+        String objectId = "TABLE::" + dataWrite.tableName();
+
+        // 1. Concurrency Control (Locking - WRITE)
+        Response res = ccm.validateObject(objectId, txId, Action.WRITE);
+        if (!res.isAllowed()) { 
+            throw new Exception("Lock denied: " + res.reason()); 
+        }
+
+        // 2. Storage Execution
+        int affectedRows = sm.writeBlock(dataWrite);
+
+        // 3. Commit & Log
+        ccm.endTransaction(txId, true);
+
+        ExecutionResult result = new ExecutionResult(
+            true, 
+            query.queryType() + " executed successfully", 
+            txId, 
+            query.queryType(), 
+            affectedRows, 
+            null
+        );
+
+        frm.writeLog(result);
+        return result;
+    }
+
+    private ExecutionResult executeDelete(ParsedQuery query, int txId) throws Exception {
+        DataDeletion dataDeletion = planTranslator.translateToDeletion(query, String.valueOf(txId));
+        String objectId = "TABLE::" + dataDeletion.tableName();
+
+        // 1. Concurrency Control (Locking - WRITE)
+        Response res = ccm.validateObject(objectId, txId, Action.WRITE);
+        if (!res.isAllowed()) { 
+            throw new Exception("Lock denied: " + res.reason()); 
+        }
+
+        // 2. Storage Execution
+        int affectedRows = sm.deleteBlock(dataDeletion);
+
+        // 3. Commit & Log
+        ccm.endTransaction(txId, true);
+
+        ExecutionResult result = new ExecutionResult(
+            true, 
+            "DELETE executed successfully", 
+            txId, 
+            "DELETE", 
+            affectedRows, 
+            null
+        );
+
+        frm.writeLog(result);
+        return result;
     }
 }

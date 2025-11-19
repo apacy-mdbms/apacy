@@ -7,7 +7,7 @@ public class MockFailureRecoveryManager implements IFailureRecoveryManager {
 
     @Override
     public void writeLog(ExecutionResult info) {
-        System.out.println("[MOCK-FRM] writeLog dipanggil untuk txId:" + info.transactionId());
+        System.out.println("[MOCK-FRM] writeLog: Tx " + info.transactionId() + " | Op: " + info.operation() + " | Status: " + info.success());
     }
 
     @Override
@@ -17,6 +17,6 @@ public class MockFailureRecoveryManager implements IFailureRecoveryManager {
 
     @Override
     public void recover(RecoveryCriteria criteria) {
-        System.out.println("[MOCK-FRM] RECOVER dipanggil untuk txId: " + criteria.transactionId());
+        System.out.println("[MOCK-FRM] RECOVER dipanggil. Type: " + criteria.recoveryType() + ", TxId: " + criteria.transactionId());
     }
 }

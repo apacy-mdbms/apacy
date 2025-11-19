@@ -54,6 +54,7 @@ public class InsertParser extends AbstractParser {
         //
         return new ParsedQuery(
             "INSERT",            // queryType
+            null,
             List.of(tableName),  // targetTables
             columns,             // targetColumns
             values,              // values
