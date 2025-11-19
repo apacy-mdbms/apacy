@@ -18,15 +18,23 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
     protected final String LOG_FILE_PATH = "failure-recovery/log/mDBMS.log";
     protected final String CHECKPOINT_DIR = "failure-recovery/checkpoints";
 
+    public FailureRecoveryManager() {
+        super("Failure Recovery Manager");
+        this.storageManager = null;
+        this.logWriter = new LogWriter();
+        this.logReplayer = new LogReplayer();
+        this.checkpointManager = new CheckpointManager();
+    }
+
     public FailureRecoveryManager(StorageManager storageManager) {
+        super("Failure Recovery Manager");
         System.out.println("Initializing FailureRecoveryManager...");
+
         this.storageManager = storageManager;
 
         this.logWriter = new LogWriter(LOG_FILE_PATH);
-
-        this.logReplayer = new LogReplayer(LOG_FILE_PATH, this.storageManager);
-
-        this.checkpointManager = new CheckpointManager(CHECKPOINT_DIR, this.logWriter);
+        this.logReplayer = new LogReplayer(LOG_FILE_PATH);
+        this.checkpointManager = new CheckpointManager(CHECKPOINT_DIR);
         
         System.out.println("FailureRecoveryManager initialized successfully.");
     }
