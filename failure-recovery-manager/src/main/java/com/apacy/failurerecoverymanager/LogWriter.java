@@ -8,13 +8,18 @@ public class LogWriter {
     private final String logFilePath;
     private FileWriter writer;
 
-    public LogWriter() throws IOException {
+    public LogWriter() {
         this("failure-recovery/log/mDBMS.log");
     }
 
-    public LogWriter(String logFilePath) throws IOException {
+    public LogWriter(String logFilePath) {
         this.logFilePath = logFilePath;
-        initialize();
+
+        try {
+            initialize();
+        } catch (IOException e) {
+            throw new RuntimeException("Gagal inisialisasi LogWriter pada path " + logFilePath, e);
+        }
     }
 
     private void initialize() throws IOException {
