@@ -123,6 +123,64 @@ class StorageManagerTest {
         assertEquals(3.5f, resultRow.data().get("gpa"));
     }
 
+
+    @Test
+    @DisplayName("Test: Hash Index Lookup (Equality Search on Indexed Column)")
+    void testHashIndexLookup() {
+        System.out.println("--- testHashIndexLookup ---");
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 10, "name", "Alice", "gpa", 3.2f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 20, "name", "Budi", "gpa", 2.9f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 30, "name", "Charlie", "gpa", 3.8f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 20, "name", "DuplicateBudi", "gpa", 3.1f)), null));
+
+        DataRetrieval indexLookup = new DataRetrieval(
+                "students",
+                List.of("*"),
+                "id=20",
+                true
+        );
+
+        List<Row> indexResults = storageManager.readBlock(indexLookup);
+        indexResults.forEach(r -> System.out.println("  -> " + r.data()));
+
+        assertEquals(2, indexResults.size(), "Should find exactly 2 rows with id=20");
+
+        boolean found1 = indexResults.stream()
+                .anyMatch(r -> r.data().get("name").equals("Budi"));
+
+        boolean found2 = indexResults.stream()
+                .anyMatch(r -> r.data().get("name").equals("DuplicateBudi"));
+
+        assertTrue(found1, "Index lookup must return original row with id=20");
+        assertTrue(found2, "Index lookup must return duplicate row with id=20");
+
+        StorageManager sm2 = new StorageManager(TEST_DIR);
+        sm2.initialize();
+
+        DataRetrieval persistedLookup = new DataRetrieval(
+                "students",
+                List.of("*"),
+                "id=20",
+                true
+        );
+
+        List<Row> persistedResults = sm2.readBlock(persistedLookup);
+
+        persistedResults.forEach(r -> System.out.println("  (persisted) -> " + r.data()));
+
+        assertEquals(2, persistedResults.size(), "Persistent index must return 2 rows with id=20 after reload");
+
+        System.out.println("Hash index lookup PASSED.");
+    }
+
     @Test
     @DisplayName("Test: Baca dari Tabel Kosong")
     void testReadFromEmptyTable() {

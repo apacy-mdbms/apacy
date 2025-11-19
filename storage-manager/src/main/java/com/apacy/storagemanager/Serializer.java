@@ -31,6 +31,7 @@ public class Serializer {
     private static final int SLOT_SIZE = 8; // 4 + 4
     private static final int SLOT_OFFSET_OFFSET = 0;
     private static final int SLOT_LENGTH_OFFSET = 4;
+    private int lastSlotId = -1;
 
     public Serializer(CatalogManager catalogManager) {
         this.catalogManager = catalogManager;
@@ -116,6 +117,7 @@ public class Serializer {
         // 6. Perbarui Header Blok
         buffer.putInt(HEADER_SLOT_COUNT_OFFSET, slotCount + 1); // Tambah jumlah slot
         buffer.putInt(HEADER_FREE_SPACE_OFFSET, newDataOffset); // Geser pointer spasi kosong
+        this.lastSlotId = slotCount;
 
         return blockData;
     }
@@ -233,5 +235,32 @@ public class Serializer {
             }
         }
         return totalSize;
+    }
+
+    public int getLastPackedSlotId() {
+        return this.lastSlotId;
+    }
+
+    public Row readRowAtSlot(byte[] blockData, Schema schema, int slotId) throws IOException {
+        ByteBuffer buffer = ByteBuffer.wrap(blockData);
+
+        int slotCount = buffer.getInt(HEADER_SLOT_COUNT_OFFSET);
+        if (slotId < 0 || slotId >= slotCount) {
+            return null;
+        }
+
+        int slotOffset = BLOCK_HEADER_SIZE + (slotId * SLOT_SIZE);
+
+        int dataOffset = buffer.getInt(slotOffset + SLOT_OFFSET_OFFSET);
+        int dataLength = buffer.getInt(slotOffset + SLOT_LENGTH_OFFSET);
+
+        if (dataOffset == 0 || dataLength == 0) {
+            return null;
+        }
+
+        byte[] rowBytes = new byte[dataLength];
+        System.arraycopy(blockData, dataOffset, rowBytes, 0, dataLength);
+
+        return deserializeRow(rowBytes, schema);
     }
 }

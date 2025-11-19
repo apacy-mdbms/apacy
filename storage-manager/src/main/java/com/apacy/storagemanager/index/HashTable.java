@@ -16,6 +16,10 @@ public class HashTable<K, V> {
             buckets.add(new Bucket<>(bucketCapacity,true));
     }
 
+    public List<Bucket<K, V>> getBuckets(){
+        return buckets;
+    }
+
     public HashTable() {
         this(8, 4);
     }
@@ -52,20 +56,31 @@ public class HashTable<K, V> {
         bucket.insert(key, value);
     }
 
-    public V get(K key) {
+    public List<V> get(K key) {
+        List<V> result = new ArrayList<>();
+
         int index = hash(key);
         Bucket<K, V> bucket = buckets.get(index);
+
         while (bucket != null) {
-            V value = bucket.get(key);
-            if (value != null)
-                return value;
+
+            // FIX: scan ALL entries in this bucket
+            for (Bucket.Entry<K,V> e : bucket.getEntries()) {
+                if (e.key.equals(key)) {
+                    result.add(e.value);
+                }
+            }
+
             int nextIdx = bucket.getNextBucket();
             if (nextIdx == -1)
                 break;
+
             bucket = buckets.get(nextIdx);
         }
-        return null;
+
+        return result;
     }
+
 
     public boolean remove(K key) {
         int index = hash(key);
@@ -125,82 +140,28 @@ public class HashTable<K, V> {
             System.out.println("Bucket " + i + ": " + buckets.get(i));
     }
 
-    // public static void main(String[] args) {
-    //     System.out.println("=== HashTable Manual Test ===\n");
+    public void printBuckets() {
+        for (int i = 0; i < buckets.size(); i++) {
+            Bucket<K, V> b = buckets.get(i);
+            System.out.println("Bucket " + i);
 
-    //     // Basic insert/get/remove
-    //     HashTable<Integer, String> ht = new HashTable<>(8, 4);
-    //     ht.insert(10, "A");
-    //     ht.insert(20, "B");
-    //     ht.insert(30, "C");
+            if (b == null) {
+                System.out.println("  null");
+                continue;
+            }
 
-    //     System.out.println("10 -> " + ht.get(10)); // expect A
-    //     System.out.println("20 -> " + ht.get(20)); // expect B
-    //     System.out.println("30 -> " + ht.get(30)); // expect C
-    //     System.out.println("99 -> " + ht.get(99)); // expect null
+            Bucket<K, V> curr = b;
+            while (curr != null) {
+                for (Bucket.Entry<K, V> e : curr.getEntries()) {
+                    System.out.println("  key=" + e.key + " value=" + e.value);
+                }
 
-    //     System.out.println("Remove 20: " + ht.remove(20));
-    //     System.out.println("Get 20 after remove: " + ht.get(20));
-    //     System.out.println("Remove 20 again: " + ht.remove(20));
-    //     System.out.println("Size after removes: " + ht.size());
-    //     System.out.println();
+                int next = curr.getNextBucket();
+                if (next == -1) break;
+                curr = buckets.get(next);
+            }
+        }
+    }
 
-    //     // Force chaining
-    //     System.out.println("=== Forcing chaining ===");
-    //     HashTable<Integer, String> chainTest = new HashTable<>(1, 2);
-    //     chainTest.insert(0, "v0");
-    //     chainTest.insert(2, "v2");
-    //     chainTest.insert(4, "v4");
-    //     System.out.println("Size: " + chainTest.size());
-    //     System.out.println("Bucket count: " + chainTest.bucketCount());
-    //     System.out.println("Get 4 -> " + chainTest.get(4));
-    //     chainTest.printTable();
-    //     System.out.println();
-
-    //     // Expand and shrink test
-    //     System.out.println("=== Expand & Shrink Rehash Test ===");
-    //     HashTable<Integer, String> big = new HashTable<>(2, 2);
-    //     for (int i = 0; i < 50; i++) big.insert(i, "v" + i);
-    //     System.out.println("Before expand - bucketCount: " + big.bucketCount());
-    //     big.expand(10);
-    //     System.out.println("After expand - bucketCount: " + big.bucketCount());
-    //     for (int i = 0; i < 50; i++)
-    //         if (!("v" + i).equals(big.get(i))) {
-    //             System.out.println("Error: mismatch at " + i);
-    //             break;
-    //         }
-    //     big.shrink(8);
-    //     System.out.println("After shrink - bucketCount: " + big.bucketCount());
-    //     System.out.println("All values still intact: OK\n");
-
-    //     // Mixed key types
-    //     System.out.println("=== Mixed key types ===");
-    //     HashTable<String, Integer> hts = new HashTable<>(4, 3);
-    //     hts.insert("alice", 1);
-    //     hts.insert("bob", 2);
-    //     System.out.println("alice -> " + hts.get("alice"));
-    //     System.out.println("bob -> " + hts.get("bob"));
-
-    //     HashTable<Character, String> htc = new HashTable<>(2, 2);
-    //     htc.insert('A', "65");
-    //     htc.insert('B', "66");
-    //     System.out.println("A -> " + htc.get('A'));
-    //     System.out.println("B -> " + htc.get('B'));
-
-    //     HashTable<Float, String> htf = new HashTable<>(3, 2);
-        // Random rnd = new Random(7);
-        // for (int i = 0; i < 10; i++) {
-        //     float f = rnd.nextFloat();
-        //     htf.insert(f, "v" + i);
-        //     System.out.println(f + " -> " + htf.get(f));
-        // }
-        // System.out.println("Float table size: " + htf.size());
-
-        // // Visual table
-        // System.out.println("\n=== Visual print ===");
-        // HashTable<Integer, String> visual = new HashTable<>(2, 2);
-        // for (int i = 0; i < 10; i++) visual.insert(i * 2, "v" + i);
-        // visual.printTable();
-    // }
 }
 

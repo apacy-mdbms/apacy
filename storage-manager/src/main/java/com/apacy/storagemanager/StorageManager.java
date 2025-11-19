@@ -47,7 +47,14 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
     public void initialize() {
         try {
             this.catalogManager.loadCatalog();
-            this.indexManager.loadAll();
+
+            for (Schema schema : catalogManager.getAllSchemas()) {
+                for (IndexSchema idx : schema.indexes()) {
+                    IIndex<?,?> index = createIndexInstance(schema, idx);
+                    indexManager.register(schema.tableName(), idx.columnName(), idx.indexType().toString(), index);
+                }
+            }
+            this.indexManager.loadAll(this.catalogManager);
         } catch (Exception e) {
             System.err.println("Gagal menginitialize Storage Manager! " + e.getMessage());
         }
@@ -57,7 +64,7 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
     public void shutdown() {
         // TODO: Implement storage manager shutdown logic
         // (e.g., flush buffers, close files)
-        indexManager.flushAll();
+        indexManager.flushAll(this.catalogManager); 
             // blockManager.flush();
         // } catch (IOException e) {
         //     System.err.println("Error flushing blocks during shutdown: " + e.getMessage());
@@ -67,6 +74,25 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
     public CatalogManager getCatalogManager() {
         return this.catalogManager;
     }
+
+    private Object extractEqualityFilter(DataRetrieval req, Column colDef) {
+        if (req.filterCondition() == null) return null;
+
+        String cond = req.filterCondition().toString().replace(" ", "");
+        String prefix = colDef.name() + "=";
+
+        if (!cond.startsWith(prefix)) return null;
+
+        String raw = cond.substring(prefix.length());
+
+        return switch (colDef.type()) {
+            case INTEGER -> Integer.parseInt(raw);
+            case FLOAT   -> Float.parseFloat(raw);
+            case CHAR    -> raw.charAt(0);
+            case VARCHAR -> raw;
+        };
+    }
+
 
     @Override
     public List<Row> readBlock(DataRetrieval dataRetrieval) {
@@ -79,8 +105,32 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
             String fileName = schema.dataFile(); 
             List<Row> allRows = new ArrayList<>();
             
-            // TODO: Implementasi Index Scan
-            // if (dataRetrieval.indexName() != null) { ... }
+            if (dataRetrieval.useIndex()) {
+                for (IndexSchema idxSchema : schema.indexes()) {
+
+                    IIndex index = indexManager.get(
+                        schema.tableName(),
+                        idxSchema.columnName(),
+                        idxSchema.indexType().toString()
+                    );
+
+                    if (index == null) continue;
+                    Object filterValue = extractEqualityFilter(dataRetrieval, schema.getColumnByName(idxSchema.columnName())); 
+                    if (filterValue == null) continue;
+                    List<Integer> ridList = index.getAddress(filterValue);
+                    List<Row> resultRows = new ArrayList<>();
+                    for (int encodedRid : ridList) {
+                        long blockNo = (encodedRid >>> 16);
+                        int slotNo = encodedRid & 0xFFFF; 
+
+                        byte[] block = blockManager.readBlock(schema.dataFile(), blockNo);
+                        Row r = serializer.readRowAtSlot(block, schema, slotNo);
+                        if (r != null) resultRows.add(r);
+                    }
+                    return resultRows;
+                }
+            }
+
 
             // --- Alur Full Table Scan ---
             long blockCount = blockManager.getBlockCount(fileName);
@@ -132,11 +182,11 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
                 targetBlockNumber = blockCount - 1;
                 blockData = blockManager.readBlock(fileName, targetBlockNumber);
             }
-            int newSlotId = -1; // TODO: Serializer harus mengembalikan ini
+            int newSlotId;
             try {
                 byte[] updatedBlockData = serializer.packRowToBlock(blockData, dataWrite.newData(), schema);
                 blockManager.writeBlock(fileName, targetBlockNumber, updatedBlockData);
-                // newSlotId = serializer.getLastPackedSlotId(updatedBlockData); 
+                newSlotId = serializer.getLastPackedSlotId();  
 
             } catch (IOException ex) { // Blok terakhir penuh
                 byte[] newBlockData = serializer.initializeNewBlock();
@@ -144,21 +194,28 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
                 newBlockData = serializer.packRowToBlock(newBlockData, dataWrite.newData(), schema);
                 
                 targetBlockNumber = blockManager.appendBlock(fileName, newBlockData); 
-                newSlotId = 0; // Slot pertama di blok baru
+                newSlotId = serializer.getLastPackedSlotId(); 
             }
             
             blockManager.flush();
             
-            // TODO: (SELANJUTNYA) Update Index
-            // Dapatkan semua indeks untuk tabel ini
-            // for (IndexSchema idxSchema : schema.indexes()) {
-            //    IIndex index = indexManager.get(schema.tableName(), idxSchema.columnName(), idxSchema.indexType().toString());
-            //    if (index != null) {
-            //       Object key = dataWrite.newData().get(idxSchema.columnName());
-            //       Object value = ... (perlu RID: new RID(targetBlockNumber, newSlotId))
-            //       index.insertData(key, value);
-            //    }
-            // }
+            for (IndexSchema idxSchema : schema.indexes()) {
+
+                IIndex index = indexManager.get(
+                    schema.tableName(),
+                    idxSchema.columnName(),
+                    idxSchema.indexType().toString()
+                );
+
+                if (index != null) {
+                    Object key = dataWrite.newData().data().get(idxSchema.columnName());
+
+                    int ridValue = (int) ((targetBlockNumber << 16) | (newSlotId & 0xFFFF));
+                    index.insertData(key, ridValue);
+                    index.writeToFile(this.catalogManager);
+                }
+            }
+
 
             return 1; 
 
@@ -185,7 +242,7 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         for (IndexSchema idxSchema : newSchema.indexes()) {
             IIndex<?, ?> index = createIndexInstance(newSchema, idxSchema);
             indexManager.register(newSchema.tableName(), idxSchema.columnName(), idxSchema.indexType().toString(), index);
-            index.writeToFile(); // Tulis file .idx kosong
+            index.writeToFile(this.catalogManager); // Tulis file .idx kosong
         }
         
         System.out.println("StorageManager: Tabel " + newSchema.tableName() + " berhasil dibuat di disk.");

@@ -3,6 +3,7 @@ package com.apacy.storagemanager.index;
 import java.util.List;
 import java.util.Map;
 import java.util.Collections;
+import com.apacy.storagemanager.CatalogManager;
 
 public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
 
@@ -27,11 +28,11 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
     }
 
     @Override
-    public void loadFromFile() {
+    public void loadFromFile(CatalogManager catalogManager) {
     }
 
     @Override
-    public void writeToFile() {
+    public void writeToFile(CatalogManager catalogManager) {
     }
 
     @Override
