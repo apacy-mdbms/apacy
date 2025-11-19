@@ -89,6 +89,11 @@ public class SelectParser extends AbstractParser {
         if (match(TokenType.ORDER)) {
             consume(TokenType.BY);
             orderBy = consume(TokenType.IDENTIFIER).getValue();
+            if (match(TokenType.DESC)) {
+                isDesc = true;
+            } else if (match(TokenType.ASC)) {
+                isDesc = false;
+            }
         }
 
         if (match(TokenType.LIMIT)) {
