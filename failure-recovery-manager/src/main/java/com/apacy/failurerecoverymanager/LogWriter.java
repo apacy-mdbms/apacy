@@ -30,17 +30,17 @@ public class LogWriter {
      * Menulis satu baris log transaksi.
      * Format: timestamp|transactionId|operation|tableName|data
      */
-    public synchronized void writeLog(String transactionId, String operation, String tableName, Object data) throws IOException {
-        long timestamp = System.currentTimeMillis();
-        String safeData = (data != null ? data.toString().replace("\n", " ").replace("|", " ") : "-");
-        String logLine = timestamp + "|" +
-                (transactionId != null ? transactionId : "-") + "|" +
-                (operation != null ? operation : "-") + "|" +
-                (tableName != null ? tableName : "-") + "|" +
-                safeData + "\n";
+    public synchronized void writeLog(LogEntry entry) throws IOException {
+        if (entry == null) return;
 
-        writer.write(logLine);
-        writer.flush(); 
+        writer.write(entry.toString());
+        writer.write("\n");      
+        writer.flush();         
+    }
+
+    public synchronized void writeLog(String transactionId, String operation, String tableName, Object data) throws IOException {
+        LogEntry entry = new LogEntry(transactionId, operation, tableName, data);
+        writeLog(entry);
     }
 
     /** Memaksa flush buffer ke file. */
