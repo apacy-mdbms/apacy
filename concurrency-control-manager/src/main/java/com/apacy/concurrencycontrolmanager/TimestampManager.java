@@ -1,49 +1,51 @@
-package com.apacy.concurrencycontrolmanager; 
- 
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
- 
-public class TimestampManager { 
+package com.apacy.concurrencycontrolmanager;
 
-    private final AtomicLong timeStamp;
-    private final ConcurrentHashMap<String, Long> readTime;
-    private final ConcurrentHashMap<String, Long> writeTime;
- 
-    public TimestampManager() { 
-        this.timeStamp = new AtomicLong(0);
-        this.readTime = new ConcurrentHashMap<>();
-        this.writeTime = new ConcurrentHashMap<>();
-    } 
- 
-    public long generateTimestamp() { 
-        return timeStamp.getAndIncrement();
-    } 
- 
-    public long getReadTimestamp(String dataItem) { 
-        return readTime.getOrDefault(dataItem, 0L);
-    } 
- 
-    public long getWriteTimestamp(String dataItem) { 
-        return writeTime.getOrDefault(dataItem, 0L);
-    } 
- 
-    public void updateReadTimestamp(String dataItem, long timestamp) { 
-        readTime.put(dataItem, Math.max(getReadTimestamp(dataItem), timestamp));
-    } 
- 
-    public void updateWriteTimestamp(String dataItem, long timestamp) { 
-        writeTime.put(dataItem, Math.max(getWriteTimestamp(dataItem), timestamp));
-    } 
+import java.util.HashMap;
+import java.util.Map;
+
+public class TimestampManager {
+
+    private long timeStamp;
     
-    public boolean isReadValid(String dataItem, long transactionTimestamp) { 
+    private final Map<String, Long> readTime;
+    private final Map<String, Long> writeTime;
+
+    public TimestampManager() {
+        this.timeStamp = 0;
+        this.readTime = new HashMap<>();
+        this.writeTime = new HashMap<>();
+    }
+
+    // PENTING: synchronized karena 'timeStamp++' bukan operasi atomik
+    public synchronized long generateTimestamp() {
+        return timeStamp++;
+    }
+
+    public synchronized long getReadTimestamp(String dataItem) {
+        return readTime.getOrDefault(dataItem, 0L);
+    }
+
+    public synchronized long getWriteTimestamp(String dataItem) {
+        return writeTime.getOrDefault(dataItem, 0L);
+    }
+
+    public synchronized void updateReadTimestamp(String dataItem, long timestamp) {
+        readTime.put(dataItem, Math.max(getReadTimestamp(dataItem), timestamp));
+    }
+
+    public synchronized void updateWriteTimestamp(String dataItem, long timestamp) {
+        writeTime.put(dataItem, Math.max(getWriteTimestamp(dataItem), timestamp));
+    }
+
+    public synchronized boolean isReadValid(String dataItem, long transactionTimestamp) {
         long wt = getWriteTimestamp(dataItem);
         return transactionTimestamp >= wt;
-    } 
- 
-    public boolean isWriteValid(String dataItem, long transactionTimestamp) { 
+    }
+
+    public synchronized boolean isWriteValid(String dataItem, long transactionTimestamp) {
         long rt = getReadTimestamp(dataItem);
         long wt = getWriteTimestamp(dataItem);
 
         return transactionTimestamp >= rt && transactionTimestamp >= wt;
-    } 
-} 
+    }
+}

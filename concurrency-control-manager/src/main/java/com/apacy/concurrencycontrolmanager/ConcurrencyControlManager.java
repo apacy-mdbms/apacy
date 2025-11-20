@@ -5,52 +5,52 @@ import com.apacy.common.dto.*;
 import com.apacy.common.enums.Action;
 import com.apacy.common.interfaces.IConcurrencyControlManager;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class ConcurrencyControlManager extends DBMSComponent implements IConcurrencyControlManager {
     private final LockManager lockManager;
     private final TimestampManager timestampManager;
-    
     private final Map<Integer, Transaction> transactionMap;
-    private final AtomicInteger transactionCounter;
+    
+    private int transactionCounter;
 
     public ConcurrencyControlManager() {
         super("Concurrency Control Manager");
-        
-        // Inisialisasi helper-nya
-        // (Pilih salah satu sesuai implementasi wajib, misal LockManager)
+
         this.lockManager = new LockManager();
-        this.timestampManager = new TimestampManager(); // Untuk bonus
-        
-        this.transactionMap = new ConcurrentHashMap<>();
-        this.transactionCounter = new AtomicInteger(0);
+        this.timestampManager = new TimestampManager();
+
+        this.transactionMap = new HashMap<>();
+        this.transactionCounter = 0;
     }
 
     public ConcurrencyControlManager(LockManager lockManager, TimestampManager timestampManager) {
         super("Concurrency Control Manager");
         this.lockManager = (lockManager != null) ? lockManager : new LockManager();
         this.timestampManager = timestampManager;
-        this.transactionMap = new ConcurrentHashMap<>();
-        this.transactionCounter = new AtomicInteger(0);
-    }
-    
-    @Override
-    public void initialize() throws Exception {
-        // Reset internal state biar CCMnya clean
-        transactionMap.clear();
-        transactionCounter.set(0);
+        this.transactionMap = new HashMap<>();
+        this.transactionCounter = 0;
     }
 
     @Override
-    public void shutdown() {
-        for (Integer txId : transactionMap.keySet()) {
+    public synchronized void initialize() throws Exception {
+        transactionMap.clear();
+        transactionCounter = 0;
+    }
+
+    @Override
+    public synchronized void shutdown() {
+        // PENTING: copy keys ke List dulu agar tidak terjadi ConcurrentModificationException 
+        // saat remove item dalam loop
+        List<Integer> keys = new ArrayList<>(transactionMap.keySet());
+
+        for (Integer txId : keys) {
             Transaction tx = transactionMap.get(txId);
             if (tx == null) continue;
 
-            // kalo belum final (aborted, failed, commited) paksa fail terus abort
             try {
                 if (!tx.isFailed() && !tx.isAborted() && !tx.isCommitted()) {
                     tx.setFailed();
@@ -58,7 +58,6 @@ public class ConcurrencyControlManager extends DBMSComponent implements IConcurr
                 }
             } catch (RuntimeException ignored) {}
 
-            // release locknya
             try {
                 lockManager.releaseLocks(tx);
             } catch (RuntimeException ignored) {}
@@ -70,80 +69,76 @@ public class ConcurrencyControlManager extends DBMSComponent implements IConcurr
             transactionMap.remove(txId);
         }
     }
-    
+
     @Override
-    public int beginTransaction() {
-        int txId = transactionCounter.incrementAndGet();
+    public synchronized int beginTransaction() {
+        transactionCounter++; 
+        int txId = transactionCounter;
+        
         Transaction tx = new Transaction(String.valueOf(txId));
         transactionMap.put(txId, tx);
-   
+
         try {
             if (timestampManager != null) {
                 long ts = timestampManager.generateTimestamp();
                 tx.setTimestamp(ts);
             }
         } catch (RuntimeException ignored) {}
-        
+
         return txId;
     }
 
     @Override
-    public Response validateObject(String objectId, int transactionId, Action action) {
-        // Ambil objek Transaction yang sesuai
+    public synchronized Response validateObject(String objectId, int transactionId, Action action) {
         Transaction tx = transactionMap.get(transactionId);
         if (tx == null) {
             return new Response(false, "Transaction not found: " + transactionId);
         }
 
-        // Cek apakah transaksi ini sudah di-abort (berarti kasus WOUND)
         if (tx.isAborted()) {
             return new Response(false, "Transaction " + transactionId + " was aborted (Wounded).");
         }
 
         boolean allowed = false;
-        
+
         if (action == Action.READ) {
             allowed = lockManager.acquireSharedLock(objectId, tx);
         } else if (action == Action.WRITE) {
             allowed = lockManager.acquireExclusiveLock(objectId, tx);
         }
-        
+
         if (allowed) {
             return new Response(true, "Lock acquired");
         } else {
-            // Cek lagi jika transaksi di-abort saat proses acquire (kasus WOUND)
             if (tx.isAborted()) {
                 return new Response(false, "Transaction " + transactionId + " was aborted (Wounded).");
             }
-            // Jika tidak di-abort, berarti ini kasus WAIT
             return new Response(false, "Resource locked by another transaction (Wait)");
         }
     }
 
     @Override
-    public Response validateObjects(List<String> objectIds, int transactionId, Action action) {
+    public synchronized Response validateObjects(List<String> objectIds, int transactionId, Action action) {
         for (String objectId : objectIds) {
             Response response = validateObject(objectId, transactionId, action);
 
-            // Jika gagal, langsung hentikan dan kembalikan respons gagal
             if (!response.isAllowed()) {
                 return new Response(false,
-                    "Failed on object '" + objectId + "': " + response.reason());
+                        "Failed on object '" + objectId + "': " + response.reason());
             }
         }
 
-        // Tidak ada validateObject yang ggal
         return new Response(true, "All locks acquired for transaction " + transactionId);
     }
 
-    
+
     @Override
-    public void endTransaction(int transactionId, boolean commit) {
+    public synchronized void endTransaction(int transactionId, boolean commit) {
         Transaction tx = transactionMap.get(transactionId);
         if (tx == null) {
             throw new IllegalArgumentException("Transaction not found: " + transactionId);
         }
-        
+
         if (commit) {
             try {
                 tx.setPartiallyCommitted();
@@ -159,11 +154,8 @@ public class ConcurrencyControlManager extends DBMSComponent implements IConcurr
                 tx.setFailed();
                 tx.abort();
             } catch (RuntimeException ignored) {}
-
-            // TODO: Panggil logic FRM.recover() untuk UNDO
         }
-        
-        // Selalu lepaskan lock, baik commit atau abort
+
         try {
             lockManager.releaseLocks(tx);
         } catch (RuntimeException ignored) {}
@@ -176,15 +168,13 @@ public class ConcurrencyControlManager extends DBMSComponent implements IConcurr
     }
 
     @Override
-    public void logObject(Row object, int transactionId) {
-        // Implementasi method ini sesuai spek
-        // (Misal: mencatat 'before-image' dari 'object' ke 'transaction')
+    public synchronized void logObject(Row object, int transactionId) {
         Transaction tx = transactionMap.get(transactionId);
         if (tx != null) {
             try {
                 tx.addLog(object);
             } catch (NoSuchMethodError | RuntimeException ignored) {
-                // just ignore if dont exist
+                // just ignore if don't exist
             }
         }
     }

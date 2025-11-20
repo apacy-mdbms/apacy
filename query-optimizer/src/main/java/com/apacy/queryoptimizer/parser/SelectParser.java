@@ -95,8 +95,17 @@ public class SelectParser extends AbstractParser {
             }
         }
 
+        // --- UPDATE LOGIC LIMIT & OFFSET ---
+        Integer limitValue = null;
         if (match(TokenType.LIMIT)) {
-            consume(TokenType.NUMBER_LITERAL);
+            Token limitToken = consume(TokenType.NUMBER_LITERAL);
+            limitValue = Integer.parseInt(limitToken.getValue());
+        }
+
+        Integer offsetValue = null;
+        if (match(TokenType.OFFSET)) {
+            Token offsetToken = consume(TokenType.NUMBER_LITERAL);
+            offsetValue = Integer.parseInt(offsetToken.getValue());
         }
 
         if (peek().getType() == TokenType.SEMICOLON) consume(TokenType.SEMICOLON);
@@ -105,9 +114,22 @@ public class SelectParser extends AbstractParser {
         Object whereClause = where;
 
         PlanNode planRoot = generatePlanNode((JoinOperand)joinAst, where, targetColumns);
-        return new ParsedQuery("SELECT", planRoot, targetTables, targetColumns,
-                (List<Object>) null, joinConditions, whereClause,
-                orderBy, isDesc, false);
+
+        // Gunakan konstruktor BARU yang ada limit & offset
+        return new ParsedQuery(
+                "SELECT",
+                planRoot,
+                targetTables,
+                targetColumns,
+                (List<Object>) null,
+                joinConditions,
+                whereClause,
+                orderBy,
+                isDesc,
+                false,
+                limitValue,   // Pass limit
+                offsetValue   // Pass offset
+        );
     };
 
     @Override
@@ -151,9 +173,18 @@ public class SelectParser extends AbstractParser {
                 if (!match(TokenType.BY)) { position = savedPos; return false; }
                 if (peek().getType() != TokenType.IDENTIFIER) { position = savedPos; return false; }
                 position++;
+                if (match(TokenType.ASC) || match(TokenType.DESC)) {
+                    // consume optional ASC/DESC
+                }
             }
 
+            // --- UPDATE VALIDASI LIMIT & OFFSET ---
             if (match(TokenType.LIMIT)) {
+                if (peek().getType() != TokenType.NUMBER_LITERAL) { position = savedPos; return false; }
+                position++;
+            }
+
+            if (match(TokenType.OFFSET)) {
                 if (peek().getType() != TokenType.NUMBER_LITERAL) { position = savedPos; return false; }
                 position++;
             }

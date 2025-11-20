@@ -16,12 +16,16 @@ public class ApacyCLI {
     private final QueryProcessor queryProcessor;
     private boolean running;
     private String currentQuery;
+    private final java.util.List<String> commandHistory;
+    private int historyIndex;
     
     public ApacyCLI(QueryProcessor queryProcessor) {
         this.scanner = new Scanner(System.in);
         this.queryProcessor = queryProcessor;
         this.running = true;
         this.currentQuery = "";
+        this.commandHistory = new java.util.ArrayList<>();
+        this.historyIndex = -1;
     }
     
     public void start() {
@@ -32,9 +36,9 @@ public class ApacyCLI {
             
             while (running) {
                 showPrompt();
-                String input = scanner.nextLine().trim();
+                String input = readInputWithHistory();
                 
-                if (input.isEmpty()) {
+                if (input == null || input.isEmpty()) {
                     continue;
                 }
                 
@@ -47,6 +51,179 @@ public class ApacyCLI {
         } finally {
             cleanup();
         }
+    }
+    
+    private String readInputWithHistory() {
+        StringBuilder inputBuffer = new StringBuilder();
+        int cursorPosition = 0; // Position within the input buffer
+        
+        try {
+            // Enable raw mode for terminal to capture arrow keys properly
+            ProcessBuilder pb = new ProcessBuilder("stty", "-echo", "raw");
+            pb.inheritIO();
+            Process sttyProcess = pb.start();
+            sttyProcess.waitFor();
+            
+            try {
+                while (true) {
+                    int c = System.in.read();
+                    
+                    // Handle escape sequences (arrow keys)
+                    if (c == 27) { // ESC character
+                        byte[] escapeSeq = new byte[2];
+                        int bytesRead = System.in.read(escapeSeq);
+                        
+                        if (bytesRead >= 2 && escapeSeq[0] == '[') {
+                            if (escapeSeq[1] == 'A') { // Up arrow
+                                String historyCommand = getHistoryUp();
+                                if (historyCommand != null) {
+                                    // Clear current input and display history command
+                                    for (int i = 0; i < inputBuffer.length(); i++) {
+                                        System.out.print("\b \b");
+                                    }
+                                    inputBuffer = new StringBuilder(historyCommand);
+                                    cursorPosition = inputBuffer.length();
+                                    System.out.print(historyCommand);
+                                    System.out.flush();
+                                }
+                                continue;
+                            } else if (escapeSeq[1] == 'B') { // Down arrow
+                                String historyCommand = getHistoryDown();
+                                if (historyCommand != null) {
+                                    // Clear current input and display history command
+                                    for (int i = 0; i < inputBuffer.length(); i++) {
+                                        System.out.print("\b \b");
+                                    }
+                                    inputBuffer = new StringBuilder(historyCommand);
+                                    cursorPosition = inputBuffer.length();
+                                    System.out.print(historyCommand);
+                                    System.out.flush();
+                                } else if (historyCommand == null && historyIndex >= 0) {
+                                    // Clear to empty when going below history
+                                    for (int i = 0; i < inputBuffer.length(); i++) {
+                                        System.out.print("\b \b");
+                                    }
+                                    inputBuffer = new StringBuilder();
+                                    cursorPosition = 0;
+                                    historyIndex = commandHistory.size();
+                                    System.out.flush();
+                                }
+                                continue;
+                            } else if (escapeSeq[1] == 'C') { // Right arrow
+                                if (cursorPosition < inputBuffer.length()) {
+                                    cursorPosition++;
+                                    System.out.print("\033[C"); // Move cursor right
+                                    System.out.flush();
+                                }
+                                continue;
+                            } else if (escapeSeq[1] == 'D') { // Left arrow
+                                if (cursorPosition > 0) {
+                                    cursorPosition--;
+                                    System.out.print("\033[D"); // Move cursor left
+                                    System.out.flush();
+                                }
+                                continue;
+                            }
+                        }
+                    }
+                    
+                    // Handle regular input
+                    if (c == '\r') { // Carriage return
+                        // Echo CR+LF to move to next line, column 1
+                        System.out.print("\r\n");
+                        System.out.flush();
+                        String result = inputBuffer.toString();
+                        if (!result.isEmpty()) {
+                            commandHistory.add(result);
+                            historyIndex = commandHistory.size();
+                        }
+                        return result;
+                    } else if (c == '\n') { // Line feed only
+                        // If we got LF without CR, treat it as enter too
+                        System.out.print("\r\n");
+                        System.out.flush();
+                        String result = inputBuffer.toString();
+                        if (!result.isEmpty()) {
+                            commandHistory.add(result);
+                            historyIndex = commandHistory.size();
+                        }
+                        return result;
+                    } else if (c == 127 || c == '\b') { // Backspace
+                        if (cursorPosition > 0) {
+                            inputBuffer.deleteCharAt(cursorPosition - 1);
+                            cursorPosition--;
+                            // Move cursor left and erase the character
+                            System.out.print("\b");
+                            // Print the rest of the line and erase
+                            String remainingText = inputBuffer.substring(cursorPosition);
+                            System.out.print(remainingText + " ");
+                            // Move cursor back to correct position
+                            for (int i = 0; i < remainingText.length() + 1; i++) {
+                                System.out.print("\b");
+                            }
+                            System.out.flush();
+                        }
+                    } else if (c == 3) { // Ctrl+C
+                        System.out.print("\r\n");
+                        System.out.flush();
+                        running = false;
+                        return "";
+                    } else if (c >= 32 && c <= 126) { // Printable ASCII
+                        inputBuffer.insert(cursorPosition, (char) c);
+                        cursorPosition++;
+                        // Print the character and everything after it
+                        String remainingText = inputBuffer.substring(cursorPosition - 1);
+                        System.out.print(remainingText);
+                        // Move cursor back to the correct position
+                        for (int i = 1; i < remainingText.length(); i++) {
+                            System.out.print("\b");
+                        }
+                        System.out.flush();
+                    }
+                }
+            } finally {
+                // Restore terminal to cooked mode
+                pb = new ProcessBuilder("stty", "echo", "-raw");
+                pb.inheritIO();
+                sttyProcess = pb.start();
+                sttyProcess.waitFor();
+            }
+        } catch (Exception e) {
+            System.err.println("Input error: " + e.getMessage());
+            return scanner.nextLine().trim();
+        }
+    }
+    
+    private String getHistoryUp() {
+        if (commandHistory.isEmpty()) {
+            return null;
+        }
+        
+        if (historyIndex > 0) {
+            historyIndex--;
+            return commandHistory.get(historyIndex);
+        } else if (historyIndex == commandHistory.size()) {
+            historyIndex = commandHistory.size() - 1;
+            return commandHistory.get(historyIndex);
+        }
+        
+        return null;
+    }
+    
+    private String getHistoryDown() {
+        if (commandHistory.isEmpty()) {
+            return null;
+        }
+        
+        if (historyIndex < commandHistory.size() - 1) {
+            historyIndex++;
+            return commandHistory.get(historyIndex);
+        } else if (historyIndex == commandHistory.size() - 1) {
+            historyIndex++;
+            return null; // Move to empty state
+        }
+        
+        return null;
     }
     
     private void showWelcomeMessage() {
@@ -101,12 +278,13 @@ public class ApacyCLI {
         System.out.println();
         
         try {
-            long startTime = System.currentTimeMillis();
+            long startTime = System.nanoTime();
             ExecutionResult result = queryProcessor.executeQuery(query);
-            long endTime = System.currentTimeMillis();
-            
+            long endTime = System.nanoTime();
+
             displayResult(result);
-            System.out.printf("Execution Time: %.3f ms%n", (endTime - startTime));
+            double elapsedMs = (endTime - startTime) / 1_000_000.0;
+            System.out.printf("Execution Time: %.3f ms%n", elapsedMs);
             
         } catch (Exception e) {
             System.err.println("ERROR: " + e.getMessage());
@@ -132,7 +310,7 @@ public class ApacyCLI {
         }
         
         if (result.affectedRows() > 0) {
-            System.out.println("\n " + result.affectedRows() + " row(s) affected");
+            System.out.println("\n" + result.affectedRows() + " row(s) affected");
         }
     }
     
@@ -142,38 +320,76 @@ public class ApacyCLI {
             return;
         }
         
-        System.out.println("\nQuery Results:");
-        System.out.println("┌" + "─".repeat(60) + "┐");
+        System.out.println();
         
-        for (int i = 0; i < rows.size(); i++) {
-            Row row = rows.get(i);
-            System.out.println("│ Row " + (i + 1) + ": " + formatRowCompact(row));
+        // Get column names from first row
+        java.util.List<String> columnNames = new java.util.ArrayList<>(rows.get(0).data().keySet());
+        
+        // Calculate column widths
+        java.util.Map<String, Integer> columnWidths = new java.util.LinkedHashMap<>();
+        for (String col : columnNames) {
+            int width = col.length();
+            for (Row row : rows) {
+                Object value = row.get(col);
+                int valueLength = value != null ? value.toString().length() : 4;
+                width = Math.max(width, valueLength);
+            }
+            columnWidths.put(col, Math.max(width, 4));
         }
         
-        System.out.println("└" + "─".repeat(60) + "┘");
-        System.out.println("(" + rows.size() + " row(s) returned)");
+        // Print header
+        printTableHeader(columnNames, columnWidths);
+        
+        // Print separator
+        printTableSeparator(columnNames, columnWidths);
+        
+        // Print rows
+        for (Row row : rows) {
+            printTableRow(row, columnNames, columnWidths);
+        }
+        
+        System.out.println("(" + rows.size() + " row" + (rows.size() == 1 ? "" : "s") + ")");
     }
     
-    private String formatRowCompact(Row row) {
-        StringBuilder sb = new StringBuilder();
+    private void printTableHeader(java.util.List<String> columnNames, java.util.Map<String, Integer> columnWidths) {
+        StringBuilder header = new StringBuilder();
         boolean first = true;
-        
-        for (String key : row.data().keySet()) {
+        for (String col : columnNames) {
             if (!first) {
-                sb.append(", ");
+                header.append(" | ");
             }
-            Object value = row.get(key);
-            sb.append(key).append("=").append(value);
+            header.append(String.format("%-" + columnWidths.get(col) + "s", col));
             first = false;
         }
-        
-        // Ensure the string fits in the table width
-        String result = sb.toString();
-        if (result.length() > 50) {
-            result = result.substring(0, 47) + "...";
+        System.out.println(header.toString());
+    }
+    
+    private void printTableSeparator(java.util.List<String> columnNames, java.util.Map<String, Integer> columnWidths) {
+        StringBuilder separator = new StringBuilder();
+        boolean first = true;
+        for (String col : columnNames) {
+            if (!first) {
+                separator.append("─+─");
+            }
+            separator.append("─".repeat(columnWidths.get(col)));
+            first = false;
         }
-        
-        return String.format("%-50s", result) + " │";
+        System.out.println(separator.toString());
+    }
+    
+    private void printTableRow(Row row, java.util.List<String> columnNames, java.util.Map<String, Integer> columnWidths) {
+        StringBuilder rowStr = new StringBuilder();
+        boolean first = true;
+        for (String col : columnNames) {
+            if (!first) {
+                rowStr.append(" | ");
+            }
+            Object value = row.get(col);
+            String valueStr = value != null ? value.toString() : "(null)";
+            rowStr.append(String.format("%-" + columnWidths.get(col) + "s", valueStr));
+            first = false;
+        }
+        System.out.println(rowStr.toString());
     }
     
     private void showHelp() {

@@ -64,19 +64,4 @@ public class LogReplayer {
         // TODO: Implement checkpoint finding
         throw new UnsupportedOperationException("findLastCheckpoint not implemented yet");
     }
-    
-    /**
-     * Inner class representing a log entry.
-     * TODO: Define proper log entry structure
-     */
-    public static class LogEntry {
-        // TODO: Define log entry fields
-        private String transactionId;
-        private String operation;
-        private String tableName;
-        private Object data;
-        private long timestamp;
-        
-        // TODO: Add constructors, getters, and setters
-    }
 }
