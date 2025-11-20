@@ -35,7 +35,7 @@ class SelectParserTest {
     private JoinOperand createExpectedJoinNode() {
         TableNode leftTable = new TableNode("table1");
         TableNode rightTable = new TableNode("table2");
-        ComparisonConditionNode condition = new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("table1.id"), null), null), "=", new ExpressionNode(new TermNode(new ColumnFactor("table2.fk"), null), null));
+        ComparisonConditionNode condition = new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("table1.id"), List.of()), List.of()), "=", new ExpressionNode(new TermNode(new ColumnFactor("table2.fk"), List.of()), List.of()));
         return new JoinConditionNode("INNER", leftTable, rightTable, condition);
     }
 
@@ -105,6 +105,7 @@ class SelectParserTest {
          * LIMIT 10;
          *
          */
+
         List<Token> tokens = List.of(
             new Token(TokenType.SELECT, "SELECT"), new Token(TokenType.IDENTIFIER, "col1"), new Token(TokenType.COMMA, ","), new Token(TokenType.IDENTIFIER, "col2"),
             new Token(TokenType.FROM, "FROM"), new Token(TokenType.IDENTIFIER, "table1"),

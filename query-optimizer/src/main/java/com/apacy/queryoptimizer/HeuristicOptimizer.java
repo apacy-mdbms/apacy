@@ -6,7 +6,10 @@ import java.util.Map;
 import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.Statistic;
 import com.apacy.common.dto.plan.PlanNode;
+import com.apacy.queryoptimizer.rewriter.AssociativeJoinRewriter;
+import com.apacy.queryoptimizer.rewriter.DistributeProjectRewriter;
 import com.apacy.queryoptimizer.rewriter.FilterPushdownRewriter;
+import com.apacy.queryoptimizer.rewriter.JoinCommutativityRewriter;
 import com.apacy.queryoptimizer.rewriter.PlanRewriter;
 
 /**
@@ -19,7 +22,10 @@ public class HeuristicOptimizer {
 
     public HeuristicOptimizer(CostEstimator costEstimator) {
         rules = List.of(
-            new FilterPushdownRewriter(costEstimator)
+            new FilterPushdownRewriter(costEstimator),
+            new JoinCommutativityRewriter(costEstimator),
+            new AssociativeJoinRewriter(costEstimator),
+            new DistributeProjectRewriter(costEstimator)
         );
     }
 
@@ -28,6 +34,7 @@ public class HeuristicOptimizer {
      */
     public ParsedQuery optimize(ParsedQuery query, Map<String, Statistic> allStats) {
         PlanNode curr = query.planRoot();
+        if (curr == null) return query;
         boolean changed;
 
         do {

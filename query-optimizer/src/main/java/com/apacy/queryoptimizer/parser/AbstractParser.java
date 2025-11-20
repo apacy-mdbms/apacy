@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.apacy.common.dto.ParsedQuery;
+import com.apacy.common.dto.plan.CartesianNode;
 import com.apacy.common.dto.plan.FilterNode;
 import com.apacy.common.dto.plan.JoinNode;
 import com.apacy.common.dto.plan.PlanNode;
@@ -16,6 +17,7 @@ import com.apacy.queryoptimizer.ast.expression.FactorNode;
 import com.apacy.queryoptimizer.ast.expression.LiteralFactor;
 import com.apacy.queryoptimizer.ast.expression.TermNode;
 import com.apacy.queryoptimizer.ast.join.JoinConditionNode;
+import com.apacy.queryoptimizer.ast.join.JoinOperand;
 import com.apacy.queryoptimizer.ast.join.TableNode;
 import com.apacy.queryoptimizer.ast.where.BinaryConditionNode;
 import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
@@ -237,7 +239,7 @@ public abstract class AbstractParser {
     }
 
 
-    protected PlanNode generatePlanNode(JoinConditionNode joinCondition, WhereConditionNode whereCondition, List<String> targetColumns) {
+    protected PlanNode generatePlanNode(JoinOperand joinCondition, WhereConditionNode whereCondition, List<String> targetColumns) {
         PlanNode fromTree = buildJoinTree(joinCondition);
 
         if (whereCondition != null)
@@ -250,19 +252,22 @@ public abstract class AbstractParser {
         return fromTree;
     }
 
-    protected JoinNode buildJoinTree(JoinConditionNode node) {
+    protected PlanNode buildJoinTree(JoinOperand node) {
         if (node == null) return null;
 
+        if (node instanceof TableNode t) {
+            return new ScanNode(t.tableName(), "");
+        } else {
 
-        PlanNode left = node.left() instanceof TableNode
-            ? new ScanNode(((TableNode)node.left()).tableName(), "")
-            : buildJoinTree((JoinConditionNode)node.left());
+            JoinConditionNode j = (JoinConditionNode)node;
 
-        PlanNode right = node.right() instanceof TableNode
-            ? new ScanNode(((TableNode)node.right()).tableName(), "")
-            : buildJoinTree((JoinConditionNode)node.right());
-
-        return new JoinNode(left, right, node.conditions(), node.joinType());
+            PlanNode left = buildJoinTree(j.left());
+            PlanNode right = buildJoinTree(j.right());
+            if (j.joinType().equalsIgnoreCase("CROSS")) {
+                return new CartesianNode(left, right);
+            }
+            return new JoinNode(left, right, j.conditions(), j.joinType());
+        }
 
     }
 

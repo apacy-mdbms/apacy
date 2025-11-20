@@ -6,14 +6,9 @@ import java.util.List;
 
 import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.plan.PlanNode;
-import com.apacy.queryoptimizer.ast.expression.ColumnFactor;
-import com.apacy.queryoptimizer.ast.expression.ExpressionNode;
-import com.apacy.queryoptimizer.ast.expression.LiteralFactor;
-import com.apacy.queryoptimizer.ast.expression.TermNode;
 import com.apacy.queryoptimizer.ast.join.JoinConditionNode;
 import com.apacy.queryoptimizer.ast.join.JoinOperand;
 import com.apacy.queryoptimizer.ast.join.TableNode;
-import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
 import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
 public class SelectParser extends AbstractParser {
@@ -39,45 +34,49 @@ public class SelectParser extends AbstractParser {
         consume(TokenType.FROM);
 
         List<String> targetTables = new ArrayList<>();
-        JoinOperand joinAst = null;
+        JoinOperand joinAst = parseTableReferenceList(targetTables);
 
-        Token firstTableToken = consume(TokenType.IDENTIFIER);
-        targetTables.add(firstTableToken.getValue());
-        TableNode leftTable = new TableNode(firstTableToken.getValue());
+        // Token firstTableToken = consume(TokenType.IDENTIFIER);
+        // targetTables.add(firstTableToken.getValue());
+        // TableNode leftTable = new TableNode(firstTableToken.getValue());
 
-        while (match(TokenType.JOIN)) {
-            Token rightTableToken = consume(TokenType.IDENTIFIER);
-            TableNode rightTable = new TableNode(rightTableToken.getValue());
-            targetTables.add(rightTableToken.getValue());
+        // while (true) {
+        //     break;
+        // }
 
-            consume(TokenType.ON);
-            String leftOp = consume(TokenType.IDENTIFIER).getValue();
-            String operator = consume(TokenType.OPERATOR).getValue();
-            Token rightOpToken = peek();
-            ExpressionNode leftExpr = new ExpressionNode(new TermNode(new ColumnFactor(leftOp), null), null);
-            ExpressionNode rightExpr;
-            if (rightOpToken.getType() == TokenType.IDENTIFIER) {
-                position++;
-                rightExpr = new ExpressionNode(new TermNode(new ColumnFactor(rightOpToken.getValue()), null), null);
-            } else if (rightOpToken.getType() == TokenType.NUMBER_LITERAL) {
-                position++;
-                rightExpr = new ExpressionNode(new TermNode(new LiteralFactor(parseNumberLiteral(rightOpToken.getValue())), null), null);
-            } else {
-                position++;
-                rightExpr = new ExpressionNode(new TermNode(new ColumnFactor(rightOpToken.getValue()), null), null);
-            }
+        // while (match(TokenType.JOIN)) {
+        //     Token rightTableToken = consume(TokenType.IDENTIFIER);
+        //     TableNode rightTable = new TableNode(rightTableToken.getValue());
+        //     targetTables.add(rightTableToken.getValue());
 
-            ComparisonConditionNode condition = new ComparisonConditionNode(leftExpr, operator, rightExpr);
-            JoinConditionNode thisJoin = new JoinConditionNode("INNER", leftTable, rightTable, condition);
+        //     consume(TokenType.ON);
+        //     String leftOp = consume(TokenType.IDENTIFIER).getValue();
+        //     String operator = consume(TokenType.OPERATOR).getValue();
+        //     Token rightOpToken = peek();
+        //     ExpressionNode leftExpr = new ExpressionNode(new TermNode(new ColumnFactor(leftOp), null), null);
+        //     ExpressionNode rightExpr;
+        //     if (rightOpToken.getType() == TokenType.IDENTIFIER) {
+        //         position++;
+        //         rightExpr = new ExpressionNode(new TermNode(new ColumnFactor(rightOpToken.getValue()), null), null);
+        //     } else if (rightOpToken.getType() == TokenType.NUMBER_LITERAL) {
+        //         position++;
+        //         rightExpr = new ExpressionNode(new TermNode(new LiteralFactor(parseNumberLiteral(rightOpToken.getValue())), null), null);
+        //     } else {
+        //         position++;
+        //         rightExpr = new ExpressionNode(new TermNode(new ColumnFactor(rightOpToken.getValue()), null), null);
+        //     }
 
-            if (joinAst == null) {
-                joinAst = thisJoin;
-            } else {
-                joinAst = new JoinConditionNode("INNER", joinAst, rightTable, condition);
-            }
+        //     ComparisonConditionNode condition = new ComparisonConditionNode(leftExpr, operator, rightExpr);
+        //     JoinConditionNode thisJoin = new JoinConditionNode("INNER", leftTable, rightTable, condition);
 
-            leftTable = (joinAst instanceof TableNode) ? (TableNode) joinAst : leftTable;
-        }
+        //     if (joinAst == null) {
+        //         joinAst = thisJoin;
+        //     } else {
+        //         joinAst = new JoinConditionNode("INNER", joinAst, rightTable, condition);
+        //     }
+
+        //     leftTable = (joinAst instanceof TableNode) ? (TableNode) joinAst : leftTable;
+        // }
 
         WhereConditionNode where = null;
         if (match(TokenType.WHERE)) {
@@ -102,7 +101,7 @@ public class SelectParser extends AbstractParser {
             Token limitToken = consume(TokenType.NUMBER_LITERAL);
             limitValue = Integer.parseInt(limitToken.getValue());
         }
-        
+
         Integer offsetValue = null;
         if (match(TokenType.OFFSET)) {
             Token offsetToken = consume(TokenType.NUMBER_LITERAL);
@@ -114,19 +113,19 @@ public class SelectParser extends AbstractParser {
         Object joinConditions = joinAst;
         Object whereClause = where;
 
-        PlanNode planRoot = generatePlanNode((JoinConditionNode)joinAst, where, targetColumns);
+        PlanNode planRoot = generatePlanNode((JoinOperand)joinAst, where, targetColumns);
 
         // Gunakan konstruktor BARU yang ada limit & offset
         return new ParsedQuery(
-                "SELECT", 
-                planRoot, 
-                targetTables, 
+                "SELECT",
+                planRoot,
+                targetTables,
                 targetColumns,
-                (List<Object>) null, 
-                joinConditions, 
+                (List<Object>) null,
+                joinConditions,
                 whereClause,
-                orderBy, 
-                isDesc, 
+                orderBy,
+                isDesc,
                 false,
                 limitValue,   // Pass limit
                 offsetValue   // Pass offset
@@ -184,7 +183,7 @@ public class SelectParser extends AbstractParser {
                 if (peek().getType() != TokenType.NUMBER_LITERAL) { position = savedPos; return false; }
                 position++;
             }
-            
+
             if (match(TokenType.OFFSET)) {
                 if (peek().getType() != TokenType.NUMBER_LITERAL) { position = savedPos; return false; }
                 position++;
@@ -197,4 +196,93 @@ public class SelectParser extends AbstractParser {
             return false;
         }
     }
+
+    protected JoinOperand parseTableReferenceList(List<String> targetTables) throws ParseException {
+        JoinOperand ast = parseTableReference(targetTables);
+
+        while(match(TokenType.COMMA)) {
+            JoinOperand rightRef = parseTableReference(targetTables);
+            ast = new JoinConditionNode("CROSS", ast, rightRef, null);
+        }
+
+        return ast;
+    }
+
+    protected JoinOperand parseTableReference(List<String> targetTables) throws ParseException {
+        JoinOperand leftRef = parseTableFactor(targetTables);
+        JoinConditionNode rightRef = parseJoinTail(targetTables);
+
+        if (rightRef != null) {
+            return new JoinConditionNode(rightRef.joinType(), leftRef, rightRef.right(), rightRef.conditions());
+        }
+
+        return leftRef;
+    }
+
+    protected JoinConditionNode parseJoinTail(List<String> targetTables) throws ParseException {
+        if (match(TokenType.CROSS)) {
+            consume(TokenType.JOIN);
+            JoinOperand rightRef = parseTableFactor(targetTables);
+            return new JoinConditionNode("CROSS", null, rightRef, null);
+        }
+
+        if (match(TokenType.INNER)) {
+            consume(TokenType.JOIN);
+            JoinOperand rightRef = parseTableFactor(targetTables);
+            consume(TokenType.ON);
+            return new JoinConditionNode("INNER", null, rightRef, parseWhereExpression());
+        }
+
+        if (match(TokenType.LEFT)) {
+            match(TokenType.OUTER);
+            consume(TokenType.JOIN);
+            JoinOperand rightRef = parseTableFactor(targetTables);
+            consume(TokenType.ON);
+            return new JoinConditionNode("LEFT", null, rightRef, parseWhereExpression());
+        }
+
+        if (match(TokenType.RIGHT)) {
+            match(TokenType.OUTER);
+            consume(TokenType.JOIN);
+            JoinOperand rightRef = parseTableFactor(targetTables);
+            consume(TokenType.ON);
+            return new JoinConditionNode("RIGHT", null, rightRef, parseWhereExpression());
+        }
+
+        if (match(TokenType.FULL)) {
+            match(TokenType.OUTER);
+            consume(TokenType.JOIN);
+            JoinOperand rightRef = parseTableFactor(targetTables);
+            consume(TokenType.ON);
+            return new JoinConditionNode("FULL", null, rightRef, parseWhereExpression());
+        }
+
+        if (match(TokenType.NATURAL)) {
+            consume(TokenType.JOIN);
+            JoinOperand rightRef = parseTableFactor(targetTables);
+            return new JoinConditionNode("NATURAL", null, rightRef, null);
+        }
+
+        if (match(TokenType.JOIN)) {
+            JoinOperand rightRef = parseTableFactor(targetTables);
+            consume(TokenType.ON);
+            return new JoinConditionNode("INNER", null, rightRef, parseWhereExpression());
+        }
+
+        return null;
+
+    }
+
+    protected JoinOperand parseTableFactor(List<String> targetTables) throws ParseException {
+        if(match(TokenType.LPARENTHESIS)) {
+            JoinOperand table = parseTableReference(targetTables);
+            consume(TokenType.RPARENTHESIS);
+            return table;
+        }
+
+        Token tableToken = consume(TokenType.IDENTIFIER);
+        targetTables.add(tableToken.getValue());
+        return new TableNode(tableToken.getValue());
+    }
+
 }
