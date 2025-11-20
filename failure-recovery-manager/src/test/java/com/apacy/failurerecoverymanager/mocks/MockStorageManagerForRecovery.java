@@ -7,10 +7,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Mock StorageManager for testing LogReplayer.
- * Tracks writeBlock and deleteBlock calls to verify undo/redo operations.
- */
 public class MockStorageManagerForRecovery extends StorageManager {
 
     private final List<DataWrite> writeOperations = new ArrayList<>();
@@ -35,7 +31,6 @@ public class MockStorageManagerForRecovery extends StorageManager {
         return 1;
     }
 
-    // Inspection methods for tests
     public List<DataWrite> getWriteOperations() {
         return new ArrayList<>(writeOperations);
     }
