@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.apacy.common.dto.ParsedQuery;
+import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.queryoptimizer.ast.expression.ColumnFactor;
 import com.apacy.queryoptimizer.ast.expression.ExpressionNode;
 import com.apacy.queryoptimizer.ast.expression.LiteralFactor;
@@ -88,19 +89,48 @@ public class SelectParser extends AbstractParser {
         if (match(TokenType.ORDER)) {
             consume(TokenType.BY);
             orderBy = consume(TokenType.IDENTIFIER).getValue();
+            if (match(TokenType.DESC)) {
+                isDesc = true;
+            } else if (match(TokenType.ASC)) {
+                isDesc = false;
+            }
         }
 
+        // --- UPDATE LOGIC LIMIT & OFFSET ---
+        Integer limitValue = null;
         if (match(TokenType.LIMIT)) {
-            consume(TokenType.NUMBER_LITERAL);
+            Token limitToken = consume(TokenType.NUMBER_LITERAL);
+            limitValue = Integer.parseInt(limitToken.getValue());
+        }
+        
+        Integer offsetValue = null;
+        if (match(TokenType.OFFSET)) {
+            Token offsetToken = consume(TokenType.NUMBER_LITERAL);
+            offsetValue = Integer.parseInt(offsetToken.getValue());
         }
 
         if (peek().getType() == TokenType.SEMICOLON) consume(TokenType.SEMICOLON);
 
         Object joinConditions = joinAst;
         Object whereClause = where;
-    return new ParsedQuery("SELECT", null, targetTables, targetColumns,
-                (List<Object>) null, joinConditions, whereClause,
-                orderBy, isDesc, false);
+
+        PlanNode planRoot = generatePlanNode((JoinConditionNode)joinAst, where, targetColumns);
+
+        // Gunakan konstruktor BARU yang ada limit & offset
+        return new ParsedQuery(
+                "SELECT", 
+                planRoot, 
+                targetTables, 
+                targetColumns,
+                (List<Object>) null, 
+                joinConditions, 
+                whereClause,
+                orderBy, 
+                isDesc, 
+                false,
+                limitValue,   // Pass limit
+                offsetValue   // Pass offset
+        );
     };
 
     @Override
@@ -144,9 +174,18 @@ public class SelectParser extends AbstractParser {
                 if (!match(TokenType.BY)) { position = savedPos; return false; }
                 if (peek().getType() != TokenType.IDENTIFIER) { position = savedPos; return false; }
                 position++;
+                if (match(TokenType.ASC) || match(TokenType.DESC)) {
+                    // consume optional ASC/DESC
+                }
             }
 
+            // --- UPDATE VALIDASI LIMIT & OFFSET ---
             if (match(TokenType.LIMIT)) {
+                if (peek().getType() != TokenType.NUMBER_LITERAL) { position = savedPos; return false; }
+                position++;
+            }
+            
+            if (match(TokenType.OFFSET)) {
                 if (peek().getType() != TokenType.NUMBER_LITERAL) { position = savedPos; return false; }
                 position++;
             }

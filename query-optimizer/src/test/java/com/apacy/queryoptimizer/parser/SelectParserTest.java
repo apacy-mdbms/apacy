@@ -1,13 +1,11 @@
 package com.apacy.queryoptimizer.parser;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-
 import java.text.ParseException;
 import java.util.List;
 
-import org.junit.jupiter.api.Disabled;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 
 import com.apacy.common.dto.ParsedQuery;
@@ -22,15 +20,14 @@ import com.apacy.queryoptimizer.ast.where.BinaryConditionNode;
 import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
 import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
-@Disabled("Disabled karena InsertParser belum diperbarui")
 class SelectParserTest {
 
     // Helper untuk membuat AST WHERE yang kompleks: col1 = 10 AND (col2 > 5 OR col3 < 1)
     private WhereConditionNode createExpectedWhereNode() {
-        ComparisonConditionNode rightBinLeft = new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("col2"), null), null), ">", new ExpressionNode(new TermNode(new LiteralFactor(5), null), null));
-        ComparisonConditionNode rightBinRight = new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("col3"), null), null), "<", new ExpressionNode(new TermNode(new LiteralFactor(1), null), null));
+        ComparisonConditionNode rightBinLeft = new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("col2"), List.of()), List.of()), ">", new ExpressionNode(new TermNode(new LiteralFactor(5), List.of()), List.of()));
+        ComparisonConditionNode rightBinRight = new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("col3"), List.of()), List.of()), "<", new ExpressionNode(new TermNode(new LiteralFactor(1), List.of()), List.of()));
         BinaryConditionNode rightBinary = new BinaryConditionNode(rightBinLeft, "OR", rightBinRight);
-        ComparisonConditionNode left = new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("col1"), null), null), "=", new ExpressionNode(new TermNode(new LiteralFactor(10), null), null));
+        ComparisonConditionNode left = new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("col1"), List.of()), List.of()), "=", new ExpressionNode(new TermNode(new LiteralFactor(10), List.of()), List.of()));
         return new BinaryConditionNode(left, "AND", rightBinary);
     }
 
@@ -150,5 +147,49 @@ class SelectParserTest {
 
         // Status default
         assertEquals(false, actual.isOptimized(), "isOptimized should be false by default.");
+    }
+
+    @Test
+    void parse_SelectWithLimitAndOffset_ShouldMatch() throws ParseException {
+        // Query: SELECT * FROM users LIMIT 10 OFFSET 5;
+        List<Token> tokens = List.of(
+            new Token(TokenType.SELECT, "SELECT"),
+            new Token(TokenType.STAR, "*"),
+            new Token(TokenType.FROM, "FROM"),
+            new Token(TokenType.IDENTIFIER, "users"),
+            new Token(TokenType.LIMIT, "LIMIT"),
+            new Token(TokenType.NUMBER_LITERAL, "10"),
+            new Token(TokenType.OFFSET, "OFFSET"),
+            new Token(TokenType.NUMBER_LITERAL, "5"),
+            new Token(TokenType.SEMICOLON, ";"),
+            new Token(TokenType.EOF, null)
+        );
+
+        AbstractParser parser = new SelectParser(tokens);
+        ParsedQuery actual = parser.parse();
+
+        // Verifikasi Limit & Offset
+        assertEquals(10, actual.limit(), "Limit harus 10");
+        assertEquals(5, actual.offset(), "Offset harus 5");
+    }
+    
+    @Test
+    void validate_SelectWithLimitOffset_ShouldReturnTrue() {
+        // Query: SELECT * FROM users LIMIT 10 OFFSET 5;
+        List<Token> tokens = List.of(
+            new Token(TokenType.SELECT, "SELECT"),
+            new Token(TokenType.STAR, "*"),
+            new Token(TokenType.FROM, "FROM"),
+            new Token(TokenType.IDENTIFIER, "users"),
+            new Token(TokenType.LIMIT, "LIMIT"),
+            new Token(TokenType.NUMBER_LITERAL, "10"),
+            new Token(TokenType.OFFSET, "OFFSET"),
+            new Token(TokenType.NUMBER_LITERAL, "5"),
+            new Token(TokenType.SEMICOLON, ";"),
+            new Token(TokenType.EOF, null)
+        );
+
+        AbstractParser parser = new SelectParser(tokens);
+        assertTrue(parser.validate(), "Validasi SELECT dengan LIMIT/OFFSET harus true");
     }
 }

@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.apacy.common.dto.ParsedQuery;
+import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
 /**
@@ -38,7 +39,8 @@ public class DeleteParser extends AbstractParser {
             consume(TokenType.SEMICOLON);
         }
 
-        return new ParsedQuery("DELETE", null, targetTables, null,
+        PlanNode planRoot = generatePlanNode(null, where, null);
+        return new ParsedQuery("DELETE", planRoot, targetTables, null,
                                 null, null, where,
                                 null, false, false);
     };
