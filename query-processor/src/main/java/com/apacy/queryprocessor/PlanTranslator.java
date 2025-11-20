@@ -1,8 +1,20 @@
 package com.apacy.queryprocessor;
 
-import com.apacy.common.dto.*;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
+import com.apacy.common.dto.Column;
+import com.apacy.common.dto.DataDeletion;
+import com.apacy.common.dto.DataRetrieval;
+import com.apacy.common.dto.DataWrite;
+import com.apacy.common.dto.IndexSchema;
+import com.apacy.common.dto.ParsedQuery;
+import com.apacy.common.dto.Row;
+import com.apacy.common.dto.Schema;
+import com.apacy.common.dto.ddl.ColumnDefinition;
+import com.apacy.common.dto.ddl.ParsedQueryCreate;
+import com.apacy.common.enums.IndexType;
 
 /**
  * Translates ParsedQuery objects into specific operation DTOs.
@@ -126,5 +138,37 @@ public class PlanTranslator {
         }
      
         return new DataDeletion(tableName, filter);
+    }
+
+    /**
+     * Translate DTO Parser (ParsedQueryCreate) to DTO Storage (Schema).
+     */
+    public Schema translateToSchema(ParsedQueryCreate query) {
+        String tableName = query.getTableName();
+        String dataFileName = tableName + ".dat";
+
+        List<Column> smColumns = new ArrayList<>();
+        List<IndexSchema> smIndexes = new ArrayList<>();
+
+        for (ColumnDefinition colDef : query.getColumns()) {
+            Column col = new Column(colDef.getName(), colDef.getType(), colDef.getLength());
+            smColumns.add(col);
+
+            if (colDef.isPrimaryKey()) {
+                String indexName = "pk_" + tableName + "_" + colDef.getName();
+                String indexFile = tableName + "_" + colDef.getName() + ".idx";
+                
+                IndexSchema pkIndex = new IndexSchema(indexName, colDef.getName(), IndexType.Hash, indexFile);
+                smIndexes.add(pkIndex);
+            }
+        }
+
+        return new Schema(
+            tableName, 
+            dataFileName, 
+            smColumns, 
+            smIndexes, 
+            query.getForeignKeys() 
+        );
     }
 }
