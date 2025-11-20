@@ -34,6 +34,7 @@ public class HeuristicOptimizer {
      */
     public ParsedQuery optimize(ParsedQuery query, Map<String, Statistic> allStats) {
         PlanNode curr = query.planRoot();
+        if (curr == null) return query;
         boolean changed;
 
         do {
