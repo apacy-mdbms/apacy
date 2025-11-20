@@ -2,22 +2,14 @@ package com.apacy.queryprocessor;
 
 import com.apacy.common.DBMSComponent;
 import com.apacy.common.dto.*;
+import com.apacy.common.dto.plan.*;
 import com.apacy.common.interfaces.*;
-import com.apacy.common.enums.Action;
-
 import com.apacy.queryprocessor.execution.JoinStrategy;
 import com.apacy.queryprocessor.execution.SortStrategy;
 
-import com.apacy.queryprocessor.evaluator.ConditionEvaluator;
-
-import com.apacy.queryoptimizer.ast.join.*;
-import com.apacy.queryoptimizer.ast.where.*;
-import com.apacy.queryoptimizer.ast.expression.*;
-
 import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.stream.Collectors;
+import java.util.Collections;
+import java.util.function.Function;
 
 /**
  * Main Query Processor that coordinates all database operations.
@@ -63,225 +55,110 @@ public class QueryProcessor extends DBMSComponent {
         System.out.println("Query Processor has been shutdown.");
     }
     
+    /**
+     * Entry point eksekusi query.
+     * Menangani Transaction Lifecycle, Parsing, Optimization, dan Dispatching.
+     */
     public ExecutionResult executeQuery(String sqlQuery) {
         int txId = ccm.beginTransaction();
         ParsedQuery parsedQuery = null;
         
         try {
+            // 1. Parsing & Optimization
             ParsedQuery initialQuery = qo.parseQuery(sqlQuery);
-            
             if (initialQuery == null) {
                 throw new IllegalArgumentException("Query tidak valid atau tidak dikenali.");
             }
 
             parsedQuery = qo.optimizeQuery(initialQuery, sm.getAllStats());
 
-            switch (parsedQuery.queryType()) {
-                case "SELECT":
-                    return executeSelect(parsedQuery, txId);
-                    
-                case "INSERT":
-                case "UPDATE":
-                    return executeWrite(parsedQuery, txId);
-                    
-                case "DELETE":
-                    return executeDelete(parsedQuery, txId);
+            Action action = parsedQuery.queryType().equalsIgnoreCase("SELECT") 
+                ? Action.READ 
+                : Action.WRITE;
 
-                default:
-                    throw new UnsupportedOperationException("Query type '" + parsedQuery.queryType() + "' not supported yet.");             
+            // 2. Lock Table
+            List<String> targetTables = parsedQuery.targetTables();
+            if (targetTables != null && !targetTables.isEmpty()) {
+                List<String> objectIds = targetTables.stream()
+                    .map(tableName -> "TABLE::" + tableName)
+                    .toList();
+
+                Response res = ccm.validateObjects(objectIds, txId, action);
+                
+                if (!res.isAllowed()) { 
+                    throw new Exception("Lock denied: " + res.reason()); 
+                }
             }
 
+            // 3. Execute Plan Tree (Recursive)
+            List<Row> resultRows = executeNode(parsedQuery.planRoot(), txId);
+
+            // 4. Commit & Wrap Result
+            ccm.endTransaction(txId, true);
+            
+            return createExecutionResult(parsedQuery, resultRows, txId);
+
         } catch (Exception e) {
+            // Error Handling: Rollback & Recover
             ccm.endTransaction(txId, false);
             frm.recover(new RecoveryCriteria("UNDO_TRANSACTION", String.valueOf(txId), null));
             
             String opType = (parsedQuery != null) ? parsedQuery.queryType() : "UNKNOWN";
-
-            return new ExecutionResult(false, e.getMessage(), txId, opType, 0, null);
+            return new ExecutionResult(false, e.getMessage(), txId, opType, 0, Collections.emptyList());
         }
     }
 
-    // --- Helper Methods for Join Execution ---
+    /**
+     * The Main Dispatcher (Recursive Engine).
+     * Menerima PlanNode dan mendelegasikan eksekusi ke PlanTranslator.
+     */
+    private List<Row> executeNode(PlanNode node, int txId) {
+        // Helper function untuk recursion (agar PlanTranslator bisa panggil anak node)
+        Function<PlanNode, List<Row>> childExecutor = (child) -> executeNode(child, txId);
 
-    private List<Row> evaluateJoinTree(JoinOperand operand) {
-        if (operand instanceof TableNode tableNode) {
-            String tableName = tableNode.tableName();
-            DataRetrieval req = new DataRetrieval(tableName, List.of("*"), null, false);
-            return sm.readBlock(req);
-        }
-        // Recursive Case: Join Node
-        else if (operand instanceof JoinConditionNode joinNode) {
-            List<Row> leftRows = evaluateJoinTree(joinNode.left());
-            List<Row> rightRows = evaluateJoinTree(joinNode.right());
-
-            String joinCol = extractJoinColumn(joinNode.conditions());
-
-            return JoinStrategy.nestedLoopJoin(leftRows, rightRows, joinCol);
-        } 
-        
-        throw new IllegalArgumentException("Unknown JoinOperand type: " + operand.getClass().getSimpleName());
-    }
-
-    private String extractJoinColumn(WhereConditionNode condition) {
-        if (condition instanceof ComparisonConditionNode comp) {
-            if (comp.leftOperand().term().factor() instanceof ColumnFactor col) {
-                String fullName = col.columnName();
-                // Jika format "table.column", ambil "column"-nya saja
-                return fullName.contains(".") ? fullName.split("\\.")[1] : fullName;
-            }
-        }
-        // Fallback
-        return "id";
-    }
-
-    private ExecutionResult executeSelect(ParsedQuery query, int txId) throws Exception {
-        List<String> targetTables = query.targetTables();
-        
-        if (targetTables != null && !targetTables.isEmpty()) {
-            List<String> objectIds = targetTables.stream()
-                .map(tableName -> "TABLE::" + tableName)
-                .toList();
-
-            Response res = ccm.validateObjects(objectIds, txId, Action.READ);
+        return switch (node) {
+            // Leaf Node (Access Data)
+            case ScanNode n -> planTranslator.executeScan(n, txId, sm, ccm);
             
-            if (!res.isAllowed()) { 
-                throw new Exception("Lock denied: " + res.reason()); 
-            }
-        }
+            // Intermediate Nodes (Process Data)
+            case FilterNode n -> planTranslator.executeFilter(n, childExecutor);
+            case ProjectNode n -> planTranslator.executeProject(n, childExecutor);
+            case JoinNode n -> planTranslator.executeJoin(n, childExecutor, joinStrategy, txId, ccm);
+            case SortNode n -> planTranslator.executeSort(n, childExecutor, sortStrategy);
+            case LimitNode n -> planTranslator.executeLimit(n, childExecutor);
+            
+            // Write Operations
+            case ModifyNode n -> planTranslator.executeModify(n, txId, childExecutor, sm, ccm, frm);
+            
+            // Utilities (DDL/TCL)
+            case DDLNode n -> planTranslator.executeDDL(n, sm);
+            case TCLNode n -> planTranslator.executeTCL(n, ccm, txId);
+            
+            // Fallback
+            case null -> Collections.emptyList();
+            default -> throw new UnsupportedOperationException("PlanNode type not supported: " + node.getClass().getSimpleName());
+        };
+    }
 
-        List<Row> rows;
-
-        // 2. Execution Strategy (Join vs Single Table)
-        if (query.joinConditions() != null && query.joinConditions() instanceof JoinOperand) {
-            rows = evaluateJoinTree((JoinOperand) query.joinConditions());
+    /**
+     * Helper untuk membungkus hasil List<Row> menjadi ExecutionResult standar.
+     */
+    private ExecutionResult createExecutionResult(ParsedQuery query, List<Row> rows, int txId) {
+        String type = query.queryType();
+        
+        if ("SELECT".equalsIgnoreCase(type)) {
+            return new ExecutionResult(true, "SELECT executed successfully", txId, type, rows.size(), rows);
         } else {
-            DataRetrieval dataRetrieval = planTranslator.translateToRetrieval(query, String.valueOf(txId));
-            rows = sm.readBlock(dataRetrieval);
-        }
-
-        // 3. Filtering (WHERE Clause)
-        if (query.whereClause() != null) {
-            rows = rows.stream()
-                .filter(row -> ConditionEvaluator.evaluate(row, query.whereClause()))
-                .collect(Collectors.toList());
-        }
-
-        // 4. Projection (SELECT col1, col2...)
-        // Kalau bukan "SELECT *", ambil kolom yang diminta doang
-        if (query.targetColumns() != null && !query.targetColumns().contains("*")) {
-            final List<String> cols = query.targetColumns();
-            rows = rows.stream().map(row -> {
-                Map<String, Object> projectedData = new HashMap<>();
-                for (String colName : cols) {
-                    Object val = getColumnValue(row, colName);
-                    projectedData.put(colName, val);
+            // Untuk INSERT/UPDATE/DELETE, PlanTranslator disepakati mengembalikan
+            // 1 Row dummy berisi {"affected_rows": N}
+            int affected = 0;
+            if (rows != null && !rows.isEmpty() && rows.get(0).data().containsKey("affected_rows")) {
+                Object val = rows.get(0).data().get("affected_rows");
+                if (val instanceof Number) {
+                    affected = ((Number) val).intValue();
                 }
-                return new Row(projectedData);
-            }).collect(Collectors.toList());
-        }
-        
-        // 5. Sorting (ORDER BY)
-        if (query.orderByColumn() != null) {
-            boolean ascending = !query.isDescending();
-            rows = SortStrategy.sort(rows, query.orderByColumn(), ascending);
-        }
-
-        // LIMIT & OFFSET di sini
-        
-        // 6. Commit & Return
-        ccm.endTransaction(txId, true);
-        
-        return new ExecutionResult(
-            true, 
-            "SELECT executed successfully", 
-            txId, 
-            "SELECT", 
-            rows.size(), 
-            rows
-        );
-    }
-
-    private Object getColumnValue(Row row, String requestedCol) {
-        // 1. Cek exact match (misal: query minta "id", di row ada "id")
-        if (row.data().containsKey(requestedCol)) {
-            return row.data().get(requestedCol);
-        }
-        
-        // 2. Cek suffix match (misal: query minta "id", di row ada "users.id")
-        for (String key : row.data().keySet()) {
-            if (key.endsWith("." + requestedCol)) {
-                return row.data().get(key);
             }
+            return new ExecutionResult(true, type + " executed successfully", txId, type, affected, null);
         }
-        
-        // 3. Cek jika query minta "users.id" tapi di row cuma ada "id"
-        if (requestedCol.contains(".")) {
-            String simpleName = requestedCol.substring(requestedCol.lastIndexOf(".") + 1);
-            if (row.data().containsKey(simpleName)) {
-                return row.data().get(simpleName);
-            }
-        }
-        
-        return null;
-    }
-
-    private ExecutionResult executeWrite(ParsedQuery query, int txId) throws Exception {
-        boolean isUpdate = "UPDATE".equalsIgnoreCase(query.queryType());
-        DataWrite dataWrite = planTranslator.translateToWrite(query, String.valueOf(txId), isUpdate);
-        
-        String objectId = "TABLE::" + dataWrite.tableName();
-
-        // 1. Concurrency Control (Locking - WRITE)
-        Response res = ccm.validateObject(objectId, txId, Action.WRITE);
-        if (!res.isAllowed()) { 
-            throw new Exception("Lock denied: " + res.reason()); 
-        }
-
-        // 2. Storage Execution
-        int affectedRows = sm.writeBlock(dataWrite);
-
-        // 3. Commit & Log
-        ccm.endTransaction(txId, true);
-
-        ExecutionResult result = new ExecutionResult(
-            true, 
-            query.queryType() + " executed successfully", 
-            txId, 
-            query.queryType(), 
-            affectedRows, 
-            null
-        );
-
-        frm.writeLog(result);
-        return result;
-    }
-
-    private ExecutionResult executeDelete(ParsedQuery query, int txId) throws Exception {
-        DataDeletion dataDeletion = planTranslator.translateToDeletion(query, String.valueOf(txId));
-        String objectId = "TABLE::" + dataDeletion.tableName();
-
-        // 1. Concurrency Control (Locking - WRITE)
-        Response res = ccm.validateObject(objectId, txId, Action.WRITE);
-        if (!res.isAllowed()) { 
-            throw new Exception("Lock denied: " + res.reason()); 
-        }
-
-        // 2. Storage Execution
-        int affectedRows = sm.deleteBlock(dataDeletion);
-
-        // 3. Commit & Log
-        ccm.endTransaction(txId, true);
-
-        ExecutionResult result = new ExecutionResult(
-            true, 
-            "DELETE executed successfully", 
-            txId, 
-            "DELETE", 
-            affectedRows, 
-            null
-        );
-
-        frm.writeLog(result);
-        return result;
     }
 }
