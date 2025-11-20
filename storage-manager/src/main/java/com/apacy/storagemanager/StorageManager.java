@@ -45,13 +45,23 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
 
     @Override
     public void initialize() {
+        System.out.println("DEBUG: StorageManager.initialize() started");
         try {
             this.catalogManager.loadCatalog();
+            System.out.println("DEBUG: Catalog loaded successfully");
 
             for (Schema schema : catalogManager.getAllSchemas()) {
+                System.out.println("Processing schema: " + schema.tableName());
                 for (IndexSchema idx : schema.indexes()) {
-                    IIndex<?, ?> index = createIndexInstance(schema, idx);
-                    indexManager.register(schema.tableName(), idx.columnName(), idx.indexType().toString(), index);
+                    System.out.println("Creating index: " + idx.indexName() + " for column: " + idx.columnName());
+                    try {
+                        IIndex<?, ?> index = createIndexInstance(schema, idx);
+                        indexManager.register(schema.tableName(), idx.columnName(), idx.indexType().toString(), index);
+                        System.out.println("Successfully created index: " + idx.indexName());
+                    } catch (Exception indexError) {
+                        System.err.println("Error creating index " + idx.indexName() + ": " + indexError.getMessage());
+                        indexError.printStackTrace();
+                    }
                 }
             }
             this.indexManager.loadAll(this.catalogManager);
