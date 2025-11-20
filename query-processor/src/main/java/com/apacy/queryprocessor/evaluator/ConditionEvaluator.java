@@ -1,10 +1,15 @@
 package com.apacy.queryprocessor.evaluator;
 
 import com.apacy.common.dto.Row;
-import com.apacy.queryoptimizer.ast.expression.*;
-import com.apacy.queryoptimizer.ast.where.*;
-
-import java.util.Map;
+import com.apacy.queryoptimizer.ast.expression.ColumnFactor;
+import com.apacy.queryoptimizer.ast.expression.ExpressionNode;
+import com.apacy.queryoptimizer.ast.expression.FactorNode;
+import com.apacy.queryoptimizer.ast.expression.LiteralFactor;
+import com.apacy.queryoptimizer.ast.expression.TermNode;
+import com.apacy.queryoptimizer.ast.where.BinaryConditionNode;
+import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
+import com.apacy.queryoptimizer.ast.where.LiteralConditionNode;
+import com.apacy.queryoptimizer.ast.where.UnaryConditionNode;
 
 public class ConditionEvaluator {
 
@@ -19,7 +24,7 @@ public class ConditionEvaluator {
                 case "AND": return left && right;
                 case "OR": return left || right;
                 default: return false;
-            };
+            }
         } 
         else if (conditionNode instanceof UnaryConditionNode unary) {
             boolean operand = evaluate(row, unary.operand());
@@ -115,6 +120,6 @@ public class ConditionEvaluator {
             case "<=": return cmp <= 0;
             case "<>", "!=": return cmp != 0;
             default: return false;
-        };
+        }
     }
 }
