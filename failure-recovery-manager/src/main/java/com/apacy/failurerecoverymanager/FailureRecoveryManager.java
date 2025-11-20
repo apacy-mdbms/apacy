@@ -4,7 +4,7 @@ import com.apacy.common.DBMSComponent;
 import com.apacy.common.dto.ExecutionResult;
 import com.apacy.common.dto.RecoveryCriteria;
 import com.apacy.common.interfaces.IFailureRecoveryManager;
-import com.apacy.storagemanager.StorageManager;
+import com.apacy.common.interfaces.IStorageManager;
 
 public class FailureRecoveryManager extends DBMSComponent implements IFailureRecoveryManager {
 
@@ -12,7 +12,7 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
     private final LogWriter logWriter;
     private final LogReplayer logReplayer;
     private final CheckpointManager checkpointManager;
-    protected final StorageManager storageManager;
+    protected final IStorageManager storageManager;
 
     public FailureRecoveryManager() {
         super("Failure Recovery Manager");
@@ -22,7 +22,7 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
         this.checkpointManager = new CheckpointManager();
     }
 
-    public FailureRecoveryManager(StorageManager storageManager) {
+    public FailureRecoveryManager(IStorageManager storageManager) {
         super("Failure Recovery Manager");
         this.storageManager = storageManager;
         // Inisialisasi helper-nya
