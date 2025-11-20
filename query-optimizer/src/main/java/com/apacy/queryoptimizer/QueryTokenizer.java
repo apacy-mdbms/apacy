@@ -43,6 +43,9 @@ public class QueryTokenizer {
         }
 
         tokens.add(new Token(TokenType.EOF, null));
+        for (Token token : tokens) {
+            System.out.println(token.getType());
+        }
         return tokens;
     }
 
