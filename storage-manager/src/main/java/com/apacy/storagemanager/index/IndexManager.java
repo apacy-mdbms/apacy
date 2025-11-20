@@ -1,11 +1,6 @@
 package com.apacy.storagemanager.index;
 
-import com.apacy.storagemanager.BlockManager;
-import com.apacy.storagemanager.Serializer;
-import com.apacy.common.enums.DataType;
-import com.apacy.common.dto.Column;
-import com.apacy.common.dto.Schema;
-
+import com.apacy.storagemanager.CatalogManager;
 import java.util.Map;
 import java.util.HashMap;
 
@@ -20,35 +15,33 @@ public class IndexManager {
     }
 
     public IIndex<?, ?> get(String table, String column, String type) {
-        Map<String, Map<String, IIndex<?, ?>>> colMap = indexes.get(table);
+        var colMap = indexes.get(table);
         if (colMap == null) return null;
-
-        Map<String, IIndex<?, ?>> typeMap = colMap.get(column);
+        var typeMap = colMap.get(column);
         if (typeMap == null) return null;
-
         return typeMap.get(type);
     }
 
-    public void loadAll() {
+    public void loadAll(CatalogManager catalogManager) {
         for (var tableEntry : indexes.values())
             for (var colEntry : tableEntry.values())
                 for (var idx : colEntry.values())
-                    idx.loadFromFile();
+                    idx.loadFromFile(catalogManager);
     }
 
-    public void flushAll() {
+    public void flushAll(CatalogManager catalogManager) {
         for (var tableEntry : indexes.values())
             for (var colEntry : tableEntry.values())
                 for (var idx : colEntry.values())
-                    idx.writeToFile();
+                    idx.writeToFile(catalogManager);
     }
 
     public void drop(String table, String column, String type) {
-        IIndex<?, ?> index = get(table, column, type);
+        var index = get(table, column, type);
         if (index != null) {
             index.remove();
             indexes.get(table).get(column).remove(type);
         }
     }
-
 }
+

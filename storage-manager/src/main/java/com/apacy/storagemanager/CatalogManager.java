@@ -9,6 +9,7 @@ import java.util.Map;
 
 import com.apacy.common.dto.Column;
 import com.apacy.common.dto.IndexSchema;
+import com.apacy.common.dto.ForeignKeySchema;
 import com.apacy.common.dto.Schema;
 import com.apacy.common.enums.*;
 
@@ -77,9 +78,28 @@ public class CatalogManager {
                     String idxFile = dis.readUTF();
                     indexes.add(new IndexSchema(idxName, idxColName, idxType, idxFile));
                 }
+
+                int fkCount = 0;
+                List<ForeignKeySchema> foreignKeys = new ArrayList<>();
+                
+                // Baca Foreign Key
+                try {
+                    fkCount = dis.readInt();
+                    for (int l = 0; l < fkCount; l++) {
+                        String constraintName = dis.readUTF();
+                        String colName = dis.readUTF();
+                        String refTable = dis.readUTF();
+                        String refCol = dis.readUTF();
+                        boolean isCascading = dis.readBoolean();
+                        foreignKeys.add(new ForeignKeySchema(constraintName, colName, refTable, refCol, isCascading));
+                    }
+                } catch (EOFException e) {
+                    // File versi lama mungkin habis di sini, abaikan (FK list kosong)
+                    System.out.println("Warning: End of file reached while reading Foreign Keys for table " + tableName);
+                }
                 
                 // Buat record Schema "all-in-one"
-                Schema schema = new Schema(tableName, dataFile, columns, indexes);
+                Schema schema = new Schema(tableName, dataFile, columns, indexes, foreignKeys);
                 
                 // PERBAIKAN: Simpan ke cache tunggal
                 this.schemaCache.put(tableName, schema);
@@ -125,6 +145,19 @@ public class CatalogManager {
                     dos.writeInt(idx.indexType().getValue());
                     dos.writeUTF(idx.indexFile());
                 }
+
+                // Tulis Foreign Key
+                List<ForeignKeySchema> fks = schema.getForeignKeys(); 
+                if (fks == null) fks = new ArrayList<>();
+
+                dos.writeInt(fks.size());
+                for (ForeignKeySchema fk : fks) {
+                    dos.writeUTF(fk.constraintName());
+                    dos.writeUTF(fk.columnName());
+                    dos.writeUTF(fk.referenceTable());
+                    dos.writeUTF(fk.referenceColumn());
+                    dos.writeBoolean(fk.isCascading());
+                }
             }
         }
     }
@@ -161,6 +194,18 @@ public class CatalogManager {
         
         // Panggil writeCatalog() saat cache masih kosong (tableCount=0)
         writeCatalog();
+    }
+
+    /**
+     * Update schema in cache
+     * @param updatedSchema
+     * @throws IOException
+     */
+    public void updateSchema(Schema updatedSchema) throws IOException {
+        if (!schemaCache.containsKey(updatedSchema.tableName())) {
+            throw new IOException("Table: " + updatedSchema.tableName() + " not found");
+        }
+        schemaCache.put(updatedSchema.tableName(), updatedSchema);
     }
 
     /**

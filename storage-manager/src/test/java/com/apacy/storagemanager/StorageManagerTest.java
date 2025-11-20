@@ -14,7 +14,8 @@ import java.util.UUID;
 
 /**
  * Unit test komprehensif untuk StorageManager.
- * Menguji integrasi CatalogManager, BlockManager, Serializer, dan StatsCollector.
+ * Menguji integrasi CatalogManager, BlockManager, Serializer, dan
+ * StatsCollector.
  */
 class StorageManagerTest {
 
@@ -39,29 +40,27 @@ class StorageManagerTest {
 
         // 2. Definisikan dan BUAT skema "students"
         studentsSchema = new Schema(
-            "students",
-            "students.dat", // Nama file data
-            List.of(
-                new Column("id", DataType.INTEGER),
-                new Column("name", DataType.VARCHAR, 50),
-                new Column("gpa", DataType.FLOAT)
-            ),
-            List.of(
-                // Tambahkan info indeks untuk pengujian statistik
-                new IndexSchema("idx_id", "id", IndexType.Hash, "students_id.idx")
-            )
-        );
+                "students",
+                "students.dat", // Nama file data
+                List.of(
+                        new Column("id", DataType.INTEGER),
+                        new Column("name", DataType.VARCHAR, 50),
+                        new Column("gpa", DataType.FLOAT)),
+                List.of(
+                        // Tambahkan info indeks untuk pengujian statistik
+                        new IndexSchema("idx_id", "id", IndexType.Hash, "students_id.idx"),
+                        new IndexSchema("idx_gpa", "gpa", IndexType.BPlusTree, "students_gpa.idx"),
+                        new IndexSchema("idx_name", "name", IndexType.BPlusTree, "students_name.idx")));
         storageManager.createTable(studentsSchema);
 
         // 3. Definisikan dan BUAT skema "courses" (untuk tes multi-tabel)
         coursesSchema = new Schema(
-            "courses",
-            "courses.dat",
-            List.of(
-                new Column("course_id", DataType.VARCHAR, 10),
-                new Column("credits", DataType.INTEGER)
-            ),
-            List.of() // Tidak ada indeks
+                "courses",
+                "courses.dat",
+                List.of(
+                        new Column("course_id", DataType.VARCHAR, 10),
+                        new Column("credits", DataType.INTEGER)),
+                List.of() // Tidak ada indeks
         );
         storageManager.createTable(coursesSchema);
     }
@@ -95,13 +94,12 @@ class StorageManagerTest {
     @DisplayName("Test: Tulis dan Baca Satu Baris (Integrasi CRUD)")
     void testWriteAndReadSingleRow() {
         System.out.println("--- testWriteAndReadSingleRow ---");
-        
+
         // 1. Buat Row
         Map<String, Object> data = Map.of(
-            "id", 101,
-            "name", "Budi",
-            "gpa", 3.5f
-        );
+                "id", 101,
+                "name", "Budi",
+                "gpa", 3.5f);
         Row newRow = new Row(data);
         DataWrite writeReq = new DataWrite("students", newRow, null);
 
@@ -116,7 +114,7 @@ class StorageManagerTest {
         // 4. Verifikasi
         assertNotNull(results, "Hasil baca tidak boleh null");
         assertEquals(1, results.size(), "Harus ada 1 baris di tabel");
-        
+
         Row resultRow = results.get(0);
         assertEquals(101, resultRow.data().get("id"));
         assertEquals("Budi", resultRow.data().get("name"));
@@ -124,12 +122,156 @@ class StorageManagerTest {
     }
 
     @Test
+    @DisplayName("Test: Hash Index Lookup (Equality Search on Indexed Column)")
+    void testHashIndexLookup() {
+        System.out.println("--- testHashIndexLookup ---");
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 10, "name", "Alice", "gpa", 3.2f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 20, "name", "Budi", "gpa", 2.9f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 30, "name", "Charlie", "gpa", 3.8f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 20, "name", "DuplicateBudi", "gpa", 3.1f)), null));
+
+        DataRetrieval indexLookup = new DataRetrieval(
+                "students",
+                List.of("*"),
+                "id=20",
+                true);
+
+        List<Row> indexResults = storageManager.readBlock(indexLookup);
+        indexResults.forEach(r -> System.out.println("  -> " + r.data()));
+
+        assertEquals(2, indexResults.size(), "Should find exactly 2 rows with id=20");
+
+        boolean found1 = indexResults.stream()
+                .anyMatch(r -> r.data().get("name").equals("Budi"));
+
+        boolean found2 = indexResults.stream()
+                .anyMatch(r -> r.data().get("name").equals("DuplicateBudi"));
+
+        assertTrue(found1, "Index lookup must return original row with id=20");
+        assertTrue(found2, "Index lookup must return duplicate row with id=20");
+
+        StorageManager sm2 = new StorageManager(TEST_DIR);
+        sm2.initialize();
+
+        DataRetrieval persistedLookup = new DataRetrieval(
+                "students",
+                List.of("*"),
+                "id=20",
+                true);
+
+        List<Row> persistedResults = sm2.readBlock(persistedLookup);
+
+        persistedResults.forEach(r -> System.out.println("  (persisted) -> " + r.data()));
+
+        assertEquals(2, persistedResults.size(), "Persistent index must return 2 rows with id=20 after reload");
+
+        System.out.println("Hash index lookup PASSED.");
+    }
+
+    @Test
+    @DisplayName("Test: B+Tree Index Lookup (Range Search on GPA Column)")
+    void testBPlusIndexLookup() {
+        System.out.println("--- testBPlusIndexLookup ---");
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 1, "name", "Alice", "gpa", 3.2f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 2, "name", "Budi", "gpa", 3.5f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 3, "name", "Charlie", "gpa", 3.5f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 4, "name", "Dina", "gpa", 2.7f)), null));
+
+        DataRetrieval indexLookup = new DataRetrieval(
+                "students",
+                List.of("*"),
+                "gpa=3.5",
+                true);
+
+        List<Row> indexResults = storageManager.readBlock(indexLookup);
+        indexResults.forEach(r -> System.out.println("  -> " + r.data()));
+
+        assertEquals(2, indexResults.size(), "Should find exactly 2 rows with gpa=3.5");
+
+        boolean found1 = indexResults.stream()
+                .anyMatch(r -> r.data().get("name").equals("Budi"));
+
+        boolean found2 = indexResults.stream()
+                .anyMatch(r -> r.data().get("name").equals("Charlie"));
+
+        assertTrue(found1, "Index lookup must return row with gpa=3.5 (Budi)");
+        assertTrue(found2, "Index lookup must return row with gpa=3.5 (Charlie)");
+
+        StorageManager sm2 = new StorageManager(TEST_DIR);
+        sm2.initialize();
+
+        DataRetrieval persistedLookup = new DataRetrieval(
+                "students",
+                List.of("*"),
+                "gpa=3.5",
+                true);
+
+        List<Row> persistedResults = sm2.readBlock(persistedLookup);
+
+        persistedResults.forEach(r -> System.out.println("  (persisted) -> " + r.data()));
+
+        assertEquals(2, persistedResults.size(),
+                "Persistent B+Tree must return the same 2 rows after reload");
+
+        System.out.println("B+Tree index lookup PASSED.");
+    }
+
+    @Test
+    @DisplayName("Test: Index Lookup on String Column (name='Alice')")
+    void testHashIndexStringLookup() {
+        System.out.println("--- testIndexStringLookup ---");
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 1, "name", "Alice", "gpa", 3.1f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 2, "name", "Budi", "gpa", 3.5f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 3, "name", "Alice", "gpa", 3.8f)), null));
+
+        DataRetrieval lookup = new DataRetrieval(
+                "students",
+                List.of("*"),
+                "name=Alice",
+                true);
+
+        List<Row> rows = storageManager.readBlock(lookup);
+        rows.forEach(r -> System.out.println(" -> " + r.data()));
+
+        assertEquals(2, rows.size(), "Should find exactly 2 rows with name='Alice'");
+
+        assertTrue(
+                rows.stream().anyMatch(r -> r.data().get("id").equals(1)));
+        assertTrue(
+                rows.stream().anyMatch(r -> r.data().get("id").equals(3)));
+
+        System.out.println("String index lookup PASSED.");
+    }
+
+    @Test
     @DisplayName("Test: Baca dari Tabel Kosong")
     void testReadFromEmptyTable() {
-         // Langsung baca dari 'courses' yang baru dibuat (pasti kosong)
+        // Langsung baca dari 'courses' yang baru dibuat (pasti kosong)
         DataRetrieval readReq = new DataRetrieval("courses", List.of("*"), null, false);
         List<Row> results = storageManager.readBlock(readReq);
-        
+
         assertNotNull(results, "Hasil baca tidak boleh null");
         assertEquals(0, results.size(), "Membaca dari tabel kosong harus mengembalikan list kosong");
     }
@@ -138,7 +280,7 @@ class StorageManagerTest {
     @DisplayName("Test: Proyeksi (Kolom) saat Read")
     void testReadWithProjection() {
         System.out.println("--- testReadWithProjection ---");
-        
+
         Map<String, Object> data = Map.of("id", 101, "name", "Budi", "gpa", 3.5f);
         storageManager.writeBlock(new DataWrite("students", new Row(data), null));
 
@@ -163,13 +305,14 @@ class StorageManagerTest {
 
         // Ukuran blok default adalah 4096 bytes.
         // Header blok 8 bytes, Slot 8 bytes.
-        
+
         // Buat data besar (String 3000 char -> 4 byte prefix + 3000 byte data)
         String longName1 = "A".repeat(3000);
         // Ukuran row1 ~ 4 (id) + (4 + 3000) (name) + 4 (gpa) = 3012 bytes
-        // Ukuran slot1 = 8 bytes. Total = 3020 bytes. Sisa spasi = 4096 - 8 (header) - 3020 = 1068
+        // Ukuran slot1 = 8 bytes. Total = 3020 bytes. Sisa spasi = 4096 - 8 (header) -
+        // 3020 = 1068
         Row row1 = new Row(Map.of("id", 1, "name", longName1, "gpa", 1.0f));
-        
+
         // Buat data kedua yang PASTI tidak muat
         String longName2 = "B".repeat(1500);
         // Ukuran row2 ~ 4 (id) + (4 + 1500) (name) + 4 (gpa) = 1512 bytes
@@ -179,26 +322,29 @@ class StorageManagerTest {
 
         // Tulis blok pertama
         storageManager.writeBlock(new DataWrite("students", row1, null));
-        
+
         // Cek dulu: harus ada 1 blok
         String dataFile = studentsSchema.dataFile();
-        assertEquals(1, storageManager.getBlockManager().getBlockCount(dataFile), "Harus ada 1 blok data setelah row pertama");
+        assertEquals(1, storageManager.getBlockManager().getBlockCount(dataFile),
+                "Harus ada 1 blok data setelah row pertama");
 
         // Tulis blok kedua (ini akan memicu append)
         storageManager.writeBlock(new DataWrite("students", row2, null));
 
         // Cek lagi: harus ada 2 blok
-        assertEquals(2, storageManager.getBlockManager().getBlockCount(dataFile), "Harus ada 2 blok data setelah row kedua");
+        assertEquals(2, storageManager.getBlockManager().getBlockCount(dataFile),
+                "Harus ada 2 blok data setelah row kedua");
 
         // Cek apakah kedua data bisa dibaca kembali (Full Table Scan)
         List<Row> results = storageManager.readBlock(new DataRetrieval("students", List.of("*"), null, false));
         assertEquals(2, results.size(), "Harus ada 2 baris total dari 2 blok");
-        
-        // Verifikasi datanya
-        assertTrue(results.stream().anyMatch(r -> r.data().get("id").equals(1) && r.data().get("name").equals(longName1)));
-        assertTrue(results.stream().anyMatch(r -> r.data().get("id").equals(2) && r.data().get("name").equals(longName2)));
-    }
 
+        // Verifikasi datanya
+        assertTrue(
+                results.stream().anyMatch(r -> r.data().get("id").equals(1) && r.data().get("name").equals(longName1)));
+        assertTrue(
+                results.stream().anyMatch(r -> r.data().get("id").equals(2) && r.data().get("name").equals(longName2)));
+    }
 
     // ========================================================================
     // --- Tes Fungsionalitas Statistik (get_stats) ---
@@ -208,13 +354,13 @@ class StorageManagerTest {
     @DisplayName("Test: getAllStats pada Tabel Kosong")
     void testGetAllStats_EmptyTables() {
         System.out.println("--- testGetAllStats_EmptyTables ---");
-        
+
         Map<String, Statistic> statsMap = storageManager.getAllStats();
-        
+
         assertNotNull(statsMap);
         assertTrue(statsMap.containsKey("students"), "Harus ada statistik untuk 'students'");
         assertTrue(statsMap.containsKey("courses"), "Harus ada statistik untuk 'courses'");
-        
+
         // Verifikasi 'students' (kosong)
         Statistic studentStats = statsMap.get("students");
         assertEquals(0, studentStats.nr(), "nr (jumlah row) harus 0");
@@ -222,7 +368,7 @@ class StorageManagerTest {
         assertEquals(1, studentStats.br(), "br (jumlah blok) harus 1 (blok header awal)");
         assertEquals(0, studentStats.lr(), "lr (ukuran tuple) harus 0");
         assertEquals(0, studentStats.fr(), "fr (blocking factor) harus 0");
-        
+
         // Verifikasi 'courses' (kosong)
         Statistic courseStats = statsMap.get("courses");
         assertEquals(0, courseStats.nr(), "courses: nr harus 0");
@@ -235,9 +381,14 @@ class StorageManagerTest {
         System.out.println("--- testGetAllStats_WithData ---");
 
         // Tulis 3 baris ke 'students'
-        storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 1, "name", "Ani", "gpa", 4.0f)), null));
-        storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 2, "name", "Budi", "gpa", 3.5f)), null));
-        storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 3, "name", "Ani", "gpa", 3.8f)), null)); // Nama 'Ani' duplikat
+        storageManager
+                .writeBlock(new DataWrite("students", new Row(Map.of("id", 1, "name", "Ani", "gpa", 4.0f)), null));
+        storageManager
+                .writeBlock(new DataWrite("students", new Row(Map.of("id", 2, "name", "Budi", "gpa", 3.5f)), null));
+        storageManager
+                .writeBlock(new DataWrite("students", new Row(Map.of("id", 3, "name", "Ani", "gpa", 3.8f)), null)); // Nama
+                                                                                                                    // 'Ani'
+                                                                                                                    // duplikat
 
         // Tulis 2 baris ke 'courses'
         storageManager.writeBlock(new DataWrite("courses", new Row(Map.of("course_id", "IF3140", "credits", 3)), null));
@@ -265,14 +416,14 @@ class StorageManagerTest {
         // Row2: id(4) + name(4+4) + gpa(4) = 16
         // Row3: id(4) + name(4+3) + gpa(4) = 15
         // Total = 46. Rata-rata (lr) = 46/3 = 15 (integer division)
-        int expected_lr = 15; 
+        int expected_lr = 15;
         assertEquals(expected_lr, studentStats.lr(), "students: lr (ukuran rata-rata) harus sekitar 15");
-        
+
         // fr: blocking factor [cite: 798]
         // fr = blockSize / lr = 4096 / 15 = 273
         int expected_fr = (expected_lr == 0) ? 0 : (BlockManager.DEFAULT_BLOCK_SIZE / expected_lr);
         assertEquals(expected_fr, studentStats.fr(), "students: fr (blocking factor) harus 273");
-        
+
         // Cek info indeks (dari DTO, bukan dari spek get_stats)
         assertNotNull(studentStats.indexedColumn());
         assertTrue(studentStats.indexedColumn().containsKey("id"));
@@ -287,7 +438,6 @@ class StorageManagerTest {
         assertTrue(courseStats.indexedColumn().isEmpty(), "courses: indexedColumn harus kosong");
     }
 
-
     // ========================================================================
     // --- Tes Error Handling & Stubbed Methods (Wajib) ---
     // ========================================================================
@@ -296,9 +446,10 @@ class StorageManagerTest {
     @DisplayName("Test: Operasi pada Tabel Non-Eksisten")
     void testOperationsOnNonExistentTable() {
         System.out.println("--- testOperationsOnNonExistentTable ---");
-        
+
         DataRetrieval readReq = new DataRetrieval("nonexistent", List.of("*"), null, false);
-        // readBlock harus mengembalikan list kosong dan mencetak error, bukan melempar exception
+        // readBlock harus mengembalikan list kosong dan mencetak error, bukan melempar
+        // exception
         assertDoesNotThrow(() -> {
             List<Row> results = storageManager.readBlock(readReq);
             assertEquals(0, results.size());
@@ -313,26 +464,76 @@ class StorageManagerTest {
     }
 
     @Test
-    @DisplayName("Test: Method 'deleteBlock' (Wajib) Melempar UnsupportedOperationException")
-    void testDeleteBlockThrowsException() {
-        System.out.println("--- testDeleteBlockThrowsException ---");
-        
-        DataDeletion delReq = new DataDeletion("students", "id=1"); // Filter dummy
-        
-        // Memverifikasi bahwa implementasi default melempar error
-        assertThrows(UnsupportedOperationException.class, () -> {
-            storageManager.deleteBlock(delReq);
-        }, "Implementasi deleteBlock (wajib) harusnya di-disable atau belum dibuat");
+    @DisplayName("Test: writeBlock reuse slot terhapus sebelum append blok baru")
+    void testWriteReusesDeletedSlots() throws IOException {
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 1, "name", "A", "gpa", 3.0f)), null));
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 2, "name", "B", "gpa", 3.2f)), null));
+
+        assertEquals(1, storageManager.getBlockManager().getBlockCount(studentsSchema.dataFile()));
+
+        int deleted = storageManager.deleteBlock(new DataDeletion("students", "id=1"));
+        assertEquals(1, deleted);
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 3, "name", "C", "gpa", 3.4f)), null));
+
+        assertEquals(1, storageManager.getBlockManager().getBlockCount(studentsSchema.dataFile()),
+                "Row baru harus reuse slot terhapus tanpa menambah blok");
+
+        List<Row> rows = storageManager.readBlock(new DataRetrieval("students", List.of("*"), null, false));
+        assertEquals(2, rows.size());
+        assertTrue(rows.stream().anyMatch(r -> r.data().get("id").equals(2)));
+        assertTrue(rows.stream().anyMatch(r -> r.data().get("id").equals(3)));
+        assertFalse(rows.stream().anyMatch(r -> r.data().get("id").equals(1)));
     }
 
     @Test
-    @DisplayName("Test: Method 'setIndex' (Wajib) Melempar UnsupportedOperationException")
-    void testSetIndexThrowsException() {
-        System.out.println("--- testSetIndexThrowsException ---");
+    @DisplayName("Test: deleteBlock menandai slot terhapus dan update indeks")
+    void testDeleteBlockRemovesRowsAndUpdatesIndexes() {
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 10, "name", "X", "gpa", 3.0f)), null));
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 20, "name", "Y", "gpa", 2.5f)), null));
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 30, "name", "Z", "gpa", 3.5f)), null));
 
-        // Memverifikasi bahwa implementasi default melempar error
-        assertThrows(UnsupportedOperationException.class, () -> {
-            storageManager.setIndex("students", "name", "BPlusTree");
-        }, "Implementasi setIndex (wajib) harusnya di-disable atau belum dibuat");
+        int deleted = storageManager.deleteBlock(new DataDeletion("students", "id=20"));
+        assertEquals(1, deleted);
+
+        List<Row> fullScan = storageManager.readBlock(new DataRetrieval("students", List.of("*"), null, false));
+        assertEquals(2, fullScan.size());
+        assertFalse(fullScan.stream().anyMatch(r -> r.data().get("id").equals(20)));
+
+        List<Row> indexScan = storageManager.readBlock(new DataRetrieval("students", List.of("*"), "id=20", true));
+        assertEquals(0, indexScan.size(), "Index harus ikut ter-update saat delete");
+    }
+
+    @Test
+    @DisplayName("Test: setIndex membuat indeks baru dan bisa dipakai setelah restart")
+    void testSetIndexCreatesUsableIndex() throws Exception {
+        storageManager.writeBlock(new DataWrite("courses",
+                new Row(Map.of("course_id", "IF101", "credits", 3)), null));
+        storageManager.writeBlock(new DataWrite("courses",
+                new Row(Map.of("course_id", "IF102", "credits", 4)), null));
+        storageManager.writeBlock(new DataWrite("courses",
+                new Row(Map.of("course_id", "IF103", "credits", 3)), null));
+
+        storageManager.setIndex("courses", "credits", "Hash");
+
+        StorageManager sm2 = new StorageManager(TEST_DIR);
+        sm2.initialize();
+        try {
+            List<Row> credit3 = sm2.readBlock(new DataRetrieval("courses", List.of("*"), "credits=3", true));
+            assertEquals(2, credit3.size());
+            assertTrue(credit3.stream().allMatch(r -> r.data().get("credits").equals(3)));
+
+            List<Row> credit4 = sm2.readBlock(new DataRetrieval("courses", List.of("*"), "credits=4", true));
+            assertEquals(1, credit4.size());
+            assertEquals(4, credit4.get(0).data().get("credits"));
+        } finally {
+            sm2.shutdown();
+        }
     }
 }

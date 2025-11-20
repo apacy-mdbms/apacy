@@ -1,5 +1,6 @@
 package com.apacy.storagemanager.index;
 
+import com.apacy.storagemanager.CatalogManager;
 import java.util.List;
 
 public interface IIndex<K, V> {
@@ -9,10 +10,10 @@ public interface IIndex<K, V> {
     void remove();
     
     // load indexing dr .dat ke memory (path ditentukan dri kolom+tablename+indextype+.dat)
-    void loadFromFile();
-    
+    void loadFromFile(CatalogManager catalogManager);
+
     // ubah data yang ada di .dat berdasarkan yang ada di memory
-    void writeToFile(); 
+    void writeToFile(CatalogManager catalogManager);
     
     // dapet addresses berdasarkan key
     List<V> getAddress(K key);
