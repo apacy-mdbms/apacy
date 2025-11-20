@@ -28,7 +28,11 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
         // Inisialisasi helper-nya
         this.logWriter = new LogWriter();
         this.logReplayer = new LogReplayer();
-        this.checkpointManager = new CheckpointManager();
+        this.checkpointManager = new CheckpointManager(
+            "failure-recovery/checkpoints", 
+            this.logWriter, 
+            this.storageManager
+        );
     }
 
     @Override
