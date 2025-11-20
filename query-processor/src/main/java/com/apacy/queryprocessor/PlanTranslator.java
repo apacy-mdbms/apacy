@@ -49,11 +49,18 @@ public class PlanTranslator {
      * Ini adalah titik awal (Leaf) dari pohon eksekusi.
      */
     public List<Row> executeScan(ScanNode node, int txId, IStorageManager sm, IConcurrencyControlManager ccm) {
-        // TODO: Implementasi
-        // 1. Buat objek DataRetrieval (gunakan node.tableName())
+        // 1. Buat objek DataRetrieval
+        // columns = null artinya "SELECT *" (ambil semua kolom)
+        // filterCondition = null karena filtering dilakukan oleh FilterNode di layer atasnya
+        DataRetrieval dr = new DataRetrieval(
+            node.tableName(), 
+            null, 
+            null, 
+            false
+        );
+
         // 2. Panggil sm.readBlock(dataRetrieval)
-        // 3. Return List<Row> hasil bacaan
-        return Collections.emptyList(); // Dummy return
+        return sm.readBlock(dr);
     }
 
     /**
@@ -61,11 +68,19 @@ public class PlanTranslator {
      * Menangani FilterNode: Menyaring baris berdasarkan kondisi WHERE.
      */
     public List<Row> executeFilter(FilterNode node, Function<PlanNode, List<Row>> childExecutor) {
-        // TODO: Implementasi
-        // 1. Ambil data dari anak: List<Row> input = childExecutor.apply(node.child());
+        // 1. Ambil data dari anak
+        List<Row> input = childExecutor.apply(node.child());
+        List<Row> result = new ArrayList<>();
+
         // 2. Lakukan filtering menggunakan ConditionEvaluator
+        for (Row row : input) {
+            if (ConditionEvaluator.evaluate(row, node.predicate())) {
+                result.add(row);
+            }
+        }
+
         // 3. Return baris yang lolos filter
-        return Collections.emptyList(); // Dummy return
+        return result;
     }
 
     /**
@@ -73,10 +88,20 @@ public class PlanTranslator {
      * Menangani ProjectNode: Memilih kolom tertentu (SELECT col1, col2).
      */
     public List<Row> executeProject(ProjectNode node, Function<PlanNode, List<Row>> childExecutor) {
-        // TODO: Implementasi
-        // 1. Ambil data dari anak: List<Row> input = childExecutor.apply(node.child());
+        // 1. Ambil data dari anak
+        List<Row> input = childExecutor.apply(node.child());
+        List<Row> result = new ArrayList<>();
+        List<String> targetCols = node.columns();
+
         // 2. Lakukan mapping: Buat Row baru yang isinya HANYA kolom di node.columns()
-        return Collections.emptyList(); // Dummy return
+        for (Row oldRow : input) {
+            Map<String, Object> newMap = new HashMap<>();
+            for (String col : targetCols) {
+                newMap.put(col, oldRow.get(col));
+            }
+            result.add(new Row(newMap));
+        }
+        return result;
     }
 
     /**
@@ -85,11 +110,33 @@ public class PlanTranslator {
      */
     public List<Row> executeJoin(JoinNode node, Function<PlanNode, List<Row>> childExecutor, 
                                  JoinStrategy joinStrategy, int txId, IConcurrencyControlManager ccm) {
-        // TODO: Implementasi
         // 1. Eksekusi anak kiri: List<Row> left = childExecutor.apply(node.left());
         // 2. Eksekusi anak kanan: List<Row> right = childExecutor.apply(node.right());
         // 3. Panggil JoinStrategy (misal: nestedLoopJoin)
-        return Collections.emptyList(); // Dummy return
+
+        // 1. Eksekusi anak kiri dan kanan
+        List<Row> leftRows = childExecutor.apply(node.left());
+        List<Row> rightRows = childExecutor.apply(node.right());
+        List<Row> result = new ArrayList<>();
+
+        // 2. Logika Join
+
+        for (Row left : leftRows) {
+            for (Row right : rightRows) {
+                // Gabungkan data kiri + kanan
+                Map<String, Object> mergedData = new HashMap<>(left.data());
+                // Strategi overwrite sederhana jika ada nama kolom sama
+                mergedData.putAll(right.data()); 
+                Row mergedRow = new Row(mergedData);
+
+                // Evaluasi kondisi join
+                if (ConditionEvaluator.evaluate(mergedRow, node.joinCondition())) {
+                    result.add(mergedRow);
+                }
+            }
+        }
+        
+        return result;
     }
 
     /**
@@ -98,11 +145,64 @@ public class PlanTranslator {
      */
     public List<Row> executeModify(ModifyNode node, int txId, Function<PlanNode, List<Row>> childExecutor,
                                    IStorageManager sm, IConcurrencyControlManager ccm, IFailureRecoveryManager frm) {
-        // TODO: Implementasi
         // 1. Translate ModifyNode ke DTO storage (DataWrite / DataDeletion)
         // 2. Panggil sm.writeBlock atau sm.deleteBlock
         // 3. Buat Row dummy berisi info "affected_rows" untuk dikembalikan
-        return Collections.emptyList(); // Dummy return
+        int affectedRows = 0;
+        String operation = node.operation().toUpperCase();
+
+        if ("INSERT".equals(operation)) {
+            // INSERT: Gabungkan columns dan values menjadi Row
+            Map<String, Object> dataMap = new HashMap<>();
+            List<String> cols = node.targetColumns();
+            List<Object> vals = node.values();
+
+            if (cols != null && vals != null && cols.size() == vals.size()) {
+                for (int i = 0; i < cols.size(); i++) {
+                    dataMap.put(cols.get(i), vals.get(i));
+                }
+            }
+            // Buat DataWrite
+            DataWrite dw = new DataWrite(node.targetTable(), new Row(dataMap), null);
+            affectedRows = sm.writeBlock(dw);
+
+        } else if ("DELETE".equals(operation)) {
+            // DELETE: Ambil kondisi WHERE dari child node (biasanya FilterNode)
+            Object filterCondition = null;
+            // Cek apakah child adalah FilterNode
+            if (!node.getChildren().isEmpty() && node.getChildren().get(0) instanceof FilterNode fn) {
+                filterCondition = fn.predicate();
+            }
+
+            // Buat DataDeletion
+            DataDeletion dd = new DataDeletion(node.targetTable(), filterCondition);
+            affectedRows = sm.deleteBlock(dd);
+
+        } else if ("UPDATE".equals(operation)) {
+            // UPDATE: mapping values +  ambil kondisi
+            Map<String, Object> dataMap = new HashMap<>();
+            List<String> cols = node.targetColumns();
+            List<Object> vals = node.values();
+
+            if (cols != null && vals != null) {
+                for (int i = 0; i < cols.size(); i++) {
+                    dataMap.put(cols.get(i), vals.get(i));
+                }
+            }
+
+            Object filterCondition = null;
+            if (!node.getChildren().isEmpty() && node.getChildren().get(0) instanceof FilterNode fn) {
+                filterCondition = fn.predicate();
+            }
+
+            DataWrite dw = new DataWrite(node.targetTable(), new Row(dataMap), filterCondition);
+            affectedRows = sm.writeBlock(dw);
+        }
+
+        // 3. Buat Row dummy berisi info "affected_rows"
+        Map<String, Object> resultData = new HashMap<>();
+        resultData.put("affected_rows", affectedRows);
+        return List.of(new Row(resultData));
     }
 
 
