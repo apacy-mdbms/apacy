@@ -4,7 +4,7 @@ import java.util.List;
 
 // Interface dasar untuk semua operasi aljabar
 public sealed interface PlanNode
-    permits ProjectNode, FilterNode, JoinNode, ScanNode, SortNode, ModifyNode, LimitNode, TCLNode, DDLNode {
+    permits ProjectNode, FilterNode, JoinNode, CartesianNode, ScanNode, SortNode, ModifyNode, LimitNode, TCLNode, DDLNode {
 
     List<PlanNode> getChildren();
 }

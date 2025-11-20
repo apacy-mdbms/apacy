@@ -1,13 +1,12 @@
 package com.apacy.queryoptimizer.parser;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.text.ParseException;
 import java.util.List;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import com.apacy.common.dto.ParsedQuery;
@@ -22,15 +21,14 @@ import com.apacy.queryoptimizer.ast.where.BinaryConditionNode;
 import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
 import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
-@Disabled("Disabled karena InsertParser belum diperbarui")
 class SelectParserTest {
 
     // Helper untuk membuat AST WHERE yang kompleks: col1 = 10 AND (col2 > 5 OR col3 < 1)
     private WhereConditionNode createExpectedWhereNode() {
-        ComparisonConditionNode rightBinLeft = new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("col2"), null), null), ">", new ExpressionNode(new TermNode(new LiteralFactor(5), null), null));
-        ComparisonConditionNode rightBinRight = new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("col3"), null), null), "<", new ExpressionNode(new TermNode(new LiteralFactor(1), null), null));
+        ComparisonConditionNode rightBinLeft = new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("col2"), List.of()), List.of()), ">", new ExpressionNode(new TermNode(new LiteralFactor(5), List.of()), List.of()));
+        ComparisonConditionNode rightBinRight = new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("col3"), List.of()), List.of()), "<", new ExpressionNode(new TermNode(new LiteralFactor(1), List.of()), List.of()));
         BinaryConditionNode rightBinary = new BinaryConditionNode(rightBinLeft, "OR", rightBinRight);
-        ComparisonConditionNode left = new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("col1"), null), null), "=", new ExpressionNode(new TermNode(new LiteralFactor(10), null), null));
+        ComparisonConditionNode left = new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("col1"), List.of()), List.of()), "=", new ExpressionNode(new TermNode(new LiteralFactor(10), List.of()), List.of()));
         return new BinaryConditionNode(left, "AND", rightBinary);
     }
 
