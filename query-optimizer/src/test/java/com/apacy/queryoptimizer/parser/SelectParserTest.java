@@ -1,12 +1,11 @@
 package com.apacy.queryoptimizer.parser;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.text.ParseException;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 
 import com.apacy.common.dto.ParsedQuery;
@@ -148,5 +147,49 @@ class SelectParserTest {
 
         // Status default
         assertEquals(false, actual.isOptimized(), "isOptimized should be false by default.");
+    }
+
+    @Test
+    void parse_SelectWithLimitAndOffset_ShouldMatch() throws ParseException {
+        // Query: SELECT * FROM users LIMIT 10 OFFSET 5;
+        List<Token> tokens = List.of(
+            new Token(TokenType.SELECT, "SELECT"),
+            new Token(TokenType.STAR, "*"),
+            new Token(TokenType.FROM, "FROM"),
+            new Token(TokenType.IDENTIFIER, "users"),
+            new Token(TokenType.LIMIT, "LIMIT"),
+            new Token(TokenType.NUMBER_LITERAL, "10"),
+            new Token(TokenType.OFFSET, "OFFSET"),
+            new Token(TokenType.NUMBER_LITERAL, "5"),
+            new Token(TokenType.SEMICOLON, ";"),
+            new Token(TokenType.EOF, null)
+        );
+
+        AbstractParser parser = new SelectParser(tokens);
+        ParsedQuery actual = parser.parse();
+
+        // Verifikasi Limit & Offset
+        assertEquals(10, actual.limit(), "Limit harus 10");
+        assertEquals(5, actual.offset(), "Offset harus 5");
+    }
+    
+    @Test
+    void validate_SelectWithLimitOffset_ShouldReturnTrue() {
+        // Query: SELECT * FROM users LIMIT 10 OFFSET 5;
+        List<Token> tokens = List.of(
+            new Token(TokenType.SELECT, "SELECT"),
+            new Token(TokenType.STAR, "*"),
+            new Token(TokenType.FROM, "FROM"),
+            new Token(TokenType.IDENTIFIER, "users"),
+            new Token(TokenType.LIMIT, "LIMIT"),
+            new Token(TokenType.NUMBER_LITERAL, "10"),
+            new Token(TokenType.OFFSET, "OFFSET"),
+            new Token(TokenType.NUMBER_LITERAL, "5"),
+            new Token(TokenType.SEMICOLON, ";"),
+            new Token(TokenType.EOF, null)
+        );
+
+        AbstractParser parser = new SelectParser(tokens);
+        assertTrue(parser.validate(), "Validasi SELECT dengan LIMIT/OFFSET harus true");
     }
 }
