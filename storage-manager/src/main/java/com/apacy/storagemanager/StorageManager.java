@@ -5,6 +5,7 @@ import com.apacy.common.dto.Column;
 import com.apacy.common.dto.DataDeletion;
 import com.apacy.common.dto.DataRetrieval;
 import com.apacy.common.dto.DataWrite;
+import com.apacy.common.dto.ForeignKeySchema;
 import com.apacy.common.dto.IndexSchema;
 import com.apacy.common.dto.Row;
 import com.apacy.common.dto.Schema;
@@ -493,102 +494,101 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         return this.blockManager;
     }
 
+    // ==========================================
+    // MAIN DRIVER UNTUK TEST JOIN
+    // ==========================================
     public static void main(String[] args) {
-
-        // --- 1. Inisialisasi ---
-        System.out.println("--- 1. Inisialisasi StorageManager ---");
+        System.out.println("=== 1. Inisialisasi StorageManager ===");
         String dataDir = "../data";
         StorageManager sm = new StorageManager(dataDir);
+
         try {
             sm.initialize();
             System.out.println("Storage Manager berhasil diinisialisasi.");
         } catch (Exception e) {
-            System.err.println("Gagal inisialisasi:");
-            e.printStackTrace();
-            return; // Keluar jika inisialisasi gagal
+            System.err.println("Gagal inisialisasi: " + e.getMessage());
+            return;
         }
 
-        System.out.println("\n--- 2. Membuat Tabel Baru 'dosen' ---");
+        // --- 2. Buat Tabel Induk: PRODI ---
+        System.out.println("\n=== 2. Membuat Tabel 'prodi' (Induk) ===");
         try {
-            // Definisikan skema untuk tabel baru
-            List<Column> dosenColumns = List.of(
-                    new Column("nidn", DataType.VARCHAR, 10),
-                    new Column("nama_dosen", DataType.VARCHAR, 100),
-                    new Column("email", DataType.VARCHAR, 100));
-
-            // Definisikan indeks untuk tabel baru
-            List<IndexSchema> dosenIndexes = List.of(
-                    new IndexSchema("idx_dosen_nidn", "nidn", IndexType.Hash, "dosen_nidn.idx"));
-
-            Schema dosenSchema = new Schema(
-                    "dosen",
-                    "dosen_table.dat", // Nama file datanya
-                    dosenColumns,
-                    dosenIndexes);
-
-            // Panggil metode createTable
-            sm.createTable(dosenSchema);
-
+            List<Column> prodiCols = List.of(
+                new Column("id_prodi", DataType.VARCHAR, 5),
+                new Column("nama_prodi", DataType.VARCHAR, 100)
+            );
+            List<IndexSchema> prodiIdx = List.of(
+                new IndexSchema("idx_prodi_id", "id_prodi", IndexType.Hash, "prodi_id.idx")
+            );
+            // Tidak ada FK di tabel induk
+            Schema prodiSchema = new Schema("prodi", "prodi.dat", prodiCols, prodiIdx, new ArrayList<>());
+            
+            sm.createTable(prodiSchema);
         } catch (IOException e) {
-            System.err.println("Gagal membuat tabel 'dosen': " + e.getMessage());
+            System.err.println("Gagal buat prodi: " + e.getMessage());
         }
 
-        System.out.println("\n--- 3. Mengisi (INSERT) 3 Nilai ke 'dosen' ---");
+        // --- 3. Buat Tabel Anak: MAHASISWA (dengan FK) ---
+        System.out.println("\n=== 3. Membuat Tabel 'mahasiswa' (Anak) dengan FK ===");
         try {
-            Row row1 = new Row(Map.of("nidn", "12345", "nama_dosen", "Dr. Budi", "email", "budi@if.itb.ac.id"));
-            Row row2 = new Row(Map.of("nidn", "67890", "nama_dosen", "Dr. Ani", "email", "ani@if.itb.ac.id"));
-            Row row3 = new Row(Map.of("nidn", "10101", "nama_dosen", "Dr. Candra", "email", "candra@if.itb.ac.id"));
-
-            DataWrite write1 = new DataWrite("dosen", row1, null);
-            DataWrite write2 = new DataWrite("dosen", row2, null);
-            DataWrite write3 = new DataWrite("dosen", row3, null);
-
-            sm.writeBlock(write1);
-            sm.writeBlock(write2);
-            sm.writeBlock(write3);
-
-            System.out.println("3 baris berhasil di-INSERT ke tabel 'dosen'.");
-
-        } catch (Exception e) {
-            System.err.println("Gagal INSERT ke tabel 'dosen': " + e.getMessage());
-        }
-
-        System.out.println("\n--- 4. Membaca (READ) 3 Nilai dari 'dosen' ---");
-        try {
-            // Buat DTO DataRetrieval untuk SELECT * FROM dosen
-            DataRetrieval readReq = new DataRetrieval(
-                    "dosen", // tableName
-                    List.of("*"), // columns ("*")
-                    null, // filters (null)
-                    false // indexName (null = Full Scan)
+            List<Column> mhsCols = List.of(
+                new Column("nim", DataType.VARCHAR, 10),
+                new Column("nama", DataType.VARCHAR, 100),
+                new Column("id_prodi", DataType.VARCHAR, 5) // Kolom FK
+            );
+            
+            List<IndexSchema> mhsIdx = List.of(
+                new IndexSchema("idx_mhs_nim", "nim", IndexType.Hash, "mhs_nim.idx")
             );
 
-            List<Row> results = sm.readBlock(readReq);
+            // Definisi FK: mahasiswa.id_prodi -> prodi.id_prodi
+            List<ForeignKeySchema> mhsFk = List.of(
+                new ForeignKeySchema(
+                    "fk_mhs_prodi", // Nama constraint
+                    "id_prodi",     // Kolom di mahasiswa
+                    "prodi",        // Tabel referensi
+                    "id_prodi",     // Kolom referensi
+                    true            // On Delete Cascade
+                )
+            );
 
-            System.out.println("Hasil Full Table Scan 'dosen' (ditemukan " + results.size() + " baris):");
-            for (Row row : results) {
-                System.out.println("  -> " + row.data());
-            }
-
-            // Uji Proyeksi (hanya NIDN dan Email)
-            System.out.println("\n--- 5. Membaca (READ) dengan Proyeksi ---");
-            DataRetrieval readReqProject = new DataRetrieval(
-                    "dosen",
-                    List.of("nidn", "email"), // Hanya minta 2 kolom
-                    null,
-                    false);
-
-            List<Row> projectedResults = sm.readBlock(readReqProject);
-            System.out.println("Hasil Proyeksi 'dosen' (ditemukan " + projectedResults.size() + " baris):");
-            for (Row row : projectedResults) {
-                System.out.println("  -> " + row.data());
-            }
-
-        } catch (Exception e) {
-            System.err.println("Gagal READ dari tabel 'dosen': " + e.getMessage());
+            Schema mhsSchema = new Schema("mahasiswa", "mahasiswa.dat", mhsCols, mhsIdx, mhsFk);
+            sm.createTable(mhsSchema);
+            
+        } catch (IOException e) {
+            System.err.println("Gagal buat mahasiswa: " + e.getMessage());
         }
 
-        System.out.println("\n--- 6. Shutdown ---");
+        // --- 4. Insert Data (Persiapan Join) ---
+        System.out.println("\n=== 4. Insert Data Dummy untuk Join ===");
+        try {
+            // Insert Prodi
+            sm.writeBlock(new DataWrite("prodi", new Row(Map.of("id_prodi", "IF", "nama_prodi", "Informatika")), null));
+            sm.writeBlock(new DataWrite("prodi", new Row(Map.of("id_prodi", "EL", "nama_prodi", "Elektro")), null));
+            sm.writeBlock(new DataWrite("prodi", new Row(Map.of("id_prodi", "TI", "nama_prodi", "Teknik Industri")), null));
+
+            // Insert Mahasiswa (dengan id_prodi yang valid)
+            sm.writeBlock(new DataWrite("mahasiswa", new Row(Map.of("nim", "13523001", "nama", "Udin", "id_prodi", "IF")), null));
+            sm.writeBlock(new DataWrite("mahasiswa", new Row(Map.of("nim", "13523002", "nama", "Asep", "id_prodi", "IF")), null));
+            sm.writeBlock(new DataWrite("mahasiswa", new Row(Map.of("nim", "18223099", "nama", "Siti", "id_prodi", "EL")), null));
+            
+            System.out.println("Data berhasil dimasukkan.");
+        } catch (Exception e) {
+            System.err.println("Gagal insert: " + e.getMessage());
+        }
+
+        // --- 5. Verifikasi Read ---
+        System.out.println("\n=== 5. Verifikasi Data Tersimpan ===");
+        
+        System.out.println("[Tabel Prodi]");
+        List<Row> prodiData = sm.readBlock(new DataRetrieval("prodi", List.of("*"), null, false));
+        prodiData.forEach(r -> System.out.println(" -> " + r.data()));
+
+        System.out.println("\n[Tabel Mahasiswa]");
+        List<Row> mhsData = sm.readBlock(new DataRetrieval("mahasiswa", List.of("*"), null, false));
+        mhsData.forEach(r -> System.out.println(" -> " + r.data()));
+        
+        System.out.println("\nStorage siap untuk testing JOIN oleh Query Processor!");
         sm.shutdown();
     }
 }
