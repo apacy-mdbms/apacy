@@ -48,7 +48,9 @@ class StorageManagerTest {
             ),
             List.of(
                 // Tambahkan info indeks untuk pengujian statistik
-                new IndexSchema("idx_id", "id", IndexType.Hash, "students_id.idx")
+                new IndexSchema("idx_id", "id", IndexType.Hash, "students_id.idx"),
+                new IndexSchema("idx_gpa", "gpa", IndexType.BPlusTree, "students_gpa.idx"),
+                new IndexSchema("idx_name", "name", IndexType.BPlusTree, "students_name.idx")
             )
         );
         storageManager.createTable(studentsSchema);
@@ -179,6 +181,100 @@ class StorageManagerTest {
         assertEquals(2, persistedResults.size(), "Persistent index must return 2 rows with id=20 after reload");
 
         System.out.println("Hash index lookup PASSED.");
+    }
+
+    @Test
+    @DisplayName("Test: B+Tree Index Lookup (Range Search on GPA Column)")
+    void testBPlusIndexLookup() {
+        System.out.println("--- testBPlusIndexLookup ---");
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 1, "name", "Alice", "gpa", 3.2f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 2, "name", "Budi", "gpa", 3.5f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 3, "name", "Charlie", "gpa", 3.5f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 4, "name", "Dina", "gpa", 2.7f)), null));
+
+
+        DataRetrieval indexLookup = new DataRetrieval(
+                "students",
+                List.of("*"),
+                "gpa=3.5",
+                true
+        );
+
+        List<Row> indexResults = storageManager.readBlock(indexLookup);
+        indexResults.forEach(r -> System.out.println("  -> " + r.data()));
+
+        assertEquals(2, indexResults.size(), "Should find exactly 2 rows with gpa=3.5");
+
+        boolean found1 = indexResults.stream()
+                .anyMatch(r -> r.data().get("name").equals("Budi"));
+
+        boolean found2 = indexResults.stream()
+                .anyMatch(r -> r.data().get("name").equals("Charlie"));
+
+        assertTrue(found1, "Index lookup must return row with gpa=3.5 (Budi)");
+        assertTrue(found2, "Index lookup must return row with gpa=3.5 (Charlie)");
+
+
+        StorageManager sm2 = new StorageManager(TEST_DIR);
+        sm2.initialize();
+
+        DataRetrieval persistedLookup = new DataRetrieval(
+                "students",
+                List.of("*"),
+                "gpa=3.5",
+                true
+        );
+
+        List<Row> persistedResults = sm2.readBlock(persistedLookup);
+
+        persistedResults.forEach(r -> System.out.println("  (persisted) -> " + r.data()));
+
+        assertEquals(2, persistedResults.size(),
+                "Persistent B+Tree must return the same 2 rows after reload");
+
+        System.out.println("B+Tree index lookup PASSED.");
+    }
+
+    @Test
+    @DisplayName("Test: Index Lookup on String Column (name='Alice')")
+    void testHashIndexStringLookup() {
+        System.out.println("--- testIndexStringLookup ---");
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 1, "name", "Alice", "gpa", 3.1f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 2, "name", "Budi", "gpa", 3.5f)), null));
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 3, "name", "Alice", "gpa", 3.8f)), null));
+
+        DataRetrieval lookup = new DataRetrieval(
+                "students",
+                List.of("*"),
+                "name=Alice",
+                true
+        );
+
+        List<Row> rows = storageManager.readBlock(lookup);
+        rows.forEach(r -> System.out.println(" -> " + r.data()));
+
+        assertEquals(2, rows.size(), "Should find exactly 2 rows with name='Alice'");
+
+        assertTrue(
+                rows.stream().anyMatch(r -> r.data().get("id").equals(1)));
+        assertTrue(
+                rows.stream().anyMatch(r -> r.data().get("id").equals(3)));
+
+        System.out.println("String index lookup PASSED.");
     }
 
     @Test

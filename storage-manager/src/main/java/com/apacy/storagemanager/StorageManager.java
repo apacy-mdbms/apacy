@@ -317,8 +317,15 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
                 this.serializer
             );
         } else if (idxSchema.indexType() == IndexType.BPlusTree) {
-            // return new BPlusIndex<>(...); // (Implementasi BPlusIndex masih stub)
-            throw new UnsupportedOperationException("BPlusTree index belum didukung.");
+            int order = 100;
+            return new BPlusIndex<>(
+                tableSchema.tableName(),
+                col.name(),
+                order,
+                idxSchema.indexFile(),
+                this.blockManager,
+                this.serializer
+            );
         } else {
             throw new UnsupportedOperationException("Tipe indeks tidak dikenal: " + idxSchema.indexType());
         }
