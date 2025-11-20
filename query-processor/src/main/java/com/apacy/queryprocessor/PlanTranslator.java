@@ -1,130 +1,149 @@
 package com.apacy.queryprocessor;
 
-import com.apacy.common.dto.*;
+import com.apacy.common.dto.Row;
+import com.apacy.common.dto.DataRetrieval;
+import com.apacy.common.dto.DataWrite;
+import com.apacy.common.dto.DataDeletion;
+import com.apacy.common.dto.ExecutionResult;
+import com.apacy.common.dto.plan.*;
+import com.apacy.common.interfaces.*;
+import com.apacy.queryprocessor.execution.JoinStrategy;
+import com.apacy.queryprocessor.execution.SortStrategy;
+// import com.apacy.queryprocessor.evaluator.ConditionEvaluator; // TODO: Import ini nanti diperlukan
+
 import java.util.List;
+import java.util.Collections;
+import java.util.function.Function;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.ArrayList;
 
 /**
- * Translates ParsedQuery objects into specific operation DTOs.
- * TODO: Implement translation from abstract query plans to concrete execution operations
+ * PlanTranslator sekarang bertindak sebagai "Node Executor Implementation".
+ * Kelas ini berisi logika detail bagaimana setiap PlanNode dijalankan.
  */
 public class PlanTranslator {
-    
-    /**
-     * Translate a ParsedQuery to a DataRetrieval object.
-     * @param parsedQuery The parsed query from Query Optimizer
-     * @param transactionId Transaction ID for logging
-     * @return DataRetrieval DTO for Storage Manager
-     */
-    public DataRetrieval translateToRetrieval(ParsedQuery parsedQuery, String transactionId) {
-        if (parsedQuery.targetTables() == null || parsedQuery.targetTables().isEmpty()) {
-            throw new IllegalArgumentException("ParsedQuery untuk SELECT tidak memiliki target tabel.");
-        }
-        
-        // 1. Ambil tabel pertama (untuk M1, ini satu-satunya tabel)
-        String tableName = parsedQuery.targetTables().get(0);
-        
-        // 2. Ambil daftar kolom yang diminta
-        List<String> columns = parsedQuery.targetColumns();
-        
-        // 3. Ambil AST 'whereClause'. Ini adalah 'Object' yang akan kita teruskan
-        // ke SM. SM (atau filter di QP) harus bisa menginterpretasi ini.
-        // Kita perlu cast ke WhereConditionNode (atau Object)
-        Object filter = parsedQuery.whereClause();
-        // 4. Cek apakah QO menyarankan pakai index.
-        // Asumsi sederhana: jika QO menandai 'isOptimized', kita coba pakai index.
-        // (Logika lebih canggih bisa membaca AST untuk 'id = 5')
-        boolean useIndex = parsedQuery.isOptimized();
 
-        // 5. Buat dan kembalikan DTO DataRetrieval
-        return new DataRetrieval(tableName, columns, filter, useIndex);
-    }
-    
+    // ==================================================================================
+    // [BAGIAN 1] CORE DATA PROCESSING
+    // Penanggung Jawab: FARREL
+    // Deskripsi: Menangani alur utama pengambilan, penggabungan, dan penyaringan data.
+    // ==================================================================================
+
     /**
-     * Translate a ParsedQuery to a DataWrite object.
-     * Handles both INSERT and UPDATE operations.
-     * 
-     * @param parsedQuery The parsed query from Query Optimizer
-     * @param transactionId Transaction ID for logging
-     * @param isUpdate true for UPDATE, false for INSERT
-     * @return DataWrite DTO for Storage Manager
+     * [FARREL]
+     * Menangani ScanNode: Membaca data mentah dari Storage Manager.
+     * Ini adalah titik awal (Leaf) dari pohon eksekusi.
      */
-    public DataWrite translateToWrite(ParsedQuery parsedQuery, String transactionId, boolean isUpdate) {
-        // Validasi input
-        if (parsedQuery.targetTables() == null || parsedQuery.targetTables().isEmpty()) {
-            throw new IllegalArgumentException("ParsedQuery untuk INSERT/UPDATE tidak memiliki target tabel.");
-        }
-        
-        
-        // 1. Ambil nama tabel
-        String tableName = parsedQuery.targetTables().get(0);
-        
-        // 2. Ekstrak data untuk INSERT/UPDATE
-        // TODO: ParsedQuery perlu field untuk menyimpan data (Map<String, Object>)
-        // Untuk M1, kita buat placeholder yang bisa diisi nanti
-        List<String> columns = parsedQuery.targetColumns();
-        Map<String, Object> dataMap;
-        
-        if (columns == null || columns.isEmpty()) {
-            // Placeholder kosong untuk testing
-            dataMap = Map.of();
-        } else {
-            // TODO: Ambil values dari ParsedQuery (perlu field baru di ParsedQuery)
-            // Untuk sekarang buat placeholder dengan null values
-            dataMap = Map.of();
-            // Contoh kalau ada data: dataMap = Map.of("name", "John", "age", 25);
-        }
-        
-        Row newData = new Row(dataMap);
-        
-        // 3. Ambil filter condition (untuk UPDATE, ini WHERE clause)
-        Object filter = parsedQuery.whereClause();
-        
-        // Untuk INSERT, filter biasanya null (tidak ada WHERE)
-        // Untuk UPDATE, filter harus ada (WHERE clause menentukan row mana yang diupdate)
-        if (isUpdate && filter == null) {
-            // UPDATE tanpa WHERE akan update semua rows (dangerous, tapi valid SQL)
-            // Bisa dikasih warning atau throw exception tergantung policy
-            System.out.println("[WARNING] UPDATE query tanpa WHERE clause akan mengubah semua rows!");
-        }
-        
-        // 4. Return DTO
-        return new DataWrite(tableName, newData, filter);
+    public List<Row> executeScan(ScanNode node, int txId, IStorageManager sm, IConcurrencyControlManager ccm) {
+        // TODO: Implementasi
+        // 1. Buat objek DataRetrieval (gunakan node.tableName())
+        // 2. Panggil sm.readBlock(dataRetrieval)
+        // 3. Return List<Row> hasil bacaan
+        return Collections.emptyList(); // Dummy return
     }
-    
+
     /**
-     * Translate a ParsedQuery to a DataDeletion object.
-     * Handles DELETE operations.
-     * 
-     * @param parsedQuery The parsed query from Query Optimizer
-     * @param transactionId Transaction ID for logging
-     * @return DataDeletion DTO for Storage Manager
+     * [FARREL]
+     * Menangani FilterNode: Menyaring baris berdasarkan kondisi WHERE.
      */
-    public DataDeletion translateToDeletion(ParsedQuery parsedQuery, String transactionId) {
-        // Validasi input
-        if (parsedQuery.targetTables() == null || parsedQuery.targetTables().isEmpty()) {
-            throw new IllegalArgumentException("ParsedQuery untuk DELETE tidak memiliki target tabel.");
-        }
-        
-        // Validasi queryType
-        if (!"DELETE".equalsIgnoreCase(parsedQuery.queryType())) {
-            throw new IllegalArgumentException(
-                "translateToDeletion hanya untuk DELETE query, dapat: " + parsedQuery.queryType()
-            );
-        }
-        
-        // 1. Ambil nama tabel
-        String tableName = parsedQuery.targetTables().get(0);
-        
-        // 2. Ambil filter condition (WHERE clause)
-        Object filter = parsedQuery.whereClause();
-        
-        // DELETE tanpa WHERE akan menghapus semua rows (dangerous!)
-        if (filter == null) {
-            System.out.println("[WARNING] DELETE query tanpa WHERE clause akan menghapus SEMUA rows!");
-            throw new IllegalArgumentException("DELETE tanpa WHERE tidak diizinkan");
-        }
-     
-        return new DataDeletion(tableName, filter);
+    public List<Row> executeFilter(FilterNode node, Function<PlanNode, List<Row>> childExecutor) {
+        // TODO: Implementasi
+        // 1. Ambil data dari anak: List<Row> input = childExecutor.apply(node.child());
+        // 2. Lakukan filtering menggunakan ConditionEvaluator
+        // 3. Return baris yang lolos filter
+        return Collections.emptyList(); // Dummy return
+    }
+
+    /**
+     * [FARREL]
+     * Menangani ProjectNode: Memilih kolom tertentu (SELECT col1, col2).
+     */
+    public List<Row> executeProject(ProjectNode node, Function<PlanNode, List<Row>> childExecutor) {
+        // TODO: Implementasi
+        // 1. Ambil data dari anak: List<Row> input = childExecutor.apply(node.child());
+        // 2. Lakukan mapping: Buat Row baru yang isinya HANYA kolom di node.columns()
+        return Collections.emptyList(); // Dummy return
+    }
+
+    /**
+     * [FARREL]
+     * Menangani JoinNode: Menggabungkan dua tabel/node.
+     */
+    public List<Row> executeJoin(JoinNode node, Function<PlanNode, List<Row>> childExecutor, 
+                                 JoinStrategy joinStrategy, int txId, IConcurrencyControlManager ccm) {
+        // TODO: Implementasi
+        // 1. Eksekusi anak kiri: List<Row> left = childExecutor.apply(node.left());
+        // 2. Eksekusi anak kanan: List<Row> right = childExecutor.apply(node.right());
+        // 3. Panggil JoinStrategy (misal: nestedLoopJoin)
+        return Collections.emptyList(); // Dummy return
+    }
+
+    /**
+     * [FARREL]
+     * Menangani ModifyNode: Operasi INSERT, UPDATE, DELETE.
+     */
+    public List<Row> executeModify(ModifyNode node, int txId, Function<PlanNode, List<Row>> childExecutor,
+                                   IStorageManager sm, IConcurrencyControlManager ccm, IFailureRecoveryManager frm) {
+        // TODO: Implementasi
+        // 1. Translate ModifyNode ke DTO storage (DataWrite / DataDeletion)
+        // 2. Panggil sm.writeBlock atau sm.deleteBlock
+        // 3. Buat Row dummy berisi info "affected_rows" untuk dikembalikan
+        return Collections.emptyList(); // Dummy return
+    }
+
+
+    // ==================================================================================
+    // [BAGIAN 2] POST-PROCESSING & UTILITIES
+    // Penanggung Jawab: WEKA
+    // Deskripsi: Menangani pembentukan hasil akhir dan perintah utilitas.
+    // ==================================================================================
+
+    /**
+     * [WEKA]
+     * Menangani SortNode: Mengurutkan hasil (ORDER BY).
+     */
+    public List<Row> executeSort(SortNode node, Function<PlanNode, List<Row>> childExecutor, SortStrategy sortStrategy) {
+        // TODO: Implementasi
+        // 1. Ambil data dari anak
+        // 2. Panggil SortStrategy.sort(rows, node.sortColumn(), node.ascending())
+        return Collections.emptyList(); // Dummy return
+    }
+
+    /**
+     * [WEKA]
+     * Menangani LimitNode: Membatasi jumlah baris (LIMIT/OFFSET).
+     */
+    public List<Row> executeLimit(LimitNode node, Function<PlanNode, List<Row>> childExecutor) {
+        // TODO: Implementasi
+        // 1. Ambil data dari anak
+        // 2. Gunakan logic subList() untuk skip (offset) dan limit
+        return Collections.emptyList(); // Dummy return
+    }
+
+    /**
+     * [WEKA]
+     * Menangani TCLNode: Perintah Transaksi (BEGIN, COMMIT, ROLLBACK).
+     */
+    public List<Row> executeTCL(TCLNode node, IConcurrencyControlManager ccm, int txId) {
+        // TODO: Implementasi
+        // Panggil method di CCM (endTransaction, dll)
+        // Return status sukses
+        return Collections.emptyList(); // Dummy return
+    }
+
+    // ==================================================================================
+    // [BAGIAN 3] DDL
+    // Penanggung Jawab: KINAN
+    // Deskripsi: Menangani pembentukan dan perubahan tabel.
+    // ==================================================================================
+    /**
+     * [KINAN] - Load Balanced
+     * Menangani DDLNode: CREATE TABLE, DROP TABLE, dll.
+     */
+    public List<Row> executeDDL(DDLNode node, IStorageManager sm) {
+        // TODO: Implementasi
+        // Panggil method yang sesuai di StorageManager (createTable, dropTable)
+        return Collections.emptyList(); // Dummy return
     }
 }
