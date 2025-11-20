@@ -107,7 +107,7 @@ public class CheckpointManager {
         }
     }
 
-    // Helper parsing
+    // bantu parsing 
     private CheckpointInfo parseCheckpointFile(Path path) {
         String filename = path.getFileName().toString().replace(".meta", "");
         return new CheckpointInfo(filename, 0, 0, "Loaded from file");
