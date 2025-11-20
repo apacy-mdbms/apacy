@@ -1,8 +1,15 @@
 package com.apacy.common.interfaces;
 
-import com.apacy.common.dto.*;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+
+import com.apacy.common.dto.DataDeletion;
+import com.apacy.common.dto.DataRetrieval;
+import com.apacy.common.dto.DataWrite;
+import com.apacy.common.dto.Row;
+import com.apacy.common.dto.Schema;
+import com.apacy.common.dto.Statistic;
 
 /**
  * Kontrak untuk: Storage Manager
@@ -19,4 +26,8 @@ public interface IStorageManager {
     void setIndex(String table, String column, String indexType);
 
     Map<String, Statistic> getAllStats(); // returns statistic of each tables. String == Table name
+
+    void createTable(Schema schema) throws IOException;
+
+    // void dropTable(String tableName, boolean isCascading) throws IOException;
 }

@@ -1,5 +1,6 @@
 package com.apacy.common.dto;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -10,8 +11,14 @@ public record Schema(
     String tableName,          // Nama tabel (e.g., "students")
     String dataFile,           // Lokasi file data (e.g., "students.dat")
     List<Column> columns,      // Daftar kolom
-    List<IndexSchema> indexes  // Daftar indeks
+    List<IndexSchema> indexes, // Daftar indeks
+    List<ForeignKeySchema> foreignKeys // Daftar Foreign Keys
 ) {
+
+    // Constructor overload untuk backward compatibility
+    public Schema(String tableName, String dataFile, List<Column> columns, List<IndexSchema> indexes) {
+        this(tableName, dataFile, columns, indexes, new ArrayList<>());
+    }
 
     /**
      * Helper untuk mengambil kolom berdasarkan indeks.
@@ -37,5 +44,10 @@ public record Schema(
             }
         }
         return null; // Atau lempar exception
+    }
+
+    // Helper untuk mengambil FK
+    public List<ForeignKeySchema> getForeignKeys() {
+        return foreignKeys == null ? new ArrayList<>() : foreignKeys;
     }
 }
