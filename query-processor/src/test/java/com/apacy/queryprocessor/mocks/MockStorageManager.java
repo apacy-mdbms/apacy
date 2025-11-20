@@ -1,12 +1,19 @@
 package com.apacy.queryprocessor.mocks;
 
-import com.apacy.common.dto.*;
-import com.apacy.common.enums.IndexType;
-import com.apacy.common.interfaces.IStorageManager;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
+
+import com.apacy.common.dto.DataDeletion;
+import com.apacy.common.dto.DataRetrieval;
+import com.apacy.common.dto.DataWrite;
+import com.apacy.common.dto.Row;
+import com.apacy.common.dto.Schema;
+import com.apacy.common.dto.Statistic;
+import com.apacy.common.enums.IndexType;
+import com.apacy.common.interfaces.IStorageManager;
 
 public class MockStorageManager implements IStorageManager {
     
@@ -92,5 +99,10 @@ public class MockStorageManager implements IStorageManager {
         ));
 
         return mockStats;
+    }
+
+    @Override
+    public void createTable(Schema schema) throws IOException {
+        throw new UnsupportedOperationException("Not supported yet.");
     }
 }
