@@ -1,34 +1,35 @@
 package com.apacy.queryprocessor;
 
-import com.apacy.common.dto.Row;
-import com.apacy.common.dto.DataRetrieval;
-import com.apacy.common.dto.DataWrite;
-import com.apacy.common.dto.DataDeletion;
-import com.apacy.common.dto.ExecutionResult;
-import com.apacy.common.dto.plan.*;
-import com.apacy.common.interfaces.*;
-import com.apacy.queryprocessor.execution.JoinStrategy;
-import com.apacy.queryprocessor.execution.SortStrategy;
-// import com.apacy.queryprocessor.evaluator.ConditionEvaluator; // TODO: Import ini nanti diperlukan
-
-import java.util.List;
-import java.util.Collections;
-import java.util.function.Function;
-import java.util.Map;
-import java.util.HashMap;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.function.Function;
 
 import com.apacy.common.dto.Column;
-import com.apacy.common.dto.DataDeletion;
-import com.apacy.common.dto.DataRetrieval;
-import com.apacy.common.dto.DataWrite;
 import com.apacy.common.dto.IndexSchema;
-import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.Row;
 import com.apacy.common.dto.Schema;
 import com.apacy.common.dto.ddl.ColumnDefinition;
 import com.apacy.common.dto.ddl.ParsedQueryCreate;
+import com.apacy.common.dto.ddl.ParsedQueryDDL;
+import com.apacy.common.dto.ddl.ParsedQueryDrop;
+import com.apacy.common.dto.plan.DDLNode;
+import com.apacy.common.dto.plan.FilterNode;
+import com.apacy.common.dto.plan.JoinNode;
+import com.apacy.common.dto.plan.LimitNode;
+import com.apacy.common.dto.plan.ModifyNode;
+import com.apacy.common.dto.plan.PlanNode;
+import com.apacy.common.dto.plan.ProjectNode;
+import com.apacy.common.dto.plan.ScanNode;
+import com.apacy.common.dto.plan.SortNode;
+import com.apacy.common.dto.plan.TCLNode;
 import com.apacy.common.enums.IndexType;
+import com.apacy.common.interfaces.IConcurrencyControlManager;
+import com.apacy.common.interfaces.IFailureRecoveryManager;
+import com.apacy.common.interfaces.IStorageManager;
+import com.apacy.queryprocessor.execution.JoinStrategy;
+import com.apacy.queryprocessor.execution.SortStrategy;
 
 /**
  * PlanTranslator sekarang bertindak sebagai "Node Executor Implementation".
@@ -154,9 +155,24 @@ public class PlanTranslator {
      * Menangani DDLNode: CREATE TABLE, DROP TABLE, dll.
      */
     public List<Row> executeDDL(DDLNode node, IStorageManager sm) {
-        // TODO: Implementasi
-        // Panggil method yang sesuai di StorageManager (createTable, dropTable)
-        return Collections.emptyList(); // Dummy return
+        ParsedQueryDDL ddlQuery = node.ddlQuery(); 
+
+        try {
+            // CREATE TABLE
+            if (ddlQuery instanceof ParsedQueryCreate createCmd) {
+                Schema schema = translateToSchema(createCmd);
+                sm.createTable(schema);
+            }
+            
+            // DROP TABLE
+            else if (ddlQuery instanceof ParsedQueryDrop dropCmd) {
+                // sm.dropTable(dropCmd.getTableName(), dropCmd.isCascading());
+            }
+
+            return Collections.emptyList();
+        } catch (IOException e) {
+            throw new RuntimeException("Storage IO Error executing DDL: " + e.getMessage(), e);
+        }
     }
 
     /**

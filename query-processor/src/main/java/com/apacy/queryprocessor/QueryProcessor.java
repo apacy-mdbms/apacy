@@ -1,6 +1,5 @@
 package com.apacy.queryprocessor;
 
-import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
@@ -11,8 +10,6 @@ import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.RecoveryCriteria;
 import com.apacy.common.dto.Response;
 import com.apacy.common.dto.Row;
-import com.apacy.common.dto.Schema;
-import com.apacy.common.dto.ddl.ParsedQueryCreate;
 import com.apacy.common.dto.ddl.ParsedQueryDDL;
 import com.apacy.common.dto.plan.DDLNode;
 import com.apacy.common.dto.plan.FilterNode;
@@ -209,23 +206,23 @@ public class QueryProcessor extends DBMSComponent {
         try {
             ParsedQueryDDL ddlQuery = parser.parseDDL();
 
-            // CREATE TABLE
-            if (ddlQuery instanceof ParsedQueryCreate createCmd) {
-                Schema schema = planTranslator.translateToSchema(createCmd);
-                
-                sm.createTable(schema);
-                
-                return new ExecutionResult(true, "Table '" + createCmd.getTableName() + "' created successfully.", 0, "CREATE", 0, null);
-            }
+            DDLNode ddlNode = new DDLNode(ddlQuery);
 
-           // TODO: DROP TABLE HANDLER (BLOCKER: dropTable method from SM)
+            planTranslator.executeDDL(ddlNode, sm);
 
-            return new ExecutionResult(false, "Unknown DDL Command", 0, "DDL", 0, null);
+            String opType = ddlQuery.getType().toString();
+            String tableName = ddlQuery.getTableName();
+            String msg = switch (ddlQuery.getType()) {
+                case CREATE_TABLE -> "Table '" + tableName + "' created successfully.";
+                case DROP_TABLE   -> "Table '" + tableName + "' dropped successfully.";
+                case ALTER_TABLE  -> "Table '" + tableName + "' altered successfully.";
+                default           -> "DDL Command executed.";
+            };
 
-        } catch (IOException e) {
-            return new ExecutionResult(false, "Storage IO Error: " + e.getMessage(), 0, "DDL", 0, null);
-        } catch (RuntimeException e) {
-            return new ExecutionResult(false, "Parsing/Logic Error: " + e.getMessage(), 0, "DDL", 0, null);
+            return new ExecutionResult(true, msg, 0, opType, 0, null);
+
+        } catch (Exception e) {
+            return new ExecutionResult(false, "DDL Execution Failed: " + e.getMessage(), 0, "DDL", 0, null);
         }
     }
 
