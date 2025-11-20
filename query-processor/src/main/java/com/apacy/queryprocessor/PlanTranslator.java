@@ -3,10 +3,15 @@ package com.apacy.queryprocessor;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 import com.apacy.common.dto.Column;
+import com.apacy.common.dto.DataDeletion;
+import com.apacy.common.dto.DataRetrieval;
+import com.apacy.common.dto.DataWrite;
 import com.apacy.common.dto.IndexSchema;
 import com.apacy.common.dto.Row;
 import com.apacy.common.dto.Schema;
@@ -28,6 +33,7 @@ import com.apacy.common.enums.IndexType;
 import com.apacy.common.interfaces.IConcurrencyControlManager;
 import com.apacy.common.interfaces.IFailureRecoveryManager;
 import com.apacy.common.interfaces.IStorageManager;
+import com.apacy.queryprocessor.evaluator.ConditionEvaluator;
 import com.apacy.queryprocessor.execution.JoinStrategy;
 import com.apacy.queryprocessor.execution.SortStrategy;
 
@@ -110,17 +116,12 @@ public class PlanTranslator {
      */
     public List<Row> executeJoin(JoinNode node, Function<PlanNode, List<Row>> childExecutor, 
                                  JoinStrategy joinStrategy, int txId, IConcurrencyControlManager ccm) {
-        // 1. Eksekusi anak kiri: List<Row> left = childExecutor.apply(node.left());
-        // 2. Eksekusi anak kanan: List<Row> right = childExecutor.apply(node.right());
-        // 3. Panggil JoinStrategy (misal: nestedLoopJoin)
-
         // 1. Eksekusi anak kiri dan kanan
         List<Row> leftRows = childExecutor.apply(node.left());
         List<Row> rightRows = childExecutor.apply(node.right());
         List<Row> result = new ArrayList<>();
 
         // 2. Logika Join
-
         for (Row left : leftRows) {
             for (Row right : rightRows) {
                 // Gabungkan data kiri + kanan
@@ -217,32 +218,103 @@ public class PlanTranslator {
      * Menangani SortNode: Mengurutkan hasil (ORDER BY).
      */
     public List<Row> executeSort(SortNode node, Function<PlanNode, List<Row>> childExecutor, SortStrategy sortStrategy) {
-        // TODO: Implementasi
         // 1. Ambil data dari anak
-        // 2. Panggil SortStrategy.sort(rows, node.sortColumn(), node.ascending())
-        return Collections.emptyList(); // Dummy return
+        List<Row> input = childExecutor.apply(node.child());
+        
+        // 2. Panggil SortStrategy.sort() secara static
+        return SortStrategy.sort(input, node.sortColumn(), node.ascending());
     }
 
     /**
-     * [WEKA]
-     * Menangani LimitNode: Membatasi jumlah baris (LIMIT/OFFSET).
+     * [WEKA] - IMPLEMENTED
+     * Menangani LimitNode: Membatasi jumlah baris (LIMIT only, no OFFSET support).
+     * 
+     * Note: Current LimitNode only supports LIMIT, not OFFSET.
+     * To add OFFSET support, update LimitNode record to include offset field.
+     * 
+     * @param node LimitNode yang berisi informasi limit
+     * @param childExecutor Function untuk mengeksekusi child node
+     * @return List<Row> yang sudah di-limit
      */
     public List<Row> executeLimit(LimitNode node, Function<PlanNode, List<Row>> childExecutor) {
-        // TODO: Implementasi
         // 1. Ambil data dari anak
-        // 2. Gunakan logic subList() untuk skip (offset) dan limit
-        return Collections.emptyList(); // Dummy return
+        List<Row> input = childExecutor.apply(node.child());
+        
+        // 2. Handle empty input
+        if (input == null || input.isEmpty()) {
+            return Collections.emptyList();
+        }
+        
+        // 3. Get limit value (int, not Integer, so always present)
+        int limit = node.limit();
+        
+        // 4. Handle edge cases
+        if (limit <= 0) {
+            return Collections.emptyList(); // LIMIT 0 or negative = no rows
+        }
+        
+        if (limit >= input.size()) {
+            return new ArrayList<>(input); // LIMIT larger than data = return all
+        }
+        
+        // 5. Return limited sublist
+        return new ArrayList<>(input.subList(0, limit));
     }
 
     /**
-     * [WEKA]
+     * [WEKA] - IMPLEMENTED
      * Menangani TCLNode: Perintah Transaksi (BEGIN, COMMIT, ROLLBACK).
+     * 
+     * TCL (Transaction Control Language) commands:
+     * - BEGIN: Memulai transaksi baru
+     * - COMMIT: Menyimpan perubahan transaksi
+     * - ROLLBACK/ABORT: Membatalkan perubahan transaksi
+     * 
+     * @param node TCLNode yang berisi tipe perintah TCL
+     * @param ccm Concurrency Control Manager
+     * @param txId Transaction ID saat ini
+     * @return List<Row> berisi status eksekusi
      */
     public List<Row> executeTCL(TCLNode node, IConcurrencyControlManager ccm, int txId) {
-        // TODO: Implementasi
-        // Panggil method di CCM (endTransaction, dll)
-        // Return status sukses
-        return Collections.emptyList(); // Dummy return
+        String command = node.command().toUpperCase();
+        
+        Map<String, Object> resultData = new HashMap<>();
+        
+        switch (command) {
+            case "BEGIN":
+            case "BEGIN TRANSACTION":
+                // BEGIN sudah di-handle di QueryProcessor.executeQuery()
+                // Karena txId sudah di-generate sebelum node ini dieksekusi
+                resultData.put("status", "Transaction already started");
+                resultData.put("transaction_id", txId);
+                System.out.println("[TCL] BEGIN TRANSACTION: txId=" + txId);
+                break;
+                
+            case "COMMIT":
+                // Commit transaksi
+                ccm.endTransaction(txId, true);
+                resultData.put("status", "Transaction committed");
+                resultData.put("transaction_id", txId);
+                System.out.println("[TCL] COMMIT: txId=" + txId);
+                break;
+                
+            case "ROLLBACK":
+            case "ABORT":
+                // Rollback transaksi
+                ccm.endTransaction(txId, false);
+                resultData.put("status", "Transaction rolled back");
+                resultData.put("transaction_id", txId);
+                System.out.println("[TCL] ROLLBACK: txId=" + txId);
+                break;
+                
+            default:
+                throw new UnsupportedOperationException(
+                    "Unsupported TCL command: " + command
+                );
+        }
+        
+        // Return status row
+        return List.of(new Row(resultData));
     }
 
     // ==================================================================================
@@ -250,6 +322,7 @@ public class PlanTranslator {
     // Penanggung Jawab: KINAN
     // Deskripsi: Menangani pembentukan dan perubahan tabel.
     // ==================================================================================
+    
     /**
      * [KINAN] - Load Balanced
      * Menangani DDLNode: CREATE TABLE, DROP TABLE, dll.
