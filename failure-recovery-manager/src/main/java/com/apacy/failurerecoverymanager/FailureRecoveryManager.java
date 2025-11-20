@@ -14,6 +14,14 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
     private final CheckpointManager checkpointManager;
     protected final StorageManager storageManager;
 
+    public FailureRecoveryManager() {
+        super("Failure Recovery Manager");
+        this.storageManager = null;
+        this.logWriter = new LogWriter();
+        this.logReplayer = new LogReplayer();
+        this.checkpointManager = new CheckpointManager();
+    }
+
     public FailureRecoveryManager(StorageManager storageManager) {
         super("Failure Recovery Manager");
         this.storageManager = storageManager;
