@@ -1,19 +1,34 @@
 package com.apacy.queryprocessor;
 
-import com.apacy.common.DBMSComponent;
-import com.apacy.common.dto.*;
-import com.apacy.common.interfaces.*;
-import com.apacy.common.enums.Action;
+import java.io.IOException;
+import java.util.List;
 
+import com.apacy.common.DBMSComponent;
+import com.apacy.common.dto.DataDeletion;
+import com.apacy.common.dto.DataRetrieval;
+import com.apacy.common.dto.DataWrite;
+import com.apacy.common.dto.ExecutionResult;
+import com.apacy.common.dto.ParsedQuery;
+import com.apacy.common.dto.RecoveryCriteria;
+import com.apacy.common.dto.Response;
+import com.apacy.common.dto.Row;
+import com.apacy.common.dto.Schema;
+import com.apacy.common.dto.ddl.ParsedQueryCreate;
+import com.apacy.common.dto.ddl.ParsedQueryDDL;
+import com.apacy.common.enums.Action;
+import com.apacy.common.interfaces.IConcurrencyControlManager;
+import com.apacy.common.interfaces.IFailureRecoveryManager;
+import com.apacy.common.interfaces.IQueryOptimizer;
+import com.apacy.common.interfaces.IStorageManager;
+import com.apacy.queryoptimizer.ast.expression.ColumnFactor;
+import com.apacy.queryoptimizer.ast.join.JoinConditionNode;
+import com.apacy.queryoptimizer.ast.join.JoinOperand;
+import com.apacy.queryoptimizer.ast.join.TableNode;
+import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
+import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 import com.apacy.queryprocessor.execution.JoinStrategy;
 import com.apacy.queryprocessor.execution.SortStrategy;
-
-import com.apacy.queryoptimizer.ast.join.*;
-import com.apacy.queryoptimizer.ast.where.*;
-import com.apacy.queryoptimizer.ast.expression.*;
-
-import java.util.List;
-import java.util.stream.Collectors;
+import com.apacy.queryprocessor.mocks.MockDDLParser;
 
 /**
  * Main Query Processor that coordinates all database operations.
@@ -60,6 +75,11 @@ public class QueryProcessor extends DBMSComponent {
     }
     
     public ExecutionResult executeQuery(String sqlQuery) {
+        MockDDLParser ddlParser = new MockDDLParser(sqlQuery);
+        if (ddlParser.isDDL()) {
+            return executeDDL(ddlParser);
+        }
+
         int txId = ccm.beginTransaction();
         ParsedQuery parsedQuery = null;
         
@@ -94,6 +114,34 @@ public class QueryProcessor extends DBMSComponent {
             String opType = (parsedQuery != null) ? parsedQuery.queryType() : "UNKNOWN";
 
             return new ExecutionResult(false, e.getMessage(), txId, opType, 0, null);
+        }
+    }
+
+
+    /**
+     * Handler khusus untuk DDL (Create, Drop) pake Mock Parser.
+     */
+    private ExecutionResult executeDDL(MockDDLParser parser) {
+        try {
+            ParsedQueryDDL ddlQuery = parser.parseDDL();
+
+            // CREATE TABLE
+            if (ddlQuery instanceof ParsedQueryCreate createCmd) {
+                Schema schema = planTranslator.translateToSchema(createCmd);
+                
+                sm.createTable(schema);
+                
+                return new ExecutionResult(true, "Table '" + createCmd.getTableName() + "' created successfully.", 0, "CREATE", 0, null);
+            }
+
+           // TODO: DROP TABLE HANDLER (BLOCKER: dropTable method from SM)
+
+            return new ExecutionResult(false, "Unknown DDL Command", 0, "DDL", 0, null);
+
+        } catch (IOException e) {
+            return new ExecutionResult(false, "Storage IO Error: " + e.getMessage(), 0, "DDL", 0, null);
+        } catch (RuntimeException e) {
+            return new ExecutionResult(false, "Parsing/Logic Error: " + e.getMessage(), 0, "DDL", 0, null);
         }
     }
 
