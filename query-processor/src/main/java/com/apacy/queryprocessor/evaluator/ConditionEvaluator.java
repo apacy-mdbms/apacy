@@ -15,10 +15,10 @@ public class ConditionEvaluator {
             boolean left = evaluate(row, bin.left());
             boolean right = evaluate(row, bin.right());
             
-            return switch (bin.operator().toUpperCase()) {
-                case "AND" -> left && right;
-                case "OR" -> left || right;
-                default -> false;
+            switch (bin.operator().toUpperCase()) {
+                case "AND": return left && right;
+                case "OR": return left || right;
+                default: return false;
             };
         } 
         else if (conditionNode instanceof UnaryConditionNode unary) {
@@ -107,14 +107,14 @@ public class ConditionEvaluator {
     }
 
     private static boolean checkOp(int cmp, String op) {
-        return switch (op) {
-            case "=" -> cmp == 0;
-            case ">" -> cmp > 0;
-            case "<" -> cmp < 0;
-            case ">=" -> cmp >= 0;
-            case "<=" -> cmp <= 0;
-            case "<>", "!=" -> cmp != 0;
-            default -> false;
+        switch (op) {
+            case "=": return cmp == 0;
+            case ">": return cmp > 0;
+            case "<": return cmp < 0;
+            case ">=": return cmp >= 0;
+            case "<=": return cmp <= 0;
+            case "<>", "!=": return cmp != 0;
+            default: return false;
         };
     }
 }

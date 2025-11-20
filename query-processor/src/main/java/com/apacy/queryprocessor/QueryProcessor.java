@@ -223,5 +223,4 @@ public class QueryProcessor extends DBMSComponent {
         }
     }
 
-    // --- Helper Methods for Join Execution ---
 }
