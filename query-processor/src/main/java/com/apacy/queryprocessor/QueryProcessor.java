@@ -8,11 +8,15 @@ import com.apacy.common.enums.Action;
 import com.apacy.queryprocessor.execution.JoinStrategy;
 import com.apacy.queryprocessor.execution.SortStrategy;
 
+import com.apacy.queryprocessor.evaluator.ConditionEvaluator;
+
 import com.apacy.queryoptimizer.ast.join.*;
 import com.apacy.queryoptimizer.ast.where.*;
 import com.apacy.queryoptimizer.ast.expression.*;
 
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -130,7 +134,6 @@ public class QueryProcessor extends DBMSComponent {
         return "id";
     }
 
-    // --- Main Execution Logic ---
     private ExecutionResult executeSelect(ParsedQuery query, int txId) throws Exception {
         List<String> targetTables = query.targetTables();
         
@@ -155,17 +158,40 @@ public class QueryProcessor extends DBMSComponent {
             DataRetrieval dataRetrieval = planTranslator.translateToRetrieval(query, String.valueOf(txId));
             rows = sm.readBlock(dataRetrieval);
         }
+
+        // 3. Filtering (WHERE Clause)
+        if (query.whereClause() != null) {
+            rows = rows.stream()
+                .filter(row -> ConditionEvaluator.evaluate(row, query.whereClause()))
+                .collect(Collectors.toList());
+        }
+
+        // 4. Projection (SELECT col1, col2...)
+        // Kalau bukan "SELECT *", ambil kolom yang diminta doang
+        if (query.targetColumns() != null && !query.targetColumns().contains("*")) {
+            final List<String> cols = query.targetColumns();
+            rows = rows.stream().map(row -> {
+                Map<String, Object> projectedData = new HashMap<>();
+                for (String colName : cols) {
+                    Object val = getColumnValue(row, colName);
+                    projectedData.put(colName, val);
+                }
+                return new Row(projectedData);
+            }).collect(Collectors.toList());
+        }
         
-        // 3. Sorting (ORDER BY)
+        // 5. Sorting (ORDER BY)
         if (query.orderByColumn() != null) {
             boolean ascending = !query.isDescending();
             rows = SortStrategy.sort(rows, query.orderByColumn(), ascending);
         }
 
-        // 4. Commit & Return
+        // LIMIT & OFFSET di sini
+        
+        // 6. Commit & Return
         ccm.endTransaction(txId, true);
         
-        ExecutionResult result = new ExecutionResult(
+        return new ExecutionResult(
             true, 
             "SELECT executed successfully", 
             txId, 
@@ -173,8 +199,30 @@ public class QueryProcessor extends DBMSComponent {
             rows.size(), 
             rows
         );
+    }
+
+    private Object getColumnValue(Row row, String requestedCol) {
+        // 1. Cek exact match (misal: query minta "id", di row ada "id")
+        if (row.data().containsKey(requestedCol)) {
+            return row.data().get(requestedCol);
+        }
         
-        return result;
+        // 2. Cek suffix match (misal: query minta "id", di row ada "users.id")
+        for (String key : row.data().keySet()) {
+            if (key.endsWith("." + requestedCol)) {
+                return row.data().get(key);
+            }
+        }
+        
+        // 3. Cek jika query minta "users.id" tapi di row cuma ada "id"
+        if (requestedCol.contains(".")) {
+            String simpleName = requestedCol.substring(requestedCol.lastIndexOf(".") + 1);
+            if (row.data().containsKey(simpleName)) {
+                return row.data().get(simpleName);
+            }
+        }
+        
+        return null;
     }
 
     private ExecutionResult executeWrite(ParsedQuery query, int txId) throws Exception {
