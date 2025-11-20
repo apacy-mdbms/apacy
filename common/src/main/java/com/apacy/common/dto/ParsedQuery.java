@@ -21,8 +21,29 @@ public record ParsedQuery(
     Object whereClause,    // Sebaiknya merujuk ke class/record AST internal QO
     String orderByColumn,
     boolean isDescending,
-    boolean isOptimized
+    boolean isOptimized,
+    Integer limit,
+    Integer offset
 ) {
+    // --- KONSTRUKTOR UNTUK BACKWARD COMPATIBILITY ---
+    // Ini agar kode lama/test lain tidak error karena jumlah argumen berubah.
+    public ParsedQuery(
+            String queryType,
+            PlanNode planRoot,
+            List<String> targetTables,
+            List<String> targetColumns,
+            List<Object> values,
+            Object joinConditions,
+            Object whereClause,
+            String orderByColumn,
+            boolean isDescending,
+            boolean isOptimized
+    ) {
+        // Panggil konstruktor utama dengan limit & offset = null
+        this(queryType, planRoot, targetTables, targetColumns, values, joinConditions, whereClause, orderByColumn, isDescending, isOptimized, null, null);
+    }
+    
+    @Override
     public String toString() {
         return """
         Query: %s
@@ -43,6 +64,8 @@ public record ParsedQuery(
                     joinConditions != null ? joinConditions.toString() : "none",
                     whereClause != null ? whereClause.toString() : "none",
                     orderByColumn,
+                    limit != null ? limit : "none",
+                    offset != null ? offset : "none",
                     isDescending,
                     isOptimized
                     );
