@@ -1,132 +1,98 @@
 package com.apacy.failurerecoverymanager;
 
 import com.apacy.common.DBMSComponent;
-import com.apacy.common.dto.*;
+import com.apacy.common.dto.ExecutionResult;
+import com.apacy.common.dto.RecoveryCriteria;
 import com.apacy.common.interfaces.IFailureRecoveryManager;
-
-import com.apacy.storagemanager.StorageManager; 
-
-import java.io.IOException;
+import com.apacy.storagemanager.StorageManager;
 
 public class FailureRecoveryManager extends DBMSComponent implements IFailureRecoveryManager {
 
+    // Gunakan helper class internal yang sudah dibuat
     private final LogWriter logWriter;
     private final LogReplayer logReplayer;
     private final CheckpointManager checkpointManager;
     protected final StorageManager storageManager;
 
-    protected final String LOG_FILE_PATH = "failure-recovery/log/mDBMS.log";
-    protected final String CHECKPOINT_DIR = "failure-recovery/checkpoints";
-
-    public FailureRecoveryManager() {
+    public FailureRecoveryManager(StorageManager storageManager) {
         super("Failure Recovery Manager");
-        this.storageManager = null;
+        this.storageManager = storageManager;
+        // Inisialisasi helper-nya
         this.logWriter = new LogWriter();
         this.logReplayer = new LogReplayer();
         this.checkpointManager = new CheckpointManager();
     }
 
-    public FailureRecoveryManager(StorageManager storageManager) {
-        super("Failure Recovery Manager");
-        System.out.println("Initializing FailureRecoveryManager...");
-
-        this.storageManager = storageManager;
-
-        this.logWriter = new LogWriter(LOG_FILE_PATH);
-        this.logReplayer = new LogReplayer(LOG_FILE_PATH);
-        this.checkpointManager = new CheckpointManager(CHECKPOINT_DIR);
-        
-        System.out.println("FailureRecoveryManager initialized successfully.");
-    }
-
     @Override
     public void initialize() throws Exception {
-        System.out.println("FailureRecoveryManager component is active.");
+        System.out.println(this.getComponentName() + " is initializing...");
+        // Logika untuk melakukan recovery saat startup jika shutdown sebelumnya tidak
+        // normal
+        System.out.println(this.getComponentName() + " initialized successfully.");
     }
 
     @Override
     public void shutdown() {
-        // Logika shutdown, terutama memastikan semua log ter-flush ke disk.
-        try {
-            System.out.println("Shutting down FailureRecoveryManager...");
-            logWriter.flush();
-            logWriter.close();
-            System.out.println("Log writer flushed and closed. Shutdown complete.");
-        } catch (IOException e) {
-            System.err.println("Error during FailureRecoveryManager shutdown:");
-            e.printStackTrace();
-        }
+        System.out.println(this.getComponentName() + " is shutting down...");
+        // Selalu buat checkpoint terakhir untuk memastikan data konsisten.
+        this.saveCheckpoint();
+        System.out.println(this.getComponentName() + " shut down gracefully.");
     }
 
     @Override
     public void writeLog(ExecutionResult info) {
         if (info == null) {
-            System.err.println("writeLog dipanggil dengan ExecutionResult null.");
+            System.err.println("ExecutionResult info is null. Cannot write log.");
             return;
         }
-
         try {
-            String tableName = null; // TODO: Dapatkan tableName dari DTO ExecutionResult
-            Object logData = info.rows(); 
-
+            // Ubah DTO ExecutionResult menjadi format log entry internal Anda
+            // (Ini hanya contoh, sesuaikan dengan LogWriter Anda)
             logWriter.writeLog(
-                String.valueOf(info.transactionId()),
-                info.operation(),
-                tableName,
-                logData
+                    String.valueOf(info.transactionId()),
+                    info.operation(),
+                    null, // Anda perlu cara untuk mendapatkan nama tabel
+                    info.rows() // atau data lain dari 'info'
             );
         } catch (Exception e) {
-            System.err.println("Gagal menulis log untuk Transaksi " + info.transactionId() + ":");
+            // TODO: Handle exception (misal: print error)
             e.printStackTrace();
-            // TODO: Handle exception (misal: paksa transaction abort?)
         }
     }
 
     @Override
     public void saveCheckpoint() {
+        // Delegasikan tugas ke helper
         try {
-            System.out.println("Memulai proses save checkpoint...");
+            System.out.println("Creating a new checkpoint...");
             this.checkpointManager.createCheckpoint();
-            System.out.println("Proses save checkpoint berhasil.");
         } catch (Exception e) {
-            System.err.println("Gagal saat save checkpoint:");
+            System.err.println("Failed to create checkpoint.");
             e.printStackTrace();
-            // TODO: Handle exception
         }
     }
 
     @Override
     public void recover(RecoveryCriteria criteria) {
-        if (criteria == null || criteria.recoveryType() == null) {
-            System.err.println("Proses recovery gagal: RecoveryCriteria null atau tidak valid.");
+        if (criteria == null) {
+            System.err.println("Recovery criteria is null. Aborting recovery process.");
             return;
         }
-
         try {
-            System.out.println("Memulai proses recovery. Tipe: " + criteria.recoveryType());
-            if ("UNDO_TRANSACTION".equals(criteria.recoveryType())) {
-                if (criteria.transactionId() == null) {
-                    System.err.println("UNDO_TRANSACTION memerlukan transactionId.");
-                    return;
-                }
-                System.out.println("Melakukan UNDO untuk Transaksi: " + criteria.transactionId());
-                this.logReplayer.undoTransaction(criteria.transactionId());
-            
-            } else if ("POINT_IN_TIME".equals(criteria.recoveryType()) || "SYSTEM_RESTART".equals(criteria.recoveryType())) {
-                System.out.println("Melakukan replay log berdasarkan kriteria...");
-                this.logReplayer.replayLogs(criteria);
-            
-            } else {
-                System.out.println("Tipe recovery tidak dikenal, melakukan replay log standar...");
-                this.logReplayer.replayLogs(criteria);
+            switch (criteria.recoveryType()) {
+                case "UNDO_TRANSACTION":
+                    this.logReplayer.undoTransaction(criteria.transactionId());
+                    break;
+                case "POINT_IN_TIME":
+                    this.logReplayer.replayLogs(criteria);
+                    break;
+                default:
+                    this.logReplayer.replayLogs(criteria);
+                    break;
             }
-            
-            System.out.println("Proses recovery selesai.");
-
         } catch (Exception e) {
-            System.err.println("Gagal saat proses recovery:");
+            System.err.println("A critical error occurred during the recovery process.");
             e.printStackTrace();
-            // TODO: Handle exception (ini adalah error kritis)
         }
     }
 }

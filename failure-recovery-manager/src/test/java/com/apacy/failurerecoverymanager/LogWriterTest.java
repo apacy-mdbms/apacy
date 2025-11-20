@@ -16,6 +16,28 @@ class LogWriterTest {
         Files.deleteIfExists(Paths.get(TEST_LOG_PATH));
     }
 
+    @AfterEach
+    void cleanAfter() throws IOException {
+        // Clean up test files and any .bak files
+        try {
+            Files.deleteIfExists(Paths.get(TEST_LOG_PATH));
+
+            // Clean up any .bak files created during rotation tests
+            File parent = new File("failure-recovery/log");
+            if (parent.exists()) {
+                File[] bakFiles = parent
+                        .listFiles((dir, name) -> name.contains("test-logwriter.log") && name.endsWith(".bak"));
+                if (bakFiles != null) {
+                    for (File bakFile : bakFiles) {
+                        bakFile.delete();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Ignore cleanup errors
+        }
+    }
+
     @Test
     void testLogWriterCreatesFileAndWritesLogEntry() throws Exception {
         LogWriter writer = new LogWriter(TEST_LOG_PATH);
@@ -81,5 +103,8 @@ class LogWriterTest {
         assertTrue(rotated.exists(), "Rotated backup file must exist");
         assertTrue(newLog.exists(), "New log file must be created after rotation");
         assertEquals(0, newLog.length(), "New log file should be empty after rotation");
+
+        // IMPORTANT: Close the writer to release file handles
+        writer.close();
     }
 }
