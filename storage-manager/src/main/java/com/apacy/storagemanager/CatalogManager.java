@@ -164,6 +164,18 @@ public class CatalogManager {
     }
 
     /**
+     * Update schema in cache
+     * @param updatedSchema
+     * @throws IOException
+     */
+    public void updateSchema(Schema updatedSchema) throws IOException {
+        if (!schemaCache.containsKey(updatedSchema.tableName())) {
+            throw new IOException("Table: " + updatedSchema.tableName() + " not found");
+        }
+        schemaCache.put(updatedSchema.tableName(), updatedSchema);
+    }
+
+    /**
      * Main method untuk membuat file katalog dummy secara manual.
      */
     public static void main(String[] args) throws IOException {
