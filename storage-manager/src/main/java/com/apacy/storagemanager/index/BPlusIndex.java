@@ -20,7 +20,7 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
     private final BlockManager blockManager;
     private final Serializer serializer;
 
-    private BPlusTree<K,V> tree;
+    private BPlusTree<K, V> tree;
 
     public BPlusIndex(String tableName, String columnName) {
         this(tableName, columnName, 100);
@@ -28,29 +28,29 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
 
     public BPlusIndex(String tableName, String columnName, int order) {
         this(tableName,
-             columnName,
-             order,
-             tableName + "_" + columnName + "_bplusindex", // default index file name
-             null,
-             null);
+                columnName,
+                order,
+                tableName + "_" + columnName + "_bplusindex", // default index file name
+                null,
+                null);
     }
 
     /**
      * Full constructor mirroring HashIndex style.
      *
-     * @param tableName   base table name
-     * @param columnName  indexed column
-     * @param order       B+Tree branching factor (nV)
-     * @param indexFile   index data file name
+     * @param tableName    base table name
+     * @param columnName   indexed column
+     * @param order        B+Tree branching factor (nV)
+     * @param indexFile    index data file name
      * @param blockManager storage block manager (may be null → in-memory only)
-     * @param serializer  serializer (may be null → in-memory only)
+     * @param serializer   serializer (may be null → in-memory only)
      */
     public BPlusIndex(String tableName,
-                      String columnName,
-                      int order,
-                      String indexFile,
-                      BlockManager blockManager,
-                      Serializer serializer) {
+            String columnName,
+            int order,
+            String indexFile,
+            BlockManager blockManager,
+            Serializer serializer) {
 
         this.tableName = tableName;
         this.columnName = columnName;
@@ -61,26 +61,25 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
         this.tree = new BPlusTree<>(order);
     }
 
-
     /**
      * Build the on-disk schema for this B+ index.
      *
      * Each row = one node.
      *
      * Columns:
-     *   nodeId      : INTEGER
-     *   isLeaf      : INTEGER (0/1)
-     *   parentId    : INTEGER (-1 = root)
-     *   nextLeafId  : INTEGER (for leaf-level linked list; -1 if none)
-     *   keyCount    : INTEGER (number of valid keys)
-     *   childCount  : INTEGER (for internal nodes: number of valid children)
+     * nodeId : INTEGER
+     * isLeaf : INTEGER (0/1)
+     * parentId : INTEGER (-1 = root)
+     * nextLeafId : INTEGER (for leaf-level linked list; -1 if none)
+     * keyCount : INTEGER (number of valid keys)
+     * childCount : INTEGER (for internal nodes: number of valid children)
      *
-     *   For i in [0, maxKeys-1] where maxKeys = order - 1:
-     *     key_i     : same DataType as base column
-     *     val_i     : INTEGER (address / pointer; only used for leaves)
+     * For i in [0, maxKeys-1] where maxKeys = order - 1:
+     * key_i : same DataType as base column
+     * val_i : INTEGER (address / pointer; only used for leaves)
      *
-     *   For j in [0, order-1]:
-     *     child_j   : INTEGER (child nodeId; only used for internal nodes)
+     * For j in [0, order-1]:
+     * child_j : INTEGER (child nodeId; only used for internal nodes)
      */
     private Schema buildSchema(CatalogManager catalogManager) {
         Schema baseSchema = catalogManager.getSchema(tableName);
@@ -119,19 +118,19 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
         String indexTableName = tableName + "_" + columnName + "_bplusindex";
 
         return new Schema(
-            indexTableName,
-            indexFile,
-            cols,
-            List.of()
-        );
+                indexTableName,
+                indexFile,
+                cols,
+                List.of());
     }
 
     private static Object defaultKeyValue(DataType type) {
         return switch (type) {
             case INTEGER -> 0;
-            case FLOAT   -> 0.0f;
+            case FLOAT -> 0.0f;
             case CHAR,
-                 VARCHAR -> "";
+                    VARCHAR ->
+                "";
         };
     }
 
@@ -167,35 +166,35 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
                 return;
             }
 
-            Map<Integer, NodeRecord<K,V>> recordMap = new HashMap<>();
+            Map<Integer, NodeRecord<K, V>> recordMap = new HashMap<>();
 
             for (long bn = 0; bn < blockCount; bn++) {
                 byte[] blk = blockManager.readBlock(indexFile, bn);
                 List<Row> rows = serializer.deserializeBlock(blk, schema);
 
                 for (Row r : rows) {
-                    Map<String,Object> data = r.data();
+                    Map<String, Object> data = r.data();
 
-                    int nodeId     = (int) data.get("nodeId");
+                    int nodeId = (int) data.get("nodeId");
                     int isLeafFlag = (int) data.get("isLeaf");
-                    int parentId   = (int) data.get("parentId");
+                    int parentId = (int) data.get("parentId");
                     int nextLeafId = (int) data.get("nextLeafId");
-                    int keyCount   = (int) data.get("keyCount");
+                    int keyCount = (int) data.get("keyCount");
                     int childCount = (int) data.get("childCount");
 
                     boolean isLeaf = (isLeafFlag == 1);
 
-                    NodeRecord<K,V> rec = new NodeRecord<>();
-                    rec.nodeId     = nodeId;
-                    rec.parentId   = parentId;
+                    NodeRecord<K, V> rec = new NodeRecord<>();
+                    rec.nodeId = nodeId;
+                    rec.parentId = parentId;
                     rec.nextLeafId = nextLeafId;
-                    rec.isLeaf     = isLeaf;
-                    rec.childIds   = new ArrayList<>();
+                    rec.isLeaf = isLeaf;
+                    rec.childIds = new ArrayList<>();
 
                     int maxKeys = order - 1;
 
                     if (isLeaf) {
-                        LeafNode<K,V> leaf = new LeafNode<>(null);
+                        LeafNode<K, V> leaf = new LeafNode<>(null);
 
                         for (int i = 0; i < keyCount; i++) {
                             Object attr = data.get("key_" + i);
@@ -203,7 +202,7 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
                             @SuppressWarnings("unchecked")
                             V rid = (V) data.get("val_" + i);
 
-                            @SuppressWarnings({"rawtypes","unchecked"})
+                            @SuppressWarnings({ "rawtypes", "unchecked" })
                             CompositeKey ck = new CompositeKey((Comparable) attr, (Comparable) rid);
 
                             leaf.keys.add((K) ck);
@@ -212,12 +211,12 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
 
                         rec.node = leaf;
                     } else {
-                        InternalNode<K,V> internal = new InternalNode<>(null);
+                        InternalNode<K, V> internal = new InternalNode<>(null);
 
                         for (int i = 0; i < keyCount; i++) {
                             Object attr = data.get("key_" + i);
 
-                            @SuppressWarnings({"rawtypes","unchecked"})
+                            @SuppressWarnings({ "rawtypes", "unchecked" })
                             CompositeKey ck = new CompositeKey((Comparable) attr, (Comparable) Integer.valueOf(0));
 
                             internal.keys.add((K) ck);
@@ -230,7 +229,6 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
 
                         rec.node = internal;
                     }
-                   
 
                     recordMap.put(nodeId, rec);
                 }
@@ -241,9 +239,9 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
                 return;
             }
 
-            Node<K,V> root = null;
+            Node<K, V> root = null;
 
-            for (NodeRecord<K,V> rec : recordMap.values()) {
+            for (NodeRecord<K, V> rec : recordMap.values()) {
                 if (rec.parentId == -1) {
                     root = rec.node;
                     break;
@@ -255,31 +253,32 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
                 return;
             }
 
-            for (NodeRecord<K,V> rec : recordMap.values()) {
+            for (NodeRecord<K, V> rec : recordMap.values()) {
                 if (!rec.isLeaf) {
-                    InternalNode<K,V> internal = (InternalNode<K,V>) rec.node;
+                    InternalNode<K, V> internal = (InternalNode<K, V>) rec.node;
                     for (Integer cid : rec.childIds) {
-                        NodeRecord<K,V> childRec = recordMap.get(cid);
-                        if (childRec == null) continue;
+                        NodeRecord<K, V> childRec = recordMap.get(cid);
+                        if (childRec == null)
+                            continue;
 
                         internal.children.add(childRec.node);
                         childRec.node.parent = internal;
                     }
                 } else {
-                    LeafNode<K,V> leaf = (LeafNode<K,V>) rec.node;
+                    LeafNode<K, V> leaf = (LeafNode<K, V>) rec.node;
                     if (rec.nextLeafId >= 0) {
-                        NodeRecord<K,V> nextRec = recordMap.get(rec.nextLeafId);
+                        NodeRecord<K, V> nextRec = recordMap.get(rec.nextLeafId);
                         if (nextRec != null && nextRec.isLeaf) {
-                            leaf.next = (LeafNode<K,V>) nextRec.node;
+                            leaf.next = (LeafNode<K, V>) nextRec.node;
                         }
                     }
                 }
 
                 if (rec.parentId >= 0) {
-                    NodeRecord<K,V> parentRec = recordMap.get(rec.parentId);
-                    if (parentRec != null && parentRec.node instanceof InternalNode<?,?>) {
+                    NodeRecord<K, V> parentRec = recordMap.get(rec.parentId);
+                    if (parentRec != null && parentRec.node instanceof InternalNode<?, ?>) {
                         @SuppressWarnings("unchecked")
-                        InternalNode<K,V> p = (InternalNode<K,V>) parentRec.node;
+                        InternalNode<K, V> p = (InternalNode<K, V>) parentRec.node;
                         rec.node.parent = p;
                     }
                 }
@@ -323,11 +322,11 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
                 tree = new BPlusTree<>(order);
             }
 
-            Node<K,V> rootNode = tree.getRoot();
-            List<Node<K,V>> nodes = new ArrayList<>();
+            Node<K, V> rootNode = tree.getRoot();
+            List<Node<K, V>> nodes = new ArrayList<>();
             collectNodes(rootNode, nodes);
 
-            Map<Node<K,V>, Integer> idMap = new HashMap<>();
+            Map<Node<K, V>, Integer> idMap = new HashMap<>();
             for (int i = 0; i < nodes.size(); i++) {
                 idMap.put(nodes.get(i), i);
             }
@@ -335,8 +334,8 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
             int maxKeys = order - 1;
             List<Row> rows = new ArrayList<>();
 
-            for (Node<K,V> n : nodes) {
-                Map<String,Object> data = new HashMap<>();
+            for (Node<K, V> n : nodes) {
+                Map<String, Object> data = new HashMap<>();
                 int nodeId = idMap.get(n);
 
                 data.put("nodeId", nodeId);
@@ -346,7 +345,7 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
                 data.put("keyCount", n.keyCount());
 
                 if (n.isLeaf()) {
-                    LeafNode<K,V> leaf = (LeafNode<K,V>) n;
+                    LeafNode<K, V> leaf = (LeafNode<K, V>) n;
 
                     if (leaf.next != null) {
                         Integer nextId = idMap.get(leaf.next);
@@ -370,7 +369,7 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
                     }
 
                 } else {
-                    InternalNode<K,V> internal = (InternalNode<K,V>) n;
+                    InternalNode<K, V> internal = (InternalNode<K, V>) n;
 
                     for (int i = 0; i < maxKeys; i++) {
                         if (i < internal.keys.size()) {
@@ -418,33 +417,47 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
     }
 
     private Comparable minValueFor(Comparable pk) {
-        if (pk instanceof Integer) return Integer.MIN_VALUE;
-        if (pk instanceof Long)    return Long.MIN_VALUE;
-        if (pk instanceof Short)   return Short.MIN_VALUE;
-        if (pk instanceof Byte)    return Byte.MIN_VALUE;
-        if (pk instanceof Float)   return -Float.MAX_VALUE;
-        if (pk instanceof Double)  return -Double.MAX_VALUE;
-        if (pk instanceof String)  return "";
+        if (pk instanceof Integer)
+            return Integer.MIN_VALUE;
+        if (pk instanceof Long)
+            return Long.MIN_VALUE;
+        if (pk instanceof Short)
+            return Short.MIN_VALUE;
+        if (pk instanceof Byte)
+            return Byte.MIN_VALUE;
+        if (pk instanceof Float)
+            return -Float.MAX_VALUE;
+        if (pk instanceof Double)
+            return -Double.MAX_VALUE;
+        if (pk instanceof String)
+            return "";
         throw new IllegalArgumentException("Unsupported PK type: " + pk.getClass());
     }
 
     private Comparable maxValueFor(Comparable pk) {
-        if (pk instanceof Integer) return Integer.MAX_VALUE;
-        if (pk instanceof Long)    return Long.MAX_VALUE;
-        if (pk instanceof Short)   return Short.MAX_VALUE;
-        if (pk instanceof Byte)    return Byte.MAX_VALUE;
-        if (pk instanceof Float)   return Float.MAX_VALUE;
-        if (pk instanceof Double)  return Double.MAX_VALUE;
-        if (pk instanceof String)  return Character.toString(Character.MAX_VALUE);
+        if (pk instanceof Integer)
+            return Integer.MAX_VALUE;
+        if (pk instanceof Long)
+            return Long.MAX_VALUE;
+        if (pk instanceof Short)
+            return Short.MAX_VALUE;
+        if (pk instanceof Byte)
+            return Byte.MAX_VALUE;
+        if (pk instanceof Float)
+            return Float.MAX_VALUE;
+        if (pk instanceof Double)
+            return Double.MAX_VALUE;
+        if (pk instanceof String)
+            return Character.toString(Character.MAX_VALUE);
         throw new IllegalArgumentException("Unsupported PK type: " + pk.getClass());
     }
 
-
     @Override
     public List<V> getAddress(K key) {
-        if (tree == null) return Collections.emptyList();
+        if (tree == null)
+            return Collections.emptyList();
 
-        if (key instanceof CompositeKey<?,?> ck) {
+        if (key instanceof CompositeKey<?, ?> ck) {
             return tree.findRange(key, key);
         }
 
@@ -466,21 +479,30 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
         }
 
         CompositeKey ck = new CompositeKey(
-            (Comparable) key,
-            (Comparable) address
-        );
+                (Comparable) key,
+                (Comparable) address);
 
         tree.insert((K) ck, address);
     }
 
     @Override
     public void deleteData(K key, V address) {
-        if (tree == null) return;
-        tree.delete(key, address);
+        if (tree == null)
+            return;
+
+        K deleteKey = key;
+        if (!(key instanceof CompositeKey<?, ?>)) {
+            @SuppressWarnings({ "rawtypes", "unchecked" })
+            CompositeKey ck = new CompositeKey((Comparable) key, (Comparable) address);
+            deleteKey = (K) ck;
+        }
+
+        tree.delete(deleteKey, address);
     }
 
     public Map<K, List<V>> rangeQuery(K start, K end) {
-        if (tree == null) return Collections.emptyMap();
+        if (tree == null)
+            return Collections.emptyMap();
 
         Map<K, List<V>> result = new LinkedHashMap<>();
 
@@ -491,12 +513,13 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
         return result;
     }
 
-    private void collectNodes(Node<K,V> node, List<Node<K,V>> out) {
-        if (node == null) return;
+    private void collectNodes(Node<K, V> node, List<Node<K, V>> out) {
+        if (node == null)
+            return;
         out.add(node);
         if (!node.isLeaf()) {
-            InternalNode<K,V> internal = (InternalNode<K,V>) node;
-            for (Node<K,V> child : internal.children) {
+            InternalNode<K, V> internal = (InternalNode<K, V>) node;
+            for (Node<K, V> child : internal.children) {
                 collectNodes(child, out);
             }
         }
@@ -507,7 +530,7 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
         int parentId;
         int nextLeafId;
         boolean isLeaf;
-        Node<KK,VV> node;
+        Node<KK, VV> node;
         List<Integer> childIds;
     }
 }
