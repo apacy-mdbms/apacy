@@ -7,6 +7,7 @@ import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.Statistic;
 import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.queryoptimizer.rewriter.AssociativeJoinRewriter;
+import com.apacy.queryoptimizer.rewriter.DistributeProjectRewriter;
 import com.apacy.queryoptimizer.rewriter.FilterPushdownRewriter;
 import com.apacy.queryoptimizer.rewriter.JoinCommutativityRewriter;
 import com.apacy.queryoptimizer.rewriter.PlanRewriter;
@@ -23,7 +24,8 @@ public class HeuristicOptimizer {
         rules = List.of(
             new FilterPushdownRewriter(costEstimator),
             new JoinCommutativityRewriter(costEstimator),
-            new AssociativeJoinRewriter(costEstimator)
+            new AssociativeJoinRewriter(costEstimator),
+            new DistributeProjectRewriter(costEstimator)
         );
     }
 
