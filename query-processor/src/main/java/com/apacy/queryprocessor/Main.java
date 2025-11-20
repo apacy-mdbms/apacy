@@ -26,7 +26,7 @@ public class Main {
             StorageManager storageManager = new StorageManager("../data");
             QueryOptimizer queryOptimizer = new QueryOptimizer();
             ConcurrencyControlManager concurrencyManager = new ConcurrencyControlManager();
-            FailureRecoveryManager recoveryManager = new FailureRecoveryManager();
+            FailureRecoveryManager recoveryManager = new FailureRecoveryManager(storageManager);
 
             storageManager.initialize();
             
