@@ -99,11 +99,19 @@ public class PlanTranslator {
         List<Row> result = new ArrayList<>();
         List<String> targetCols = node.columns();
 
-        // 2. Lakukan mapping: Buat Row baru yang isinya HANYA kolom di node.columns()
+        // 2. Handle special case for "*" (select all columns)
+        if (targetCols.size() == 1 && "*".equals(targetCols.get(0))) {
+            // Return all rows as-is without projection
+            return input;
+        }
+
+        // 3. Lakukan mapping: Buat Row baru yang isinya HANYA kolom di node.columns()
         for (Row oldRow : input) {
             Map<String, Object> newMap = new HashMap<>();
             for (String col : targetCols) {
-                newMap.put(col, oldRow.get(col));
+                if (oldRow.data().containsKey(col)) {
+                    newMap.put(col, oldRow.get(col));
+                }
             }
             result.add(new Row(newMap));
         }
