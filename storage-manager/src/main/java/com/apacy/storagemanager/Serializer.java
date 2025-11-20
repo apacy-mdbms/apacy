@@ -95,26 +95,51 @@ public class Serializer {
         int slotCount = buffer.getInt(HEADER_SLOT_COUNT_OFFSET);
         int freeSpaceOffset = buffer.getInt(HEADER_FREE_SPACE_OFFSET); // Pointer ke awal spasi kosong
 
-        // 3. Cek apakah Row muat
-        // Spasi yang dibutuhkan = Panjang data + panjang 1 slot baru
-        int spaceNeeded = rowLength + SLOT_SIZE; 
-        
-        // Lokasi "Daftar Isi" (Slots) tumbuh ke bawah, Data tumbuh ke atas
+        // 3. Cari slot yang ditandai sebagai "deleted"
+        for (int slotId = 0; slotId < slotCount; slotId++) {
+            int slotOffset = BLOCK_HEADER_SIZE + (slotId * SLOT_SIZE);
+            int dataOffset = buffer.getInt(slotOffset + SLOT_OFFSET_OFFSET);
+            int dataLength = buffer.getInt(slotOffset + SLOT_LENGTH_OFFSET);
+
+            // Jika slot ini kosong (deleted), gunakan kembali slot ini
+            if (dataOffset == 0 && dataLength == 0) {
+                // Tulis data Row baru di lokasi free space
+                int newDataOffset = freeSpaceOffset - rowLength;
+                if (newDataOffset < (BLOCK_HEADER_SIZE + (slotCount * SLOT_SIZE))) {
+                    throw new IOException("Blok penuh, tidak cukup spasi untuk Row baru.");
+                }
+
+                System.arraycopy(rowBytes, 0, blockData, newDataOffset, rowLength);
+
+                // Perbarui slot yang dihapus dengan data baru
+                buffer.putInt(slotOffset + SLOT_OFFSET_OFFSET, newDataOffset);
+                buffer.putInt(slotOffset + SLOT_LENGTH_OFFSET, rowLength);
+
+                // Perbarui header blok
+                buffer.putInt(HEADER_FREE_SPACE_OFFSET, newDataOffset); // Geser pointer spasi kosong
+                this.lastSlotId = slotId;
+
+                return blockData;
+            }
+        }
+
+        // 4. Jika tidak ada slot yang dihapus, tambahkan slot baru
+        int spaceNeeded = rowLength + SLOT_SIZE;
         int nextSlotOffset = BLOCK_HEADER_SIZE + (slotCount * SLOT_SIZE);
-        
+
         if (freeSpaceOffset - nextSlotOffset < spaceNeeded) {
             throw new IOException("Blok penuh, tidak cukup spasi untuk Row baru.");
         }
 
-        // 4. Tulis data Row baru (dari belakang blok)
+        // Tulis data Row baru di lokasi free space
         int newDataOffset = freeSpaceOffset - rowLength;
         System.arraycopy(rowBytes, 0, blockData, newDataOffset, rowLength);
 
-        // 5. Tulis "Slot" baru di "Daftar Isi"
+        // Tulis slot baru di daftar isi
         buffer.putInt(nextSlotOffset + SLOT_OFFSET_OFFSET, newDataOffset);
         buffer.putInt(nextSlotOffset + SLOT_LENGTH_OFFSET, rowLength);
-        
-        // 6. Perbarui Header Blok
+
+        // Perbarui header blok
         buffer.putInt(HEADER_SLOT_COUNT_OFFSET, slotCount + 1); // Tambah jumlah slot
         buffer.putInt(HEADER_FREE_SPACE_OFFSET, newDataOffset); // Geser pointer spasi kosong
         this.lastSlotId = slotCount;
