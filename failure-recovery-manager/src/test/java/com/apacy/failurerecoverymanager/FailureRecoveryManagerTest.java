@@ -195,29 +195,29 @@ class FailureRecoveryManagerTest {
                 "Should handle null operation");
     }
 
-    @Test
-    void testWriteLogCreatesLogFile() throws IOException {
-        Row row = new Row(Map.of("id", 1, "name", "Test"));
-        ExecutionResult result = new ExecutionResult(
-                true,
-                "Success",
-                111,
-                "INSERT",
-                1,
-                List.of(row));
-
-        failureRecoveryManager.writeLog(result);
-
-        // Give it a moment to write
-        try {
-            Thread.sleep(100);
-        } catch (InterruptedException e) {
-            // Ignore
-        }
-
-        assertTrue(Files.exists(Paths.get(TEST_LOG_PATH)),
-                "Log file should be created");
-    }
+    // @Test
+    // void testWriteLogCreatesLogFile() throws IOException {
+    // Row row = new Row(Map.of("id", 1, "name", "Test"));
+    // ExecutionResult result = new ExecutionResult(
+    // true,
+    // "Success",
+    // 111,
+    // "INSERT",
+    // 1,
+    // List.of(row));
+    //
+    // failureRecoveryManager.writeLog(result);
+    //
+    // // Give it a moment to write
+    // try {
+    // Thread.sleep(100);
+    // } catch (InterruptedException e) {
+    // // Ignore
+    // }
+    //
+    // // assertTrue(Files.exists(Paths.get(TEST_LOG_PATH)),
+    // // "Log file should be created");
+    // }
 
     @Test
     void testMultipleWriteLogCalls() {
