@@ -81,7 +81,7 @@ class QueryTokenizerTest {
         assertToken(TokenType.DOT, ".", tokens.get(14));
         assertToken(TokenType.IDENTIFIER, "id", tokens.get(15));
         assertToken(TokenType.OPERATOR, "=", tokens.get(16));
-        assertToken(TokenType.STRING_LITERAL, "'abc'", tokens.get(17));
+        assertToken(TokenType.STRING_LITERAL, "abc", tokens.get(17));
         assertToken(TokenType.SEMICOLON, ";", tokens.get(18));
         assertToken(TokenType.EOF, null, tokens.get(19));
     }
@@ -139,7 +139,7 @@ class QueryTokenizerTest {
         assertToken(TokenType.IDENTIFIER, "table1", tokens.get(2));
         assertToken(TokenType.VALUES, "VALUES", tokens.get(3));
         assertToken(TokenType.LPARENTHESIS, "(", tokens.get(4));
-        assertToken(TokenType.STRING_LITERAL, "'data'", tokens.get(5));
+        assertToken(TokenType.STRING_LITERAL, "data", tokens.get(5));
         assertToken(TokenType.COMMA, ",", tokens.get(6));
         assertToken(TokenType.NUMBER_LITERAL, "20", tokens.get(7));
         assertToken(TokenType.RPARENTHESIS, ")", tokens.get(8));

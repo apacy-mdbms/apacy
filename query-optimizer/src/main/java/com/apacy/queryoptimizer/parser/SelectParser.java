@@ -25,7 +25,16 @@ public class SelectParser extends AbstractParser {
         if (match(TokenType.STAR)) {
             targetColumns.add("*");
         } else {
-            targetColumns.add(consume(TokenType.IDENTIFIER).getValue());
+            String col = consume(TokenType.IDENTIFIER).getValue();
+            while(match(TokenType.DOT)) {
+                Token t = peek();
+                if (match(TokenType.IDENTIFIER)) {
+                    col += '.' + t.getValue();
+                } else if (match(TokenType.STAR)) {
+                    col += ".*";
+                } else { consume(TokenType.IDENTIFIER);} //throw error
+            }
+            targetColumns.add(col);
             while (match(TokenType.COMMA)) {
                 targetColumns.add(consume(TokenType.IDENTIFIER).getValue());
             }

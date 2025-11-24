@@ -48,7 +48,7 @@ public class QueryTokenizer {
 
     private Token readWord() {
         int start = pos;
-        while (pos < length && (Character.isLetterOrDigit(peek()) || peek() == '_' || peek() == '.'))
+        while (pos < length && (Character.isLetterOrDigit(peek()) || peek() == '_'))
             advance();
 
         String word = input.substring(start, pos);
