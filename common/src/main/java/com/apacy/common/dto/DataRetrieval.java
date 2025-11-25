@@ -10,5 +10,5 @@ public record DataRetrieval(
     String tableName,
     List<String> columns,
     Object filterCondition, // Sebaiknya merujuk ke class/record internal SM
-    boolean useIndex
+    boolean useIndex // perlu ubah jadi Map<String,IndexType>? 
 ) {}
