@@ -11,6 +11,7 @@ import com.apacy.common.dto.ddl.ParsedQueryDDL;
 public record DDLNode(
     ParsedQueryDDL ddlQuery
 ) implements PlanNode {
+    private static final long serialVersionUID = 1L;
 
     @Override 
     public List<PlanNode> getChildren() { 

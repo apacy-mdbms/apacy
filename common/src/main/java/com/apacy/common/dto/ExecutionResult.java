@@ -1,5 +1,6 @@
 package com.apacy.common.dto;
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -13,4 +14,6 @@ public record ExecutionResult(
     String operation,
     int affectedRows,
     List<Row> rows // Untuk menampung hasil SELECT
-) {}
+) implements Serializable {
+    private static final long serialVersionUID = 1L;
+}

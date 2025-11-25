@@ -1,15 +1,11 @@
 package com.apacy.queryprocessor;
 
-// Import real components from each module
-import com.apacy.storagemanager.StorageManager;
-import com.apacy.queryoptimizer.QueryOptimizer;
-import com.apacy.concurrencycontrolmanager.ConcurrencyControlManager;
-import com.apacy.failurerecoverymanager.FailureRecoveryManager;
-import com.apacy.queryprocessor.cli.ApacyCLI;
+import com.apacy.queryprocessor.client.ApacyCLI;
+import com.apacy.queryprocessor.server.ApacyServer;
 
 /**
  * Main entry point for the mDBMS-Apacy system.
- * Handles component initialization and launches the CLI interface.
+ * Supports both server and client mode based on command line arguments.
  */
 public class Main {
     
@@ -20,34 +16,48 @@ public class Main {
         System.out.println("=================================");
         System.out.println();
         
-        try {
-            System.out.println("Initializing components...");
-            
-            StorageManager storageManager = new StorageManager("../data");
-            QueryOptimizer queryOptimizer = new QueryOptimizer();
-            ConcurrencyControlManager concurrencyManager = new ConcurrencyControlManager();
-            FailureRecoveryManager recoveryManager = new FailureRecoveryManager(storageManager);
-
-            storageManager.initialize();
-            
-            // Initialize QueryProcessor with real components
-            QueryProcessor queryProcessor = new QueryProcessor(
-                queryOptimizer,
-                storageManager,
-                concurrencyManager,
-                recoveryManager
-            );
-            
-            System.out.println("All components initialized successfully!");
+        // Parse command line arguments
+        if (args.length > 0 && "server".equalsIgnoreCase(args[0])) {
+            // Start server mode
+            runServer();
+        } else {
+            // Start client mode (default)
+            runClient();
+        }
+    }
+    
+    /**
+     * Run in server mode
+     */
+    private static void runServer() {
+        System.out.println("Starting in SERVER mode...");
+        System.out.println();
+        
+        ApacyServer server = new ApacyServer();
+        
+        // Setup shutdown hook for graceful shutdown
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println();
-            
-            ApacyCLI cli = new ApacyCLI(queryProcessor);
-            cli.start();
-            
+            server.stop();
+        }));
+        
+        try {
+            server.start();
         } catch (Exception e) {
-            System.err.println("Failed to initialize components: " + e.getMessage());
+            System.err.println("Failed to start server: " + e.getMessage());
             e.printStackTrace();
             System.exit(1);
         }
+    }
+    
+    /**
+     * Run in client mode
+     */
+    private static void runClient() {
+        System.out.println("Starting in CLIENT mode...");
+        System.out.println();
+        
+        ApacyCLI client = new ApacyCLI();
+        client.start();
     }
 }
