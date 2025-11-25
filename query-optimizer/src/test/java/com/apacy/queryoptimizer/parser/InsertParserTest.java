@@ -39,8 +39,8 @@ class InsertParserTest {
         // Cek field 'values' yang baru
         // assertEquals(List.of("'user1'", "'Budi'", "25"), pq.values());
         List<ExpressionNode> expected = List.of(
-            new ExpressionNode(new TermNode(new LiteralFactor("'user1'"), List.of()), List.of()),
-            new ExpressionNode(new TermNode(new LiteralFactor("'Budi'"), List.of()), List.of()),
+            new ExpressionNode(new TermNode(new LiteralFactor("user1"), List.of()), List.of()),
+            new ExpressionNode(new TermNode(new LiteralFactor("Budi"), List.of()), List.of()),
             new ExpressionNode(new TermNode(new LiteralFactor(25), List.of()), List.of())
         );
         assertEquals(

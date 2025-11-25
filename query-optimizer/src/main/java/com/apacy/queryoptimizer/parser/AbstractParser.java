@@ -202,8 +202,16 @@ public abstract class AbstractParser {
     protected FactorNode parseFactor() {
         Token t = peek();
         if (t.getType() == TokenType.IDENTIFIER) {
-            position++;
-            return new ColumnFactor(t.getValue());
+            String f = consume(TokenType.IDENTIFIER).getValue();
+            while(match(TokenType.DOT)) {
+                Token t2 = peek();
+                if (match(TokenType.IDENTIFIER)) {
+                    f += '.' + t2.getValue();
+                } else if (match(TokenType.STAR)) {
+                    f += ".*";
+                } else { consume(TokenType.IDENTIFIER);} //throw error
+            }
+            return new ColumnFactor(f);
         } else if (t.getType() == TokenType.NUMBER_LITERAL) {
             position++;
             return new LiteralFactor(parseNumberLiteral(t.getValue()));
