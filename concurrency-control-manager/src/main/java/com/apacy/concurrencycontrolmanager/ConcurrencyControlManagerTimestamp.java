@@ -40,9 +40,8 @@ public class ConcurrencyControlManagerTimestamp extends DBMSComponent implements
         int id = (int) globalTS;
 
         Transaction tx = new Transaction(String.valueOf(id));
-        
-        long ts = timestampManager.generateTimestamp();
-        tx.setTimestamp(ts);
+
+        tx.setTimestamp(id);
 
         transactionMap.put(id, tx);
         return id;
@@ -56,6 +55,7 @@ public class ConcurrencyControlManagerTimestamp extends DBMSComponent implements
         if (tx == null) {
             return new Response(false, "Transaction not found");
         }
+
         if (tx.isAborted()) {
             return new Response(false, "Transaction already aborted");
         }
@@ -66,6 +66,7 @@ public class ConcurrencyControlManagerTimestamp extends DBMSComponent implements
 
         if (action == Action.READ) {
             if (ts < WT) {
+                tx.setFailed();
                 tx.abort();
                 return new Response(false, "ABORT: TS(T)=" + ts + " < WT(" + objectId + ")=" + WT);
             }
@@ -76,6 +77,7 @@ public class ConcurrencyControlManagerTimestamp extends DBMSComponent implements
 
         if (action == Action.WRITE) {
             if (ts < RT || ts < WT) {
+                tx.setFailed();
                 tx.abort();
                 return new Response(false, "ABORT: TS(T)=" + ts + " < max(RT,WT) of " + objectId + " (RT=" + RT + ", WT=" + WT + ")");
             }
@@ -108,8 +110,10 @@ public class ConcurrencyControlManagerTimestamp extends DBMSComponent implements
         }
 
         if (commit) {
+            tx.setPartiallyCommitted();
             tx.commit();
         } else {
+            tx.setFailed();
             tx.abort();
         }
 
@@ -121,8 +125,8 @@ public class ConcurrencyControlManagerTimestamp extends DBMSComponent implements
     public synchronized void logObject(Row row, int transactionId) {
         Transaction tx = transactionMap.get(transactionId);
         if (tx != null) {
-            try { tx.addLog(row); }
-            catch (RuntimeException ignored) {}
+            try { tx.addLog(row);
+            } catch (RuntimeException ignored) {}
         }
     }
 }
