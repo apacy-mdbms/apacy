@@ -9,44 +9,38 @@ import java.util.Map;
 
 import com.apacy.common.dto.Column;
 import com.apacy.common.dto.IndexSchema;
+import com.apacy.common.dto.ForeignKeySchema;
 import com.apacy.common.dto.Schema;
 import com.apacy.common.enums.*;
 
 /**
  * Mengelola metadata database (skema tabel, kolom, dan indeks).
- * Membaca dan menulis ke file biner 'system_catalog.dat'.
- * Disesuaikan untuk bekerja dengan kelas Schema dan Column yang ada.
+ * PERBAIKAN: Disesuaikan untuk HANYA menggunakan satu 'schemaCache'.
  */
 public class CatalogManager {
 
     private final String catalogFilePath;
-    private final int MAGIC_NUMBER = 0xACDB01; // Penanda file katalog kita
+    private final int MAGIC_NUMBER = 0xACDB0101; 
 
-    // Cache di memori, sekarang menggunakan kelas Schema Anda
+    // PERBAIKAN: Hanya satu cache yang diperlukan
     private Map<String, Schema> schemaCache;
 
-    // Cache terpisah untuk data yang tidak disimpan di kelas Schema Anda
-    private Map<String, String> dataFileCache;
+    // ‼️ Cache terpisah DIHAPUS
+    // private Map<String, String> dataFileCache;
     // private Map<String, List<IndexSchema>> indexCache;
 
     public CatalogManager(String catalogFilePath) {
         this.catalogFilePath = catalogFilePath;
         this.schemaCache = new HashMap<>();
-        this.dataFileCache = new HashMap<>();
-        // this.indexCache = new HashMap<>();
+        // ‼️ Inisialisasi cache lain DIHAPUS
     }
 
     /**
      * Dipanggil oleh StorageManager.initialize() saat startup.
-     * Membaca file 'system_catalog.dat' dan memuatnya ke cache memori.
      */
     public void loadCatalog() throws IOException {
         System.out.println("CatalogManager: Memuat katalog dari " + catalogFilePath + "...");
-        
-        // Kosongkan cache lama
         this.schemaCache.clear();
-        this.dataFileCache.clear();
-        // this.indexCache.clear();
 
         try (DataInputStream dis = new DataInputStream(new FileInputStream(catalogFilePath))) {
             
@@ -63,17 +57,13 @@ public class CatalogManager {
                 String dataFile = dis.readUTF();
                 int columnCount = dis.readInt();
 
-                // Buat List<Column> (menggunakan kelas Column Anda)
+                // Baca Kolom
                 List<Column> columns = new ArrayList<>();
                 for (int j = 0; j < columnCount; j++) {
                     String colName = dis.readUTF();
                     int colTypeInt = dis.readInt();
                     int colLength = dis.readInt();
-                    
-                    // Konversi int dari file ke enum DataType Anda
                     DataType colType = DataType.fromValue(colTypeInt); 
-                    
-                    // Buat objek Column Anda
                     columns.add(new Column(colName, colType, colLength));
                 }
                 
@@ -88,21 +78,42 @@ public class CatalogManager {
                     String idxFile = dis.readUTF();
                     indexes.add(new IndexSchema(idxName, idxColName, idxType, idxFile));
                 }
+
+                int fkCount = 0;
+                List<ForeignKeySchema> foreignKeys = new ArrayList<>();
+                
+                // Baca Foreign Key
+                try {
+                    fkCount = dis.readInt();
+                    for (int l = 0; l < fkCount; l++) {
+                        String constraintName = dis.readUTF();
+                        String colName = dis.readUTF();
+                        String refTable = dis.readUTF();
+                        String refCol = dis.readUTF();
+                        boolean isCascading = dis.readBoolean();
+                        foreignKeys.add(new ForeignKeySchema(constraintName, colName, refTable, refCol, isCascading));
+                    }
+                } catch (EOFException e) {
+                    // File versi lama mungkin habis di sini, abaikan (FK list kosong)
+                    System.out.println("Warning: End of file reached while reading Foreign Keys for table " + tableName);
+                }
                 
                 // Buat record Schema "all-in-one"
-                Schema schema = new Schema(tableName, dataFile, columns, indexes);
-                // Simpan semuanya ke cache memori
+                Schema schema = new Schema(tableName, dataFile, columns, indexes, foreignKeys);
+                
+                // PERBAIKAN: Simpan ke cache tunggal
                 this.schemaCache.put(tableName, schema);
-                this.dataFileCache.put(tableName, dataFile);
-                // this.indexCache.put(tableName, indexes);
                 System.out.println("CatalogManager: Memuat skema untuk tabel '" + tableName + "'.");
             }
+        } catch (FileNotFoundException e) {
+            System.out.println("CatalogManager: Katalog '" + catalogFilePath + "' belum ada. Membuat katalog awal...");
+            createSystemCatalog(); // Panggil helper untuk membuat file
         }
         System.out.println("CatalogManager: Katalog berhasil dimuat ke memori.");
     }
 
     /**
-     * (Untuk Bonus) Menulis ulang seluruh cache memori ke file 'system_catalog.dat'.
+     * Menulis ulang seluruh cache memori ke file 'system_catalog.dat'.
      */
     public void writeCatalog() throws IOException {
         System.out.println("CatalogManager: Menulis ulang katalog ke disk...");
@@ -111,50 +122,98 @@ public class CatalogManager {
             dos.writeInt(MAGIC_NUMBER);
             dos.writeInt(schemaCache.size()); 
 
-            for (String tableName : schemaCache.keySet()) {
-                // Ambil semua data dari cache
-                Schema schema = schemaCache.get(tableName);
-                String dataFile = dataFileCache.get(tableName);
-                // List<IndexSchema> indexes = indexCache.get(tableName);
+            // PERBAIKAN: Loop pada 'schemaCache.values()'
+            for (Schema schema : schemaCache.values()) {
+                
+                // Ambil data HANYA dari objek Schema
+                dos.writeUTF(schema.tableName());
+                dos.writeUTF(schema.dataFile());
+                dos.writeInt(schema.columns().size());
 
-                dos.writeUTF(tableName);
-                dos.writeUTF(dataFile);
-                dos.writeInt(schema.getColumnCount());
-
-                // Loop menggunakan kelas Column Anda
+                // Tulis Kolom
                 for (Column col : schema.columns()) {
                     dos.writeUTF(col.name());
-                    // Konversi enum DataType Anda ke int
                     dos.writeInt(col.type().getValue()); 
-                    // Gunakan getLength() dari kelas Column Anda
                     dos.writeInt(col.length());
                 }
 
-                // Tulis Blok Indeks
-                // dos.writeInt(indexes.size());
-                // for (IndexSchema idx : indexes) {
-                //     dos.writeUTF(idx.name());
-                //     dos.writeUTF(idx.columnName());
-                //     dos.writeInt(idx.indexType());
-                //     dos.writeUTF(idx.indexFile());
-                // }
+                // Tulis Indeks
+                dos.writeInt(schema.indexes().size());
+                for (IndexSchema idx : schema.indexes()) {
+                    dos.writeUTF(idx.indexName());
+                    dos.writeUTF(idx.columnName());
+                    dos.writeInt(idx.indexType().getValue());
+                    dos.writeUTF(idx.indexFile());
+                }
+
+                // Tulis Foreign Key
+                List<ForeignKeySchema> fks = schema.getForeignKeys(); 
+                if (fks == null) fks = new ArrayList<>();
+
+                dos.writeInt(fks.size());
+                for (ForeignKeySchema fk : fks) {
+                    dos.writeUTF(fk.constraintName());
+                    dos.writeUTF(fk.columnName());
+                    dos.writeUTF(fk.referenceTable());
+                    dos.writeUTF(fk.referenceColumn());
+                    dos.writeBoolean(fk.isCascading());
+                }
             }
         }
     }
 
+    // --- GETTER ---
     public Schema getSchema(String tableName) {
         return schemaCache.get(tableName);
     }
     
-    public String getDataFile(String tableName) {
-        return dataFileCache.get(tableName);
-    }
-
-    // public List<Index> getIndexes(String tableName) {
-    //     return indexCache.getOrDefault(tableName, new ArrayList<>());
-    // }
+    // ‼️ 'getDataFile' dan 'getIndexes' DIHAPUS (info sudah ada di Schema)
+    // public String getDataFile(String tableName) { ... }
+    // public List<IndexSchema> getIndexes(String tableName) { ... }
     
     public Collection<Schema> getAllSchemas() {
         return schemaCache.values();
+    }
+
+    // --- LOGIKA CREATE TABLE ---
+    
+    public void addSchemaToCache(Schema newSchema) throws IOException {
+        if (schemaCache.containsKey(newSchema.tableName())) {
+            throw new IOException("Tabel '" + newSchema.tableName() + "' sudah ada.");
+        }
+        // PERBAIKAN: Hanya perlu menambah ke satu cache
+        schemaCache.put(newSchema.tableName(), newSchema);
+    }
+
+    /**
+     * Utilitas untuk membuat file katalog awal (kosong) jika tidak ada.
+     */
+    private void createSystemCatalog() throws IOException {
+        System.out.println("Membuat file katalog awal (kosong) di: " + catalogFilePath);
+        new File(catalogFilePath).getParentFile().mkdirs();
+        
+        // Panggil writeCatalog() saat cache masih kosong (tableCount=0)
+        writeCatalog();
+    }
+
+    /**
+     * Update schema in cache
+     * @param updatedSchema
+     * @throws IOException
+     */
+    public void updateSchema(Schema updatedSchema) throws IOException {
+        if (!schemaCache.containsKey(updatedSchema.tableName())) {
+            throw new IOException("Table: " + updatedSchema.tableName() + " not found");
+        }
+        schemaCache.put(updatedSchema.tableName(), updatedSchema);
+    }
+
+    /**
+     * Main method untuk membuat file katalog dummy secara manual.
+     */
+    public static void main(String[] args) throws IOException {
+        // PERBAIKAN: Path harus menunjuk ke file, bukan direktori
+        CatalogManager catalogManager = new CatalogManager("storage-manager/data/system_catalog.dat"); 
+        catalogManager.createSystemCatalog();
     }
 }

@@ -76,7 +76,7 @@ public class QueryTokenizer {
         while (pos < length && peek() != '\'')
             advance();
 
-        String value = "'" + input.substring(start, pos) + "'";
+        String value = input.substring(start, pos);
         advance(); // skip '
         return new Token(TokenType.STRING_LITERAL, value);
     }

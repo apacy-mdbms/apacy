@@ -1,74 +1,142 @@
 package com.apacy.queryprocessor.mocks;
 
-import com.apacy.common.dto.*;
-import com.apacy.common.interfaces.IStorageManager;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class MockStorageManager implements IStorageManager {
+import com.apacy.common.dto.DataDeletion;
+import com.apacy.common.dto.DataRetrieval;
+import com.apacy.common.dto.DataWrite;
+import com.apacy.common.dto.Row;
+import com.apacy.common.dto.Schema;
+import com.apacy.common.dto.Statistic;
+import com.apacy.common.dto.Column;
+import com.apacy.common.dto.IndexSchema;
+import com.apacy.common.enums.DataType;
+import com.apacy.common.enums.IndexType;
+import com.apacy.common.interfaces.IStorageManager;
 
+public class MockStorageManager implements IStorageManager {
+    
     @Override
     public List<Row> readBlock(DataRetrieval dataRetrieval) {
+        // Handle null case for backward compatibility
+        if (dataRetrieval == null) {
+            return getEmployeeDataLegacy();
+        }
         
-        List<Row> dummy = new ArrayList<>();
-
-        Row row1 = new Row(Map.of(
-            "id", 1,
-            "name", "Naufarrel",
-            "salary", 20000
-        ));
-
-        Row row2 = new Row(Map.of(
-            "id", 2,
-            "name", "Weka",
-            "salary", 30000
-        ));
-
-        Row row3 = new Row(Map.of(
-            "id", 3,
-            "name", "Kinan",
-            "salary", 40000
-        ));
-
-        Row row4 = new Row(Map.of(
-            "id", 4,
-            "name", "Farrel",
-            "salary", 50000
-        ));
-
-        Row row5 = new Row(Map.of(
-            "id", 5,
-            "name", "Bayu",
-            "salary", 60000
-        ));
+        String tableName = dataRetrieval.tableName();
         
-        dummy.add(row1);
-        dummy.add(row2);
-        dummy.add(row3);
-        dummy.add(row4);
-        dummy.add(row5);
-
-        return dummy;
+        switch (tableName) {
+            case "employees": return getEmployeeData();
+            case "departments": return getDepartmentData();
+            case "users": return getEmployeeDataLegacy(); // Mapping users -> legacy data
+            default: return new ArrayList<>();
+        }
+    }
+    
+    private List<Row> getEmployeeDataLegacy() {
+        List<Row> employees = new ArrayList<>();
+        employees.add(new Row(Map.of("id", 1, "name", "Naufarrel", "salary", 20000)));
+        employees.add(new Row(Map.of("id", 2, "name", "Weka", "salary", 30000)));
+        employees.add(new Row(Map.of("id", 3, "name", "Kinan", "salary", 40000)));
+        employees.add(new Row(Map.of("id", 4, "name", "Farrel", "salary", 50000)));
+        employees.add(new Row(Map.of("id", 5, "name", "Bayu", "salary", 60000)));
+        return employees;
+    }
+    
+    private List<Row> getEmployeeData() {
+        List<Row> employees = new ArrayList<>();
+        employees.add(new Row(Map.of("id", 1, "name", "Naufarrel", "salary", 20000, "dept_id", 1)));
+        employees.add(new Row(Map.of("id", 2, "name", "Weka", "salary", 30000, "dept_id", 2)));
+        employees.add(new Row(Map.of("id", 3, "name", "Kinan", "salary", 40000, "dept_id", 1)));
+        employees.add(new Row(Map.of("id", 4, "name", "Farrel", "salary", 50000, "dept_id", 3)));
+        employees.add(new Row(Map.of("id", 5, "name", "Bayu", "salary", 60000, "dept_id", 2)));
+        return employees;
+    }
+    
+    private List<Row> getDepartmentData() {
+        List<Row> departments = new ArrayList<>();
+        departments.add(new Row(Map.of("dept_id", 1, "dept_name", "Engineering", "location", "Building A")));
+        departments.add(new Row(Map.of("dept_id", 2, "dept_name", "Sales", "location", "Building B")));
+        departments.add(new Row(Map.of("dept_id", 3, "dept_name", "Marketing", "location", "Building C")));
+        departments.add(new Row(Map.of("dept_id", 4, "dept_name", "HR", "location", "Building D")));
+        return departments;
     }
 
     @Override
     public int writeBlock(DataWrite dataWrite) {
-        throw new UnsupportedOperationException("writeBlock not implemented yet");
+        System.out.println("[MOCK-SM] writeBlock dipanggil untuk tabel: " + dataWrite.tableName());
+        System.out.println("[MOCK-SM] Data baru: " + dataWrite.newData());
+        return 1; // Simulasi 1 row inserted/updated
     }
 
     @Override
     public int deleteBlock(DataDeletion dataDeletion) {
-        throw new UnsupportedOperationException("deleteBlock not implemented yet");
+        System.out.println("[MOCK-SM] deleteBlock dipanggil untuk tabel: " + dataDeletion.tableName());
+        return 1; // Simulasi 1 row deleted
     }
 
     @Override
     public void setIndex(String table, String column, String indexType) {
-        throw new UnsupportedOperationException("setIndex not implemented yet");
+        System.out.println("[MOCK-SM] setIndex dipanggil: " + table + "." + column);
     }
 
     @Override
     public Map<String, Statistic> getAllStats() {
-        throw new UnsupportedOperationException("getStats not implemented yet");
+        System.out.println("[MOCK-SM] getAllStats() dipanggil.");
+        Map<String, Statistic> mockStats = new HashMap<>();
+
+        mockStats.put("employees", new Statistic(
+            5, 1, 120, 34,
+            Map.of("id", 5, "dept_id", 3),
+            Map.of("id", IndexType.Hash)
+        ));
+
+        mockStats.put("users", new Statistic(
+            5, 1, 100, 40,
+            Map.of("id", 5),
+            Map.of()
+        ));
+
+        return mockStats;
+    }
+
+    @Override
+    public void createTable(Schema schema) throws IOException {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public Schema getSchema(String tableName) {
+        switch (tableName) {
+            case "employees":
+                List<Column> empCols = List.of(
+                    new Column("id", DataType.INTEGER),
+                    new Column("name", DataType.VARCHAR, 100),
+                    new Column("salary", DataType.INTEGER),
+                    new Column("dept_id", DataType.INTEGER)
+                );
+                List<IndexSchema> empIdx = List.of(
+                    new IndexSchema("idx_emp_id", "id", IndexType.Hash, "employees_id.idx")
+                );
+                return new Schema("employees", "employees.dat", empCols, empIdx);
+            case "departments":
+                List<Column> deptCols = List.of(
+                    new Column("dept_id", DataType.INTEGER),
+                    new Column("dept_name", DataType.VARCHAR, 100),
+                    new Column("location", DataType.VARCHAR, 100)
+                );
+                List<IndexSchema> deptIdx = List.of(
+                    new IndexSchema("idx_dept_id", "dept_id", IndexType.Hash, "departments_id.idx")
+                );
+                return new Schema("departments", "departments.dat", deptCols, deptIdx);
+            case "users":
+                return getSchema("employees");
+            default:
+                return null;
+        }
     }
 }

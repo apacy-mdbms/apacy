@@ -5,98 +5,177 @@ import com.apacy.common.dto.*;
 import com.apacy.common.enums.Action;
 import com.apacy.common.interfaces.IConcurrencyControlManager;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class ConcurrencyControlManager extends DBMSComponent implements IConcurrencyControlManager {
     private final LockManager lockManager;
     private final TimestampManager timestampManager;
-    
     private final Map<Integer, Transaction> transactionMap;
-    private final AtomicInteger transactionCounter;
+    
+    private int transactionCounter;
 
     public ConcurrencyControlManager() {
         super("Concurrency Control Manager");
-        
-        // Inisialisasi helper-nya
-        // (Pilih salah satu sesuai implementasi wajib, misal LockManager)
+
         this.lockManager = new LockManager();
-        this.timestampManager = new TimestampManager(); // Untuk bonus
-        
-        this.transactionMap = new ConcurrentHashMap<>();
-        this.transactionCounter = new AtomicInteger(0);
+        this.timestampManager = new TimestampManager();
+
+        this.transactionMap = new HashMap<>();
+        this.transactionCounter = 0;
     }
-    
-    @Override
-    public void initialize() throws Exception {
-        // ... (Logika inisialisasi jika ada) ...
+
+    public ConcurrencyControlManager(LockManager lockManager, TimestampManager timestampManager) {
+        super("Concurrency Control Manager");
+        this.lockManager = (lockManager != null) ? lockManager : new LockManager();
+        this.timestampManager = timestampManager;
+        this.transactionMap = new HashMap<>();
+        this.transactionCounter = 0;
     }
 
     @Override
-    public void shutdown() {
-        // ... (Logika shutdown jika ada) ...
+    public synchronized void initialize() throws Exception {
+        transactionMap.clear();
+        transactionCounter = 0;
     }
-    
-    // 4. Implementasi method KONTRAK YANG BENAR
-    
+
     @Override
-    public int beginTransaction() {
-        int txId = transactionCounter.incrementAndGet();
+    public synchronized void shutdown() {
+        // PENTING: copy keys ke List dulu agar tidak terjadi ConcurrentModificationException 
+        // saat remove item dalam loop
+        List<Integer> keys = new ArrayList<>(transactionMap.keySet());
+
+        for (Integer txId : keys) {
+            Transaction tx = transactionMap.get(txId);
+            if (tx == null) continue;
+
+            try {
+                if (!tx.isFailed() && !tx.isAborted() && !tx.isCommitted()) {
+                    tx.setFailed();
+                    tx.abort();
+                }
+            } catch (RuntimeException ignored) {}
+
+            try {
+                lockManager.releaseLocks(tx);
+            } catch (RuntimeException ignored) {}
+
+            try {
+                tx.terminate();
+            } catch (RuntimeException ignored) {}
+
+            transactionMap.remove(txId);
+        }
+    }
+
+    @Override
+    public synchronized int beginTransaction() {
+        transactionCounter++; 
+        int txId = transactionCounter;
+        
         Transaction tx = new Transaction(String.valueOf(txId));
         transactionMap.put(txId, tx);
-        
-        // TODO: Jika pakai timestamp, panggil tx.setTimestamp(timestampManager.generateTimestamp())
-        
+
+        try {
+            if (timestampManager != null) {
+                long ts = timestampManager.generateTimestamp();
+                tx.setTimestamp(ts);
+            }
+        } catch (RuntimeException ignored) {}
+
         return txId;
     }
 
     @Override
-    public Response validateObject(String objectId, int transactionId, Action action) {
-        // Ini adalah logika utamanya: mendelegasikan ke LockManager
-        boolean allowed = false;
-        
-        if (action == Action.READ) {
-            allowed = lockManager.acquireSharedLock(objectId, String.valueOf(transactionId));
-        } else if (action == Action.WRITE) {
-            allowed = lockManager.acquireExclusiveLock(objectId, String.valueOf(transactionId));
+    public synchronized Response validateObject(String objectId, int transactionId, Action action) {
+        Transaction tx = transactionMap.get(transactionId);
+        if (tx == null) {
+            return new Response(false, "Transaction not found: " + transactionId);
         }
-        
+
+        if (tx.isAborted()) {
+            return new Response(false, "Transaction " + transactionId + " was aborted (Wounded).");
+        }
+
+        boolean allowed = false;
+
+        if (action == Action.READ) {
+            allowed = lockManager.acquireSharedLock(objectId, tx);
+        } else if (action == Action.WRITE) {
+            allowed = lockManager.acquireExclusiveLock(objectId, tx);
+        }
+
         if (allowed) {
             return new Response(true, "Lock acquired");
         } else {
-            // TODO: Implement deadlock detection logic here or in LockManager
-            return new Response(false, "Resource locked by another transaction");
+            if (tx.isAborted()) {
+                return new Response(false, "Transaction " + transactionId + " was aborted (Wounded).");
+            }
+            return new Response(false, "Resource locked by another transaction (Wait)");
         }
     }
-    
+
     @Override
-    public void endTransaction(int transactionId, boolean commit) {
+    public synchronized Response validateObjects(List<String> objectIds, int transactionId, Action action) {
+        for (String objectId : objectIds) {
+            Response response = validateObject(objectId, transactionId, action);
+
+            if (!response.isAllowed()) {
+                return new Response(false,
+                        "Failed on object '" + objectId + "': " + response.reason());
+            }
+        }
+
+        return new Response(true, "All locks acquired for transaction " + transactionId);
+    }
+
+
+    @Override
+    public synchronized void endTransaction(int transactionId, boolean commit) {
         Transaction tx = transactionMap.get(transactionId);
         if (tx == null) {
-            // Sebaiknya throw exception
-            return; 
+            throw new IllegalArgumentException("Transaction not found: " + transactionId);
         }
-        
+
         if (commit) {
-            tx.setStatus(Transaction.TransactionStatus.COMMITTED);
+            try {
+                tx.setPartiallyCommitted();
+                tx.commit();
+            } catch (RuntimeException e) {
+                try {
+                    tx.setFailed();
+                    tx.abort();
+                } catch (RuntimeException ignored) {}
+            }
         } else {
-            tx.setStatus(Transaction.TransactionStatus.ABORTED);
-            // TODO: Panggil logic FRM.recover() untuk UNDO
+            try {
+                tx.setFailed();
+                tx.abort();
+            } catch (RuntimeException ignored) {}
         }
-        
-        // Selalu lepaskan lock, baik commit atau abort
-        lockManager.releaseLocks(String.valueOf(transactionId));
+
+        try {
+            lockManager.releaseLocks(tx);
+        } catch (RuntimeException ignored) {}
+
+        try {
+            tx.terminate();
+        } catch (RuntimeException ignored) {}
+
         transactionMap.remove(transactionId);
     }
 
     @Override
-    public void logObject(Row object, int transactionId) {
-        // Implementasi method ini sesuai spek
-        // (Misal: mencatat 'before-image' dari 'object' ke 'transaction')
+    public synchronized void logObject(Row object, int transactionId) {
         Transaction tx = transactionMap.get(transactionId);
         if (tx != null) {
-            // tx.addLog(object); // Perlu menambah method ini di Transaction.java
+            try {
+                tx.addLog(object);
+            } catch (NoSuchMethodError | RuntimeException ignored) {
+                // just ignore if don't exist
+            }
         }
     }
 }

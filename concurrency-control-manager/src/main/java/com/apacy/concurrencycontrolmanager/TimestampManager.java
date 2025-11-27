@@ -1,68 +1,51 @@
 package com.apacy.concurrencycontrolmanager;
 
-/**
- * Timestamp Manager for timestamp-based concurrency control.
- * TODO: Implement timestamp-based concurrency control logic.
- */
+import java.util.HashMap;
+import java.util.Map;
+
 public class TimestampManager {
 
+    private long timeStamp;
+    
+    private final Map<String, Long> readTime;
+    private final Map<String, Long> writeTime;
+
     public TimestampManager() {
-        // TODO: Initialize timestamp management structures
+        this.timeStamp = 0;
+        this.readTime = new HashMap<>();
+        this.writeTime = new HashMap<>();
     }
 
-    /**
-     * Generate a new timestamp for a transaction.
-     * TODO: Implement timestamp generation logic
-     */
-    public long generateTimestamp() {
-        throw new UnsupportedOperationException("generateTimestamp not implemented yet");
+    // PENTING: synchronized karena 'timeStamp++' bukan operasi atomik
+    public synchronized long generateTimestamp() {
+        return timeStamp++;
     }
 
-    /**
-     * Get read timestamp for a data item.
-     * TODO: Implement read timestamp retrieval
-     */
-    public long getReadTimestamp(String dataItem) {
-        throw new UnsupportedOperationException("getReadTimestamp not implemented yet");
+    public synchronized long getReadTimestamp(String dataItem) {
+        return readTime.getOrDefault(dataItem, 0L);
     }
 
-    /**
-     * Get write timestamp for a data item.
-     * TODO: Implement write timestamp retrieval
-     */
-    public long getWriteTimestamp(String dataItem) {
-        throw new UnsupportedOperationException("getWriteTimestamp not implemented yet");
+    public synchronized long getWriteTimestamp(String dataItem) {
+        return writeTime.getOrDefault(dataItem, 0L);
     }
 
-    /**
-     * Update read timestamp for a data item.
-     * TODO: Implement read timestamp update logic
-     */
-    public void updateReadTimestamp(String dataItem, long timestamp) {
-        throw new UnsupportedOperationException("updateReadTimestamp not implemented yet");
+    public synchronized void updateReadTimestamp(String dataItem, long timestamp) {
+        readTime.put(dataItem, Math.max(getReadTimestamp(dataItem), timestamp));
     }
 
-    /**
-     * Update write timestamp for a data item.
-     * TODO: Implement write timestamp update logic
-     */
-    public void updateWriteTimestamp(String dataItem, long timestamp) {
-        throw new UnsupportedOperationException("updateWriteTimestamp not implemented yet");
+    public synchronized void updateWriteTimestamp(String dataItem, long timestamp) {
+        writeTime.put(dataItem, Math.max(getWriteTimestamp(dataItem), timestamp));
     }
 
-    /**
-     * Check if a read operation is valid based on timestamps.
-     * TODO: Implement timestamp validation for read operations
-     */
-    public boolean isReadValid(String dataItem, long transactionTimestamp) {
-        throw new UnsupportedOperationException("isReadValid not implemented yet");
+    public synchronized boolean isReadValid(String dataItem, long transactionTimestamp) {
+        long wt = getWriteTimestamp(dataItem);
+        return transactionTimestamp >= wt;
     }
 
-    /**
-     * Check if a write operation is valid based on timestamps.
-     * TODO: Implement timestamp validation for write operations
-     */
-    public boolean isWriteValid(String dataItem, long transactionTimestamp) {
-        throw new UnsupportedOperationException("isWriteValid not implemented yet");
+    public synchronized boolean isWriteValid(String dataItem, long transactionTimestamp) {
+        long rt = getReadTimestamp(dataItem);
+        long wt = getWriteTimestamp(dataItem);
+
+        return transactionTimestamp >= rt && transactionTimestamp >= wt;
     }
 }

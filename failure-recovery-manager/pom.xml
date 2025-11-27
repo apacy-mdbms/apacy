@@ -27,5 +27,11 @@
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.apacy</groupId>
+            <artifactId>storage-manager</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
     </dependencies>
 </project>

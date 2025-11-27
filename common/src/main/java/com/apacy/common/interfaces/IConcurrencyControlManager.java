@@ -4,6 +4,8 @@ import com.apacy.common.dto.Response;
 import com.apacy.common.dto.Row;
 import com.apacy.common.enums.Action;
 
+import java.util.List;
+
 /**
  * Kontrak untuk: Concurrency Control Manager
  * Tugas: Mengatur izin baca/tulis untuk transaksi.
@@ -22,6 +24,8 @@ public interface IConcurrencyControlManager {
      * @return Objek Response (allowed=true/false)
      */
     Response validateObject(String objectId, int transactionId, Action action);
+
+    Response validateObjects(List<String> objectIds, int transactionId, Action action);
 
     void endTransaction(int transactionId, boolean commit);
 }

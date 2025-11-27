@@ -1,56 +1,76 @@
 package com.apacy.failurerecoverymanager;
 
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 
-/**
- * Boilerplate class for writing transaction logs.
- * TODO: Implement actual log writing with proper formatting and buffering.
- */
 public class LogWriter {
-    
     private final String logFilePath;
-    
+    private FileWriter writer;
+
     public LogWriter() {
         this("failure-recovery/log/mDBMS.log");
     }
-    
+
     public LogWriter(String logFilePath) {
         this.logFilePath = logFilePath;
+
+        try {
+            initialize();
+        } catch (IOException e) {
+            throw new RuntimeException("Gagal inisialisasi LogWriter pada path " + logFilePath, e);
+        }
     }
-    
-    /**
-     * Write a log entry to the log file.
-     * TODO: Implement actual log writing logic
-     */
-    public void writeLog(String transactionId, String operation, String tableName, Object data) throws IOException {
-        // TODO: Implement log writing
-        throw new UnsupportedOperationException("writeLog not implemented yet");
+
+    private void initialize() throws IOException {
+        File logFile = new File(logFilePath);
+        File parentDir = logFile.getParentFile();
+        if (parentDir != null && !parentDir.exists()) {
+            parentDir.mkdirs(); 
+        }
+        writer = new FileWriter(logFile, true); 
     }
-    
+
     /**
-     * Flush pending log entries to disk.
-     * TODO: Implement log flushing for durability
+     * Menulis satu baris log transaksi.
+     * Format: timestamp|transactionId|operation|tableName|data
      */
+    public synchronized void writeLog(LogEntry entry) throws IOException {
+        if (entry == null) return;
+
+        writer.write(entry.toString());
+        writer.write("\n");      
+        writer.flush();         
+    }
+
+    public synchronized void writeLog(String transactionId, String operation, String tableName, Object data) throws IOException {
+        LogEntry entry = new LogEntry(transactionId, operation, tableName, data);
+        writeLog(entry);
+    }
+
+    /** Memaksa flush buffer ke file. */
     public void flush() throws IOException {
-        // TODO: Implement log flushing
-        throw new UnsupportedOperationException("flush not implemented yet");
+        if (writer != null) {
+            writer.flush();
+        }
     }
-    
-    /**
-     * Close the log writer and release resources.
-     * TODO: Implement proper resource cleanup
-     */
+
+    /** Menutup file writer dengan aman. */
     public void close() throws IOException {
-        // TODO: Implement resource cleanup
-        throw new UnsupportedOperationException("close not implemented yet");
+        if (writer != null) {
+            writer.flush();
+            writer.close();
+        }
     }
-    
-    /**
-     * Rotate log file when it becomes too large.
-     * TODO: Implement log rotation
-     */
+
+    /** Melakukan rotasi log dengan mengganti nama file log lama. */
     public void rotateLog() throws IOException {
-        // TODO: Implement log rotation
-        throw new UnsupportedOperationException("rotateLog not implemented yet");
+        close();
+        File oldFile = new File(logFilePath);
+        File rotated = new File(logFilePath + "." + System.currentTimeMillis() + ".bak");
+        if (oldFile.exists()) {
+            oldFile.renameTo(rotated);
+        }
+        initialize(); 
     }
 }
