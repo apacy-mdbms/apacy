@@ -1,7 +1,9 @@
 package com.apacy.common.dto;
 
 import java.io.Serializable;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import com.apacy.common.dto.plan.PlanNode;
 
@@ -24,7 +26,8 @@ public record ParsedQuery(
     boolean isDescending,
     boolean isOptimized,
     Integer limit,
-    Integer offset
+    Integer offset,
+    Map<String, String> aliasMap
 ) implements Serializable {
     private static final long serialVersionUID = 1L;
     // --- KONSTRUKTOR UNTUK BACKWARD COMPATIBILITY ---
@@ -42,7 +45,7 @@ public record ParsedQuery(
             boolean isOptimized
     ) {
         // Panggil konstruktor utama dengan limit & offset = null
-        this(queryType, planRoot, targetTables, targetColumns, values, joinConditions, whereClause, orderByColumn, isDescending, isOptimized, null, null);
+        this(queryType, planRoot, targetTables, targetColumns, values, joinConditions, whereClause, orderByColumn, isDescending, isOptimized, null, null, Collections.emptyMap());
     }
     
     @Override
