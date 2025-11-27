@@ -137,7 +137,8 @@ public class SelectParser extends AbstractParser {
                 isDesc,
                 false,
                 limitValue,   // Pass limit
-                offsetValue   // Pass offset
+                offsetValue,   // Pass offset
+                java.util.Collections.emptyMap() // Pass aliasMap
         );
     };
 

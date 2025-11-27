@@ -185,6 +185,32 @@ public class JoinStrategy {
         
         return result;
     }
+
+    /**
+     * Cartesian Join implementation.
+     * Combines every row in the left table with every row in the right table.
+     * Time complexity: O(n * m) where n and m are table sizes.
+     * 
+     * @param leftTable The left table
+     * @param rightTable The right table
+     * @return List of joined rows (Cartesian product)
+     */
+    public static List<Row> cartesianJoin(List<Row> leftTable, List<Row> rightTable) {
+        if (leftTable == null || rightTable == null) {
+            throw new IllegalArgumentException("Tables cannot be null");
+        }
+
+        List<Row> result = new ArrayList<>();
+
+        for (Row leftRow : leftTable) {
+            for (Row rightRow : rightTable) {
+                Row mergedRow = mergeRows(leftRow, rightRow);
+                result.add(mergedRow);
+            }
+        }
+
+        return result;
+    }
     
     /**
      * Merge two rows into a single row by combining their data.

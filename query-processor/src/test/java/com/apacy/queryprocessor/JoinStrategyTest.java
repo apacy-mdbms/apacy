@@ -256,4 +256,35 @@ class JoinStrategyTest {
         assertEquals(expectedNames, hashNames);
         assertEquals(expectedNames, sortNames);
     }
+
+    // ========== Cartesian Join Tests ==========
+
+    @Test
+    @DisplayName("Cartesian Join - Basic")
+    void testCartesianJoin_Basic() {
+        List<Row> result = JoinStrategy.cartesianJoin(employeeTable, departmentTable);
+        
+        // Employee table has 5 rows, Department table has 4 rows
+        // Cartesian product should have 5 * 4 = 20 rows
+        assertEquals(20, result.size());
+    }
+
+    @Test
+    @DisplayName("Cartesian Join - Empty Table")
+    void testCartesianJoin_EmptyTable() {
+        List<Row> result1 = JoinStrategy.cartesianJoin(employeeTable, emptyTable);
+        assertTrue(result1.isEmpty());
+
+        List<Row> result2 = JoinStrategy.cartesianJoin(emptyTable, departmentTable);
+        assertTrue(result2.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Cartesian Join - Null Arguments")
+    void testCartesianJoin_NullArguments() {
+        assertThrows(IllegalArgumentException.class, 
+            () -> JoinStrategy.cartesianJoin(null, departmentTable));
+        assertThrows(IllegalArgumentException.class, 
+            () -> JoinStrategy.cartesianJoin(employeeTable, null));
+    }
 }

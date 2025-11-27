@@ -151,9 +151,12 @@ public class PlanTranslator {
 
     public List<Row> executeCartesian(CartesianNode node, Function<PlanNode, List<Row>> childExecutor,
                                       int txId, IConcurrencyControlManager ccm) {
-        // TODO: Implementasi Cartesian Product
+        // 1. Eksekusi anak kiri dan kanan
+        List<Row> leftRows = childExecutor.apply(node.left());
+        List<Row> rightRows = childExecutor.apply(node.right());
         
-        throw new UnsupportedOperationException("CartesianNode execution not yet implemented");
+        // 2. Lakukan Cartesian Join via JoinStrategy
+        return JoinStrategy.cartesianJoin(leftRows, rightRows);
     }
 
     /**
