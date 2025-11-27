@@ -8,6 +8,7 @@ import com.apacy.queryoptimizer.parser.AbstractParser;
 import com.apacy.queryoptimizer.parser.DeleteParser;
 import com.apacy.queryoptimizer.parser.InsertParser;
 import com.apacy.queryoptimizer.parser.SelectParser;
+import com.apacy.queryoptimizer.parser.TCLParser;
 import com.apacy.queryoptimizer.parser.Token;
 import com.apacy.queryoptimizer.parser.UpdateParser;
 
@@ -36,6 +37,11 @@ public class QueryParser {
                 break;
             case DELETE:
                 parser = new DeleteParser(tokens);
+                break;
+            case BEGIN:
+            case ABORT:
+            case COMMIT:
+                parser = new TCLParser(tokens);
                 break;
             default:
                 throw new UnsupportedOperationException("only SELECT, UPDATE, INSERT, and DELETE are currently supported");

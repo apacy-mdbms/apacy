@@ -29,5 +29,6 @@ public interface IStorageManager {
 
     void createTable(Schema schema) throws IOException;
 
+    Schema getSchema(String tableName);
     // void dropTable(String tableName, boolean isCascading) throws IOException;
 }

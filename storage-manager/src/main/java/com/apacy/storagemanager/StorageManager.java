@@ -80,6 +80,11 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
     public CatalogManager getCatalogManager() {
         return this.catalogManager;
     }
+    
+    @Override
+    public Schema getSchema(String tableName) {
+        return this.catalogManager.getSchema(tableName);
+    }
 
     private Object extractEqualityFilter(Map<String, Object> parsedFilters, Column colDef) {
         if (parsedFilters == null || colDef == null) {

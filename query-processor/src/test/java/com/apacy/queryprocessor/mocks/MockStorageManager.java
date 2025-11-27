@@ -12,6 +12,9 @@ import com.apacy.common.dto.DataWrite;
 import com.apacy.common.dto.Row;
 import com.apacy.common.dto.Schema;
 import com.apacy.common.dto.Statistic;
+import com.apacy.common.dto.Column;
+import com.apacy.common.dto.IndexSchema;
+import com.apacy.common.enums.DataType;
 import com.apacy.common.enums.IndexType;
 import com.apacy.common.interfaces.IStorageManager;
 
@@ -104,5 +107,36 @@ public class MockStorageManager implements IStorageManager {
     @Override
     public void createTable(Schema schema) throws IOException {
         throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public Schema getSchema(String tableName) {
+        switch (tableName) {
+            case "employees":
+                List<Column> empCols = List.of(
+                    new Column("id", DataType.INTEGER),
+                    new Column("name", DataType.VARCHAR, 100),
+                    new Column("salary", DataType.INTEGER),
+                    new Column("dept_id", DataType.INTEGER)
+                );
+                List<IndexSchema> empIdx = List.of(
+                    new IndexSchema("idx_emp_id", "id", IndexType.Hash, "employees_id.idx")
+                );
+                return new Schema("employees", "employees.dat", empCols, empIdx);
+            case "departments":
+                List<Column> deptCols = List.of(
+                    new Column("dept_id", DataType.INTEGER),
+                    new Column("dept_name", DataType.VARCHAR, 100),
+                    new Column("location", DataType.VARCHAR, 100)
+                );
+                List<IndexSchema> deptIdx = List.of(
+                    new IndexSchema("idx_dept_id", "dept_id", IndexType.Hash, "departments_id.idx")
+                );
+                return new Schema("departments", "departments.dat", deptCols, deptIdx);
+            case "users":
+                return getSchema("employees");
+            default:
+                return null;
+        }
     }
 }
