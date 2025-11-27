@@ -23,38 +23,24 @@ public class DDLParser extends AbstractParser {
         super(tokens);
     }
 
-    public DDLParser(String sql) {
-        super(new QueryTokenizer(sql).tokenize());
+    @Override
+    public ParsedQuery parse() throws ParseException {
+        return null;
+        // TODO: generalize ParsedQuery to support DDL
+        // Token t = peek();
+
+        // if (t.getType() == TokenType.CREATE) {
+        //     return parseCreateTable();
+        // }
+        // else if (t.getType() == TokenType.DROP) {
+        //     return parseDropTable();
+        // }
+
+        // throw new RuntimeException("Unknown or unsupported DDL Command: " + t.getValue());
     }
 
-    // Abstract methods (gak dipake)
-    @Override
-    public ParsedQuery parse() throws ParseException { return null; }
     @Override
     public boolean validate() { return true; }
-
-    /**
-     * Main Entry Point
-     */
-    public ParsedQueryDDL parseDDL() {
-        Token t = peek();
-
-        if (t.getType() == TokenType.CREATE) {
-            return parseCreateTable();
-        } 
-        else if (t.getType() == TokenType.DROP) {
-            return parseDropTable();
-        } 
-        
-        throw new RuntimeException("Unknown or unsupported DDL Command: " + t.getValue());
-    }
-
-    public boolean isDDL() {
-        if (tokens.isEmpty()) return false;
-        Token t = peek();
-        return t.getType() == TokenType.CREATE || 
-               t.getType() == TokenType.DROP;
-    }
 
     // Create Table
     private ParsedQueryCreate parseCreateTable() {
@@ -68,7 +54,7 @@ public class DDLParser extends AbstractParser {
         List<ForeignKeySchema> foreignKeys = new ArrayList<>();
 
         boolean moreDefinitions = true;
-        while (moreDefinitions) {            
+        while (moreDefinitions) {
             if (isIdentifier("FOREIGN")) {
                 foreignKeys.add(parseForeignKey(tableName));
             } else {
@@ -88,7 +74,7 @@ public class DDLParser extends AbstractParser {
 
         Token typeToken = consume(TokenType.IDENTIFIER);
         String typeStr = typeToken.getValue().toUpperCase();
-        
+
         DataType type = DataType.VARCHAR;
         int length = 0;
 
@@ -134,14 +120,14 @@ public class DDLParser extends AbstractParser {
     private ForeignKeySchema parseForeignKey(String currentTable) {
         consumeKeyword("FOREIGN");
         consumeKeyword("KEY");
-        
+
         consume(TokenType.LPARENTHESIS);
         String colName = consume(TokenType.IDENTIFIER).getValue();
         consume(TokenType.RPARENTHESIS);
 
         consumeKeyword("REFERENCES");
         String refTable = consume(TokenType.IDENTIFIER).getValue();
-        
+
         consume(TokenType.LPARENTHESIS);
         String refCol = consume(TokenType.IDENTIFIER).getValue();
         consume(TokenType.RPARENTHESIS);
@@ -168,9 +154,9 @@ public class DDLParser extends AbstractParser {
     private ParsedQueryDrop parseDropTable() {
         consume(TokenType.DROP);
         consume(TokenType.TABLE);
-        
+
         String tableName = consume(TokenType.IDENTIFIER).getValue();
-        
+
         boolean isCascading = false;
         if (isIdentifier("CASCADE")) {
             consumeKeyword("CASCADE");
