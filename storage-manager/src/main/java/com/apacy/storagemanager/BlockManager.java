@@ -1,10 +1,16 @@
 package com.apacy.storagemanager;
 
 import java.io.*;
+import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.io.EOFException;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 
 /**
  * Boilerplate Block Manager for low-level block operations.
@@ -16,6 +22,8 @@ public class BlockManager {
     
     private final String dataDirectory;
     private final int blockSize;
+
+    private final Map<String, RandomAccessFile> openFiles;
     
     public BlockManager(String dataDirectory) {
         this(dataDirectory, DEFAULT_BLOCK_SIZE);
@@ -24,6 +32,7 @@ public class BlockManager {
     public BlockManager(String dataDirectory, int blockSize) {
         this.dataDirectory = dataDirectory;
         this.blockSize = blockSize;
+        this.openFiles = new ConcurrentHashMap<>();
         // TODO: Initialize file management structures and create directory if needed
 
         try{
@@ -39,38 +48,46 @@ public class BlockManager {
     }
     
     /**
+     * Helper: Dapatkan file handle yang sudah terbuka, atau buka baru jika belum ada.
+     */
+    private synchronized RandomAccessFile getOpenFile(String fileName) throws IOException {
+        RandomAccessFile raf = openFiles.get(fileName);
+
+        if (raf == null) {
+            Path filePath = getFilePath(fileName);
+            // Mode "rw" = Read & Write
+            raf = new RandomAccessFile(filePath.toFile(), "rw");
+            openFiles.put(fileName, raf);
+        }
+        return raf;
+    }
+
+    /**
      * Read a block from the specified file at the given block number.
      * TODO: Implement block reading with proper error handling and buffering
      */
     public byte[] readBlock(String fileName, long blockNumber) throws IOException {
         // TODO: Implement block reading logic
-        Path filePath = getFilePath(fileName);
-        if(!Files.exists(filePath)) {
-            throw new FileNotFoundException("File tidak ditemukan : " + fileName);
-        }
+        RandomAccessFile raf = getOpenFile(fileName);
+        long position = blockNumber * blockSize;
+        byte[] blockData = new byte[blockSize];
 
-        try (RandomAccessFile raf = new RandomAccessFile(filePath.toFile(), "r")) {
+        synchronized (raf) {
             long fileLength = raf.length();
-            long position = blockNumber * blockSize;
-
             if (position >= fileLength) {
-                throw new IOException("Nomor blok " + blockNumber + " di luar batas file " + fileName + " (panjang: " + fileLength + " bytes)");
+                throw new IOException("Nomor blok " + blockNumber + " di luar batas file " + fileName);
             }
 
             raf.seek(position);
 
-            byte[] blockData = new byte[blockSize];
-            int bytesRead = raf.read(blockData);
-
-            if (bytesRead < blockSize && bytesRead != -1) {
-                // Ini bisa terjadi jika blok terakhir tidak penuh (corrupt/partial write)
-                // Kita kembalikan data yang terbaca, sisa array akan 0 (default)
-                System.err.println("Peringatan: readBlock membaca kurang dari ukuran blok penuh di " + fileName + ", blok " + blockNumber);
+            try {
+                raf.readFully(blockData);
+            } catch (EOFException e) {
+                // Blok tidak penuh/korup, lempar error atau biarkan sisa 0
+                throw new IOException("Blok " + blockNumber + " korup/tidak lengkap di " + fileName, e);
             }
-
-            return blockData;
         }
-        // throw new UnsupportedOperationException("readBlock not implemented yet");
+        return blockData;
     }
     
     /**
@@ -83,26 +100,18 @@ public class BlockManager {
             throw new IOException("Data ( " + data.length + " bytes) lebih besar dari blockSize (" + blockSize + " bytes)");
         }
 
-        Path filePath = getFilePath(fileName);
+        RandomAccessFile raf = getOpenFile(fileName);
+        long position = blockNumber * blockSize;
         
-        try (RandomAccessFile raf = new RandomAccessFile(filePath.toFile(), "rw")) {
-            long position = blockNumber * blockSize;
-            
-            // Pindah ke posisi blok
+       synchronized (raf) {
             raf.seek(position);
-            
-            // Tulis data
             raf.write(data);
-            
-            // (PENTING) Jika data lebih kecil dari ukuran blok,
-            // kita harus menulis padding agar file tetap sinkron.
+
             if (data.length < blockSize) {
                 byte[] padding = new byte[blockSize - data.length];
-                // Arrays.fill(padding, (byte) 0); // (default-nya sudah 0)
                 raf.write(padding);
             }
         }
-        // throw new UnsupportedOperationException("writeBlock not implemented yet");
     }
     
     /**
@@ -128,13 +137,18 @@ public class BlockManager {
             return 0;
         }
 
-        try (RandomAccessFile raf = new RandomAccessFile(filePath.toFile(), "r")){
-            long fileLength = raf.length();
-            if(fileLength == 0 ){
-                return 0;
-            }
-            return (fileLength + blockSize - 1) / blockSize;
+        // Gunakan file yang terbuka untuk cek panjang (lebih cepat)
+        RandomAccessFile raf = getOpenFile(fileName);
+        long fileLength;
+
+        synchronized (raf) {
+            fileLength = raf.length();
         }
+
+        if (fileLength == 0) {
+            return 0;
+        }
+        return (fileLength + blockSize - 1) / blockSize;
     }
     
     /**
@@ -143,18 +157,35 @@ public class BlockManager {
      */
     public void flush() throws IOException {
         // TODO: Implement flush logic
-        return;
-        // throw new UnsupportedOperationException("flush not implemented yet");
+        System.out.println("BlockManager (Stateful): Flushing " + openFiles.size() + " files...");
+        for (RandomAccessFile raf : openFiles.values()) {
+            synchronized (raf) {
+                raf.getChannel().force(true); // Force write to disk
+            }
+        }
     }
     
     /**
      * Close all open files and release resources.
      * TODO: Implement proper resource cleanup
      */
-    public void close() {
+    public void close() throws IOException{
         // TODO: Implement resource cleanup
-        return;
-        // throw new UnsupportedOperationException("close not implemented yet");
+        System.out.println("BlockManager (Stateful): Closing " + openFiles.size() + " files...");
+        
+        // Flush dulu untuk keamanan data
+        flush();
+
+        for (Map.Entry<String, RandomAccessFile> entry : openFiles.entrySet()) {
+            try {
+                synchronized (entry.getValue()) {
+                    entry.getValue().close();
+                }
+            } catch (IOException e) {
+                System.err.println("Gagal menutup file: " + entry.getKey());
+            }
+        }
+        openFiles.clear();
     }
     
     /**
