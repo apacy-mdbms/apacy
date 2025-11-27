@@ -1,7 +1,12 @@
 package com.apacy.queryprocessor.execution;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import com.apacy.common.dto.Row;
-import java.util.*;
 
 /**
  * Implementation of various JOIN strategies.
@@ -64,40 +69,48 @@ public class JoinStrategy {
      * @return List of joined rows
      */
     public static List<Row> hashJoin(List<Row> leftTable, List<Row> rightTable, String joinColumn) {
-        if (leftTable == null || rightTable == null || joinColumn == null) {
+        if (joinColumn == null) {
             throw new IllegalArgumentException("Tables and join column cannot be null");
+        }
+        return hashJoin(leftTable, rightTable, Collections.singletonList(joinColumn));
+    }
+
+    /**
+     * Builds a hash table using a composite key from multiple columns.
+     * @param leftTable The left table (probe side)
+     * @param rightTable The right table (build side)
+     * @param joinColumns The list of column names to join on
+     * @return List of joined rows
+     */
+    public static List<Row> hashJoin(List<Row> leftTable, List<Row> rightTable, List<String> joinColumns) {
+        if (leftTable == null || rightTable == null || joinColumns == null || joinColumns.isEmpty()) {
+            throw new IllegalArgumentException("Tables and join columns cannot be null/empty");
         }
         
         List<Row> result = new ArrayList<>();
         
-        // Build phase: Create hash table from right table
-        Map<Object, List<Row>> hashTable = new HashMap<>();
+
+        // Build phase: Create hash table from right table using Composite Key
+        Map<String, List<Row>> hashTable = new HashMap<>();
+        
         for (Row rightRow : rightTable) {
-            Object rightValue = rightRow.get(joinColumn);
+            String key = generateCompositeKey(rightRow, joinColumns);
             
-            // Skip rows with null join key
-            if (rightValue == null) {
-                continue;
+            // Skip rows if any join key is null
+            if (key != null) {
+                hashTable.computeIfAbsent(key, k -> new ArrayList<>()).add(rightRow);
             }
-            
-            hashTable.computeIfAbsent(rightValue, k -> new ArrayList<>()).add(rightRow);
         }
         
         // Probe phase: Lookup left table rows in hash table
         for (Row leftRow : leftTable) {
-            Object leftValue = leftRow.get(joinColumn);
+            String key = generateCompositeKey(leftRow, joinColumns);
             
-            // Skip rows with null join key
-            if (leftValue == null) {
-                continue;
-            }
-            
-            // Find matching rows in hash table
-            List<Row> matchingRightRows = hashTable.get(leftValue);
-            if (matchingRightRows != null) {
+            if (key != null && hashTable.containsKey(key)) {
+                List<Row> matchingRightRows = hashTable.get(key);
                 for (Row rightRow : matchingRightRows) {
-                    Row mergedRow = mergeRows(leftRow, rightRow);
-                    result.add(mergedRow);
+                    // Gunakan merge khusus yang mengetahui kolom join mana yang harus di-skip dari kanan
+                    result.add(mergeJoinedRows(leftRow, rightRow, joinColumns));
                 }
             }
         }
@@ -185,6 +198,32 @@ public class JoinStrategy {
         
         return result;
     }
+
+    /**
+     * Cartesian Join implementation.
+     * Combines every row in the left table with every row in the right table.
+     * Time complexity: O(n * m) where n and m are table sizes.
+     * 
+     * @param leftTable The left table
+     * @param rightTable The right table
+     * @return List of joined rows (Cartesian product)
+     */
+    public static List<Row> cartesianJoin(List<Row> leftTable, List<Row> rightTable) {
+        if (leftTable == null || rightTable == null) {
+            throw new IllegalArgumentException("Tables cannot be null");
+        }
+
+        List<Row> result = new ArrayList<>();
+
+        for (Row leftRow : leftTable) {
+            for (Row rightRow : rightTable) {
+                Row mergedRow = mergeRows(leftRow, rightRow);
+                result.add(mergedRow);
+            }
+        }
+
+        return result;
+    }
     
     /**
      * Merge two rows into a single row by combining their data.
@@ -231,5 +270,43 @@ public class JoinStrategy {
         
         // Fall back to string comparison
         return v1.toString().compareTo(v2.toString());
+    }
+
+    /**
+     * Generate a composite key string from multiple column values in a row.
+     * Null values result in a null key (indicating no join).
+     * 
+     * @param row The row to extract values from
+     * @param columns The list of column names to include in the key
+     * @return Composite key string or null if any value is null
+     */
+    private static String generateCompositeKey(Row row, List<String> columns) {
+        StringBuilder sb = new StringBuilder();
+        for (String col : columns) {
+            Object val = row.get(col);
+            if (val == null) return null; // Standard SQL: null never joins
+            sb.append(val).append("|");   // Delimiter
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Merge two rows for a join operation, skipping duplicate join columns from the right row.
+     * 
+     * @param leftRow The left row
+     * @param rightRow The right row
+     * @param joinColumns The list of column names used in the join
+     * @return A new merged row without duplicate join columns from the right row
+     */
+    private static Row mergeJoinedRows(Row leftRow, Row rightRow, List<String> joinColumns) {
+        Map<String, Object> mergedData = new HashMap<>(leftRow.data());
+        
+        for (Map.Entry<String, Object> entry : rightRow.data().entrySet()) {
+            // Hanya masukkan data kanan jika BUKAN kolom join
+            if (!joinColumns.contains(entry.getKey())) {
+                mergedData.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return new Row(mergedData);
     }
 }

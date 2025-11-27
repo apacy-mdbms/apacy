@@ -1,16 +1,22 @@
 package com.apacy.queryprocessor;
 
-import com.apacy.common.dto.Row;
-import com.apacy.common.dto.DataRetrieval;
-import com.apacy.queryprocessor.execution.JoinStrategy;
-import com.apacy.queryprocessor.mocks.MockStorageManager;
-import org.junit.jupiter.api.Test;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
-
-import static org.junit.jupiter.api.Assertions.*;
+import com.apacy.common.dto.DataRetrieval;
+import com.apacy.common.dto.Row;
+import com.apacy.queryprocessor.execution.JoinStrategy;
+import com.apacy.queryprocessor.mocks.MockStorageManager;
 
 @DisplayName("JoinStrategy Tests")
 class JoinStrategyTest {
@@ -160,7 +166,7 @@ class JoinStrategyTest {
         assertThrows(IllegalArgumentException.class, 
             () -> JoinStrategy.hashJoin(employeeTable, null, "dept_id"));
         assertThrows(IllegalArgumentException.class, 
-            () -> JoinStrategy.hashJoin(employeeTable, departmentTable, null));
+            () -> JoinStrategy.hashJoin(employeeTable, departmentTable, (String) null));
     }
     
     // ========== Sort-Merge Join Tests ==========
@@ -255,5 +261,36 @@ class JoinStrategyTest {
         assertEquals(expectedNames, nestedNames);
         assertEquals(expectedNames, hashNames);
         assertEquals(expectedNames, sortNames);
+    }
+
+    // ========== Cartesian Join Tests ==========
+
+    @Test
+    @DisplayName("Cartesian Join - Basic")
+    void testCartesianJoin_Basic() {
+        List<Row> result = JoinStrategy.cartesianJoin(employeeTable, departmentTable);
+        
+        // Employee table has 5 rows, Department table has 4 rows
+        // Cartesian product should have 5 * 4 = 20 rows
+        assertEquals(20, result.size());
+    }
+
+    @Test
+    @DisplayName("Cartesian Join - Empty Table")
+    void testCartesianJoin_EmptyTable() {
+        List<Row> result1 = JoinStrategy.cartesianJoin(employeeTable, emptyTable);
+        assertTrue(result1.isEmpty());
+
+        List<Row> result2 = JoinStrategy.cartesianJoin(emptyTable, departmentTable);
+        assertTrue(result2.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Cartesian Join - Null Arguments")
+    void testCartesianJoin_NullArguments() {
+        assertThrows(IllegalArgumentException.class, 
+            () -> JoinStrategy.cartesianJoin(null, departmentTable));
+        assertThrows(IllegalArgumentException.class, 
+            () -> JoinStrategy.cartesianJoin(employeeTable, null));
     }
 }

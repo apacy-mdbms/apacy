@@ -2,7 +2,9 @@ package com.apacy.queryoptimizer.parser;
 
 import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.plan.PlanNode;
@@ -36,14 +38,24 @@ public class SelectParser extends AbstractParser {
             }
             targetColumns.add(col);
             while (match(TokenType.COMMA)) {
-                targetColumns.add(consume(TokenType.IDENTIFIER).getValue());
+                String nextCol = consume(TokenType.IDENTIFIER).getValue();
+                while(match(TokenType.DOT)) {
+                    Token t = peek();
+                    if (match(TokenType.IDENTIFIER)) {
+                        nextCol += '.' + t.getValue();
+                    } else if (match(TokenType.STAR)) {
+                        nextCol += ".*";
+                    } else { consume(TokenType.IDENTIFIER);} //throw error
+                }
+                targetColumns.add(nextCol);
             }
         }
 
         consume(TokenType.FROM);
 
         List<String> targetTables = new ArrayList<>();
-        JoinOperand joinAst = parseTableReferenceList(targetTables);
+        Map<String, String> aliasMap = new HashMap<>();
+        JoinOperand joinAst = parseTableReferenceList(targetTables, aliasMap);
 
         // Token firstTableToken = consume(TokenType.IDENTIFIER);
         // targetTables.add(firstTableToken.getValue());
@@ -137,7 +149,8 @@ public class SelectParser extends AbstractParser {
                 isDesc,
                 false,
                 limitValue,   // Pass limit
-                offsetValue   // Pass offset
+                offsetValue,   // Pass offset
+                aliasMap
         );
     };
 
@@ -206,20 +219,20 @@ public class SelectParser extends AbstractParser {
         }
     }
 
-    protected JoinOperand parseTableReferenceList(List<String> targetTables) throws ParseException {
-        JoinOperand ast = parseTableReference(targetTables);
+    protected JoinOperand parseTableReferenceList(List<String> targetTables, Map<String, String> aliasMap) throws ParseException {
+        JoinOperand ast = parseTableReference(targetTables, aliasMap);
 
         while(match(TokenType.COMMA)) {
-            JoinOperand rightRef = parseTableReference(targetTables);
+            JoinOperand rightRef = parseTableReference(targetTables, aliasMap);
             ast = new JoinConditionNode("CROSS", ast, rightRef, null);
         }
 
         return ast;
     }
 
-    protected JoinOperand parseTableReference(List<String> targetTables) throws ParseException {
-        JoinOperand leftRef = parseTableFactor(targetTables);
-        JoinConditionNode rightRef = parseJoinTail(targetTables);
+    protected JoinOperand parseTableReference(List<String> targetTables, Map<String, String> aliasMap) throws ParseException {
+        JoinOperand leftRef = parseTableFactor(targetTables, aliasMap);
+        JoinConditionNode rightRef = parseJoinTail(targetTables, aliasMap);
 
         if (rightRef != null) {
             return new JoinConditionNode(rightRef.joinType(), leftRef, rightRef.right(), rightRef.conditions());
@@ -228,16 +241,16 @@ public class SelectParser extends AbstractParser {
         return leftRef;
     }
 
-    protected JoinConditionNode parseJoinTail(List<String> targetTables) throws ParseException {
+    protected JoinConditionNode parseJoinTail(List<String> targetTables, Map<String, String> aliasMap) throws ParseException {
         if (match(TokenType.CROSS)) {
             consume(TokenType.JOIN);
-            JoinOperand rightRef = parseTableFactor(targetTables);
+            JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
             return new JoinConditionNode("CROSS", null, rightRef, null);
         }
 
         if (match(TokenType.INNER)) {
             consume(TokenType.JOIN);
-            JoinOperand rightRef = parseTableFactor(targetTables);
+            JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
             consume(TokenType.ON);
             return new JoinConditionNode("INNER", null, rightRef, parseWhereExpression());
         }
@@ -245,7 +258,7 @@ public class SelectParser extends AbstractParser {
         if (match(TokenType.LEFT)) {
             match(TokenType.OUTER);
             consume(TokenType.JOIN);
-            JoinOperand rightRef = parseTableFactor(targetTables);
+            JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
             consume(TokenType.ON);
             return new JoinConditionNode("LEFT", null, rightRef, parseWhereExpression());
         }
@@ -253,7 +266,7 @@ public class SelectParser extends AbstractParser {
         if (match(TokenType.RIGHT)) {
             match(TokenType.OUTER);
             consume(TokenType.JOIN);
-            JoinOperand rightRef = parseTableFactor(targetTables);
+            JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
             consume(TokenType.ON);
             return new JoinConditionNode("RIGHT", null, rightRef, parseWhereExpression());
         }
@@ -261,19 +274,19 @@ public class SelectParser extends AbstractParser {
         if (match(TokenType.FULL)) {
             match(TokenType.OUTER);
             consume(TokenType.JOIN);
-            JoinOperand rightRef = parseTableFactor(targetTables);
+            JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
             consume(TokenType.ON);
             return new JoinConditionNode("FULL", null, rightRef, parseWhereExpression());
         }
 
         if (match(TokenType.NATURAL)) {
             consume(TokenType.JOIN);
-            JoinOperand rightRef = parseTableFactor(targetTables);
+            JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
             return new JoinConditionNode("NATURAL", null, rightRef, null);
         }
 
         if (match(TokenType.JOIN)) {
-            JoinOperand rightRef = parseTableFactor(targetTables);
+            JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
             consume(TokenType.ON);
             return new JoinConditionNode("INNER", null, rightRef, parseWhereExpression());
         }
@@ -282,15 +295,21 @@ public class SelectParser extends AbstractParser {
 
     }
 
-    protected JoinOperand parseTableFactor(List<String> targetTables) throws ParseException {
+    protected JoinOperand parseTableFactor(List<String> targetTables, Map<String, String> aliasMap) throws ParseException {
         if(match(TokenType.LPARENTHESIS)) {
-            JoinOperand table = parseTableReference(targetTables);
+            JoinOperand table = parseTableReference(targetTables, aliasMap);
             consume(TokenType.RPARENTHESIS);
             return table;
         }
 
         Token tableToken = consume(TokenType.IDENTIFIER);
         targetTables.add(tableToken.getValue());
+
+        if(match(TokenType.AS)) {
+            Token alias = consume(TokenType.IDENTIFIER);
+            aliasMap.put(alias.getValue(), tableToken.getValue());
+        }
+
         return new TableNode(tableToken.getValue());
     }
 

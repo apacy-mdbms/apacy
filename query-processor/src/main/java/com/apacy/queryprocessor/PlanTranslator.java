@@ -4,9 +4,12 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import com.apacy.common.dto.Column;
 import com.apacy.common.dto.DataDeletion;
@@ -19,6 +22,7 @@ import com.apacy.common.dto.ddl.ColumnDefinition;
 import com.apacy.common.dto.ddl.ParsedQueryCreate;
 import com.apacy.common.dto.ddl.ParsedQueryDDL;
 import com.apacy.common.dto.ddl.ParsedQueryDrop;
+import com.apacy.common.dto.plan.CartesianNode;
 import com.apacy.common.dto.plan.DDLNode;
 import com.apacy.common.dto.plan.FilterNode;
 import com.apacy.common.dto.plan.JoinNode;
@@ -121,31 +125,382 @@ public class PlanTranslator {
     /**
      * [FARREL]
      * Menangani JoinNode: Menggabungkan dua tabel/node.
+     * Support untuk INNER, LEFT/RIGHT/FULL OUTER, CROSS, dan NATURAL JOIN.
      */
     public List<Row> executeJoin(JoinNode node, Function<PlanNode, List<Row>> childExecutor, 
                                  JoinStrategy joinStrategy, int txId, IConcurrencyControlManager ccm) {
-        // 1. Eksekusi anak kiri dan kanan
+        // Eksekusi anak kiri dan kanan
         List<Row> leftRows = childExecutor.apply(node.left());
         List<Row> rightRows = childExecutor.apply(node.right());
-        List<Row> result = new ArrayList<>();
-
-        // 2. Logika Join
-        for (Row left : leftRows) {
-            for (Row right : rightRows) {
-                // Gabungkan data kiri + kanan
-                Map<String, Object> mergedData = new HashMap<>(left.data());
-                // Strategi overwrite sederhana jika ada nama kolom sama
-                mergedData.putAll(right.data()); 
-                Row mergedRow = new Row(mergedData);
-
-                // Evaluasi kondisi join
-                if (ConditionEvaluator.evaluate(mergedRow, node.joinCondition())) {
-                    result.add(mergedRow);
+        
+        // Tentukan join type (default: INNER)
+        String joinType = node.joinType() != null ? node.joinType().toUpperCase() : "INNER";
+        
+        // Ekstrak join column dari condition (untuk equi-join sederhana)
+        String joinColumn = extractJoinColumn(node.joinCondition());
+        
+        // Execute berdasarkan join type
+        switch (joinType) {
+            case "INNER":
+                return executeInnerJoin(leftRows, rightRows, joinColumn, node.joinCondition());
+                
+            case "LEFT":
+            case "LEFT OUTER":
+                return executeLeftOuterJoin(leftRows, rightRows, joinColumn, node.joinCondition());
+                
+            case "RIGHT":
+            case "RIGHT OUTER":
+                return executeRightOuterJoin(leftRows, rightRows, joinColumn, node.joinCondition());
+                
+            case "FULL":
+            case "FULL OUTER":
+                return executeFullOuterJoin(leftRows, rightRows, joinColumn, node.joinCondition());
+                
+            case "CROSS":
+                return executeCrossJoin(leftRows, rightRows);
+                
+            case "NATURAL":
+                return executeNaturalJoin(leftRows, rightRows);
+                
+            default:
+                throw new UnsupportedOperationException("Unsupported join type: " + joinType);
+        }
+    }
+    
+    /**
+     * INNER JOIN: Mengembalikan baris yang cocok di kedua tabel.
+     * Menggunakan hash join untuk dataset besar, nested loop untuk dataset kecil.
+     */
+    private List<Row> executeInnerJoin(List<Row> leftRows, List<Row> rightRows, 
+                                       String joinColumn, Object joinCondition) {
+        if (joinColumn != null && !joinColumn.isEmpty()) {
+            if (leftRows.size() * rightRows.size() > 1000) {
+                // Hash join untuk dataset besar (cartesian product > 1000)
+                return JoinStrategy.hashJoin(leftRows, rightRows, joinColumn);
+            } else {
+                // Nested loop join untuk dataset kecil
+                return JoinStrategy.nestedLoopJoin(leftRows, rightRows, joinColumn);
+            }
+        } else {
+            // Fallback: Manual evaluation untuk non-equi-join
+            List<Row> result = new ArrayList<>();
+            for (Row left : leftRows) {
+                for (Row right : rightRows) {
+                    Map<String, Object> mergedData = new HashMap<>(left.data());
+                    mergedData.putAll(right.data());
+                    Row mergedRow = new Row(mergedData);
+                    
+                    if (ConditionEvaluator.evaluate(mergedRow, joinCondition)) {
+                        result.add(mergedRow);
+                    }
+                }
+            }
+            return result;
+        }
+    }
+    
+    /**
+     * LEFT OUTER JOIN: Mengembalikan semua baris dari tabel kiri, dan baris yang cocok dari tabel kanan.
+     * Baris kiri yang tidak cocok akan memiliki NULL untuk kolom kanan.
+     */
+    private List<Row> executeLeftOuterJoin(List<Row> leftRows, List<Row> rightRows,
+                                           String joinColumn, Object joinCondition) {
+        // gabungkan baris yang cocok
+        List<Row> innerResult = executeInnerJoin(leftRows, rightRows, joinColumn, joinCondition);
+        List<Row> result = new ArrayList<>(innerResult);
+        
+        // left rows yang tidak ada di inner result
+        Set<Row> matchedLeftRows = new HashSet<>();
+        for (Row innerRow : innerResult) {
+            for (Row left : leftRows) {
+                if (rowContainsData(innerRow, left)) {
+                    matchedLeftRows.add(left);
+                    break;
                 }
             }
         }
         
+        // Tambahkan baris kiri yang tidak cocok dengan NULL untuk kolom kanan
+        for (Row left : leftRows) {
+            if (!matchedLeftRows.contains(left)) {
+                Map<String, Object> mergedData = new HashMap<>(left.data());
+                
+                // Tambahkan kolom kanan dengan nilai NULL
+                if (!rightRows.isEmpty()) {
+                    for (String key : rightRows.get(0).data().keySet()) {
+                        mergedData.putIfAbsent(key, null);
+                    }
+                }
+                
+                result.add(new Row(mergedData));
+            }
+        }
+        
         return result;
+    }
+    
+    /**
+     * RIGHT OUTER JOIN: Mengembalikan semua baris dari tabel kanan, dan baris yang cocok dari tabel kiri.
+     * Baris kanan yang tidak cocok akan memiliki NULL untuk kolom kiri.
+     */
+    private List<Row> executeRightOuterJoin(List<Row> leftRows, List<Row> rightRows,
+                                            String joinColumn, Object joinCondition) {
+        // gabungkan baris yang cocok
+        List<Row> innerResult = executeInnerJoin(leftRows, rightRows, joinColumn, joinCondition);
+        List<Row> result = new ArrayList<>(innerResult);
+        
+        // right rows yang tidak ada di inner result
+        Set<Row> matchedRightRows = new HashSet<>();
+        for (Row innerRow : innerResult) {
+            for (Row right : rightRows) {
+                if (rowContainsData(innerRow, right)) {
+                    matchedRightRows.add(right);
+                    break;
+                }
+            }
+        }
+        
+        // Tambahkan baris kanan yang tidak cocok dengan NULL untuk kolom kiri
+        for (Row right : rightRows) {
+            if (!matchedRightRows.contains(right)) {
+                Map<String, Object> mergedData = new HashMap<>();
+                
+                // Tambahkan kolom kiri dengan nilai NULL
+                if (!leftRows.isEmpty()) {
+                    for (String key : leftRows.get(0).data().keySet()) {
+                        mergedData.put(key, null);
+                    }
+                }
+                
+                // Tambahkan kolom kanan
+                mergedData.putAll(right.data());
+                
+                result.add(new Row(mergedData));
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * FULL OUTER JOIN: Mengembalikan semua baris dari kedua tabel.
+     * Baris yang tidak cocok akan memiliki NULL untuk kolom tabel lain.
+     */
+    private List<Row> executeFullOuterJoin(List<Row> leftRows, List<Row> rightRows,
+                                           String joinColumn, Object joinCondition) {
+        // Inner join
+        List<Row> innerResult = executeInnerJoin(leftRows, rightRows, joinColumn, joinCondition);
+        List<Row> result = new ArrayList<>(innerResult);
+        
+        // left and right rows that are not in inner result
+        Set<Row> matchedLeftRows = new HashSet<>();
+        Set<Row> matchedRightRows = new HashSet<>();
+        
+        for (Row innerRow : innerResult) {
+            for (Row left : leftRows) {
+                if (rowContainsData(innerRow, left)) {
+                    matchedLeftRows.add(left);
+                    break;
+                }
+            }
+            for (Row right : rightRows) {
+                if (rowContainsData(innerRow, right)) {
+                    matchedRightRows.add(right);
+                    break;
+                }
+            }
+        }
+        
+        // Tambahkan baris kiri yang tidak cocok
+        for (Row left : leftRows) {
+            if (!matchedLeftRows.contains(left)) {
+                Map<String, Object> mergedData = new HashMap<>(left.data());
+                
+                if (!rightRows.isEmpty()) {
+                    for (String key : rightRows.get(0).data().keySet()) {
+                        mergedData.putIfAbsent(key, null);
+                    }
+                }
+                
+                result.add(new Row(mergedData));
+            }
+        }
+        
+        // Tambahkan baris kanan yang tidak cocok
+        for (Row right : rightRows) {
+            if (!matchedRightRows.contains(right)) {
+                Map<String, Object> mergedData = new HashMap<>();
+                
+                if (!leftRows.isEmpty()) {
+                    for (String key : leftRows.get(0).data().keySet()) {
+                        mergedData.put(key, null);
+                    }
+                }
+                
+                mergedData.putAll(right.data());
+                
+                result.add(new Row(mergedData));
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * CROSS JOIN: Mengembalikan cartesian product dari kedua tabel.
+     */
+    private List<Row> executeCrossJoin(List<Row> leftRows, List<Row> rightRows) {
+        return JoinStrategy.cartesianJoin(leftRows, rightRows);
+    }
+    
+    /**
+     * NATURAL JOIN: Menggabungkan tabel berdasarkan kolom dengan nama yang sama.
+     * Otomatis mendeteksi kolom yang sama dan melakukan equi-join.
+     * Kolom yang sama hanya muncul sekali di hasil.
+     */
+    
+    private List<Row> executeNaturalJoin(List<Row> leftRows, List<Row> rightRows) {
+        if (leftRows.isEmpty() || rightRows.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // Common Columns
+        Set<String> leftCols = leftRows.get(0).data().keySet();
+        List<String> commonCols = rightRows.get(0).data().keySet().stream()
+                .filter(leftCols::contains)
+                .collect(Collectors.toList());
+
+        // Jika tidak ada kolom sama menjadi CROSS JOIN (Cartesian)
+        if (commonCols.isEmpty()) {
+            return JoinStrategy.cartesianJoin(leftRows, rightRows);
+        }
+
+        // Pastikan JoinStrategy.hashJoin Anda sudah support List<String> (seperti diskusi sebelumnya)
+        return JoinStrategy.hashJoin(leftRows, rightRows, commonCols);
+    }
+    
+    /**
+     * Ekstrak nama kolom join dari WhereConditionNode untuk equi-join sederhana.
+     * Hanya support simple equi-join: table1.col = table2.col
+     * Return null jika kondisi terlalu kompleks.
+     */
+    private String extractJoinColumn(Object condition) {
+        if (!(condition instanceof com.apacy.queryoptimizer.ast.where.ComparisonConditionNode)) {
+            return null;
+        }
+        
+        com.apacy.queryoptimizer.ast.where.ComparisonConditionNode comp = 
+            (com.apacy.queryoptimizer.ast.where.ComparisonConditionNode) condition;
+        
+        // Hanya support operator "="
+        if (!"=".equals(comp.operator())) {
+            return null;
+        }
+        
+        // Ekstrak nama kolom dari left dan right operand
+        String leftCol = extractColumnNameFromExpression(comp.leftOperand());
+        String rightCol = extractColumnNameFromExpression(comp.rightOperand());
+        
+        // Jika kedua kolom valid dan sama namanya (tanpa table prefix), return nama kolom
+        if (leftCol != null && rightCol != null && leftCol.equals(rightCol)) {
+            return leftCol;
+        }
+        
+        return null; // Kondisi kompleks atau kolom berbeda
+    }
+    
+    /**
+     * Ekstrak nama kolom dari ExpressionNode
+     * Method ini mirip dengan extractColumnsFromExpression di DistributeProjectRewriter
+     */
+    private String extractColumnNameFromExpression(com.apacy.queryoptimizer.ast.expression.ExpressionNode expr) {
+        if (expr == null || expr.term() == null) {
+            return null;
+        }
+        
+        // Ekstrak dari term utama
+        String colName = extractColumnNameFromTerm(expr.term());
+        if (colName != null) {
+            return colName;
+        }
+        
+        // Cek remainder terms jika ada
+        if (expr.remainderTerms() != null && !expr.remainderTerms().isEmpty()) {
+            for (var pair : expr.remainderTerms()) {
+                colName = extractColumnNameFromTerm(pair.term());
+                if (colName != null) {
+                    return colName;
+                }
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Ekstrak nama kolom dari TermNode
+     */
+    private String extractColumnNameFromTerm(com.apacy.queryoptimizer.ast.expression.TermNode term) {
+        if (term == null || term.factor() == null) {
+            return null;
+        }
+        
+        // Cek factor utama
+        if (term.factor() instanceof com.apacy.queryoptimizer.ast.expression.ColumnFactor colFactor) {
+            String colName = colFactor.columnName();
+            
+            // Jika ada table prefix (table.column), ambil hanya column name
+            if (colName.contains(".")) {
+                String[] parts = colName.split("\\.");
+                return parts[parts.length - 1]; // Ambil bagian terakhir
+            }
+            
+            return colName;
+        }
+        
+        // Cek remainder factors jika ada
+        if (term.remainderFactors() != null && !term.remainderFactors().isEmpty()) {
+            for (var pair : term.remainderFactors()) {
+                if (pair.factor() instanceof com.apacy.queryoptimizer.ast.expression.ColumnFactor colFactor) {
+                    String colName = colFactor.columnName();
+                    
+                    if (colName.contains(".")) {
+                        String[] parts = colName.split("\\.");
+                        return parts[parts.length - 1];
+                    }
+                    
+                    return colName;
+                }
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Helper: Cek apakah merged row mengandung data dari source row
+     */
+    private boolean rowContainsData(Row mergedRow, Row sourceRow) {
+        for (Map.Entry<String, Object> entry : sourceRow.data().entrySet()) {
+            Object mergedValue = mergedRow.get(entry.getKey());
+            if (mergedValue == null && entry.getValue() != null) {
+                return false;
+            }
+            if (mergedValue != null && !mergedValue.equals(entry.getValue())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public List<Row> executeCartesian(CartesianNode node, Function<PlanNode, List<Row>> childExecutor,
+                                      int txId, IConcurrencyControlManager ccm) {
+        // 1. Eksekusi anak kiri dan kanan
+        List<Row> leftRows = childExecutor.apply(node.left());
+        List<Row> rightRows = childExecutor.apply(node.right());
+        
+        // 2. Lakukan Cartesian Join via JoinStrategy
+        return JoinStrategy.cartesianJoin(leftRows, rightRows);
     }
 
     /**
