@@ -199,10 +199,19 @@ public class QueryBinder {
             String prefix = parts[0];
             String colName = parts[1];
 
-            if (aliasMap == null || !aliasMap.containsKey(prefix)) {
+            String realTable = null;
+
+            if (aliasMap != null && aliasMap.containsKey(prefix)) {
+                realTable = aliasMap.get(prefix);
+            }
+            else if (tables.contains(prefix)) {
+                realTable = prefix;
+            }
+            
+            if (realTable == null) {
                 throw new IllegalArgumentException("Unknown table/alias reference: " + prefix);
             }
-            String realTable = aliasMap.get(prefix);
+
             validateColumnInCatalog(realTable, colName);
             return realTable + "." + colName;
         }
