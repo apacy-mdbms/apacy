@@ -1,7 +1,12 @@
 package com.apacy.queryprocessor.execution;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import com.apacy.common.dto.Row;
-import java.util.*;
 
 /**
  * Implementation of various JOIN strategies.
@@ -64,6 +69,9 @@ public class JoinStrategy {
      * @return List of joined rows
      */
     public static List<Row> hashJoin(List<Row> leftTable, List<Row> rightTable, String joinColumn) {
+        if (joinColumn == null) {
+            throw new IllegalArgumentException("Tables and join column cannot be null");
+        }
         return hashJoin(leftTable, rightTable, Collections.singletonList(joinColumn));
     }
 

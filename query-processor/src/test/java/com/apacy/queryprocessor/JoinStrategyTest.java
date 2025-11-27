@@ -1,16 +1,22 @@
 package com.apacy.queryprocessor;
 
-import com.apacy.common.dto.Row;
-import com.apacy.common.dto.DataRetrieval;
-import com.apacy.queryprocessor.execution.JoinStrategy;
-import com.apacy.queryprocessor.mocks.MockStorageManager;
-import org.junit.jupiter.api.Test;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
-
-import static org.junit.jupiter.api.Assertions.*;
+import com.apacy.common.dto.DataRetrieval;
+import com.apacy.common.dto.Row;
+import com.apacy.queryprocessor.execution.JoinStrategy;
+import com.apacy.queryprocessor.mocks.MockStorageManager;
 
 @DisplayName("JoinStrategy Tests")
 class JoinStrategyTest {
@@ -160,7 +166,7 @@ class JoinStrategyTest {
         assertThrows(IllegalArgumentException.class, 
             () -> JoinStrategy.hashJoin(employeeTable, null, "dept_id"));
         assertThrows(IllegalArgumentException.class, 
-            () -> JoinStrategy.hashJoin(employeeTable, departmentTable, null));
+            () -> JoinStrategy.hashJoin(employeeTable, departmentTable, (String) null));
     }
     
     // ========== Sort-Merge Join Tests ==========
