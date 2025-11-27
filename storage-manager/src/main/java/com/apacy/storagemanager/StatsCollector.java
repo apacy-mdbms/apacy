@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 
 /**
  * Statistics Collector gathers and maintains database statistics for query optimization.
- * Mengimplementasikan logika untuk get_stats()[cite: 793].
+ * Mengimplementasikan logika untuk get_stats()
  */
 public class StatsCollector {
     
@@ -58,17 +58,16 @@ public class StatsCollector {
 
     /**
      * Logika utama: Melakukan Full Table Scan untuk 1 tabel dan menghitung metriknya.
-     * (Sesuai spesifikasi IF3140 )
      */
     private Statistic collectStatsForTable(Schema schema) throws IOException {
         String tableName = schema.tableName();
         String dataFile = schema.dataFile();
 
-        int nr = 0; // jumlah tuple [cite: 795]
-        long br = 0; // jumlah blok [cite: 796]
+        int nr = 0; // jumlah tuple
+        long br = 0; // jumlah blok
         long totalRowSize = 0; // total ukuran byte semua tuple (untuk menghitung lr)
         
-        // Map untuk V(A,r): Map<NamaKolom, Set<NilaiUnik>> [cite: 799]
+        // Map untuk V(A,r): Map<NamaKolom, Set<NilaiUnik>>
         Map<String, Set<Object>> distinctValues = new HashMap<>();
         // Inisialisasi Set untuk setiap kolom di tabel ini
         for (Column col : schema.columns()) {
@@ -109,22 +108,20 @@ public class StatsCollector {
         }
 
         // 7. Hitung statistik final (lr, fr)
-        // lr: ukuran rata-rata tuple [cite: 797]
         int lr = (nr == 0) ? 0 : (int) (totalRowSize / nr); 
         
         int blockSize = blockManager.getBlockSize();
         
-        // fr: blocking factor [cite: 798]
+        // fr: blocking factor
         int fr = (lr == 0) ? 0 : (blockSize / lr); 
 
-        // 8. Konversi Map<String, Set<Object>> ke Map<String, Integer> untuk V(A,r) [cite: 799]
+        // 8. Konversi Map<String, Set<Object>> ke Map<String, Integer> untuk V(A,r)
         Map<String, Integer> V = new HashMap<>();
         for (Map.Entry<String, Set<Object>> entry : distinctValues.entrySet()) {
             V.put(entry.getKey(), entry.getValue().size());
         }
 
         // 9. Dapatkan info indeks dari skema
-        // (Ini tidak diminta secara eksplisit oleh spek get_stats, tapi ada di DTO Anda)
         Map<String, IndexType> indexedColumn = schema.indexes().stream()
             .collect(Collectors.toMap(
                 IndexSchema::columnName, 
@@ -134,50 +131,5 @@ public class StatsCollector {
 
         // 10. Kembalikan objek Statistic
         return new Statistic(nr, (int) br, lr, fr, V, indexedColumn);
-    }
-    
-    /**
-     * Update statistics for a table incrementally.
-     * TODO: Implement incremental statistics updates for performance
-     */
-    public void updateStats(String tableName, long rowsAdded, long rowsRemoved) {
-        // TODO: Implement incremental stats update
-        throw new UnsupportedOperationException("updateStats not implemented yet");
-    }
-    
-    /**
-     * Record query access pattern for optimization.
-     * TODO: Implement access pattern tracking for query optimization
-     */
-    public void recordAccess(String tableName, String queryType, String[] columnsAccessed) {
-        // TODO: Implement access pattern recording
-        throw new UnsupportedOperationException("recordAccess not implemented yet");
-    }
-    
-    /**
-     * Get cached statistics for a table.
-     * TODO: Implement statistics cache lookup
-     */
-    public Statistic getCachedStats(String tableName) {
-        // TODO: Implement cached statistics retrieval
-        throw new UnsupportedOperationException("getCachedStats not implemented yet");
-    }
-    
-    /**
-     * Force refresh of statistics for a table.
-     * TODO: Implement statistics refresh with cache invalidation
-     */
-    public Statistic refreshStats(String tableName) {
-        // TODO: Implement statistics refresh
-        throw new UnsupportedOperationException("refreshStats not implemented yet");
-    }
-    
-    /**
-     * Clear all cached statistics.
-     * TODO: Implement cache clearing functionality
-     */
-    public void clearCache() {
-        // TODO: Implement cache clear
-        throw new UnsupportedOperationException("clearCache not implemented yet");
     }
 }
