@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import com.apacy.common.dto.Column;
 import com.apacy.common.dto.DataDeletion;
@@ -122,8 +123,7 @@ public class PlanTranslator {
     /**
      * [FARREL]
      * Menangani JoinNode: Menggabungkan dua tabel/node.
-     * Sementara semua tipe join menggunakan nested loop join dari JoinStrategy sebagai placeholder.
-     * TODO: Implementasi LEFT, RIGHT, FULL OUTER, CROSS JOIN di JoinStrategy untuk optimasi.
+     * Support untuk INNER, LEFT/RIGHT/FULL OUTER, CROSS, dan NATURAL JOIN.
      */
     public List<Row> executeJoin(JoinNode node, Function<PlanNode, List<Row>> childExecutor, 
                                  JoinStrategy joinStrategy, int txId, IConcurrencyControlManager ccm) {
@@ -156,6 +156,9 @@ public class PlanTranslator {
                 
             case "CROSS":
                 return executeCrossJoin(leftRows, rightRows);
+                
+            case "NATURAL":
+                return executeNaturalJoin(leftRows, rightRows);
                 
             default:
                 throw new UnsupportedOperationException("Unsupported join type: " + joinType);
@@ -197,46 +200,181 @@ public class PlanTranslator {
     /**
      * LEFT OUTER JOIN: Mengembalikan semua baris dari tabel kiri, dan baris yang cocok dari tabel kanan.
      * Baris kiri yang tidak cocok akan memiliki NULL untuk kolom kanan.
-     * TODO: Implementasi di JoinStrategy untuk optimasi.
      */
     private List<Row> executeLeftOuterJoin(List<Row> leftRows, List<Row> rightRows,
                                            String joinColumn, Object joinCondition) {
-        // PLACEHOLDER: Sementara gunakan nested loop join (hanya INNER JOIN)
-        // Seharusnya menambahkan left unmatched rows dengan NULL values
-        return JoinStrategy.nestedLoopJoin(leftRows, rightRows, joinColumn);
+        // gabungkan baris yang cocok
+        List<Row> innerResult = executeInnerJoin(leftRows, rightRows, joinColumn, joinCondition);
+        List<Row> result = new ArrayList<>(innerResult);
+        
+        // left rows yang tidak ada di inner result
+        Set<Row> matchedLeftRows = new HashSet<>();
+        for (Row innerRow : innerResult) {
+            for (Row left : leftRows) {
+                if (rowContainsData(innerRow, left)) {
+                    matchedLeftRows.add(left);
+                    break;
+                }
+            }
+        }
+        
+        // Tambahkan baris kiri yang tidak cocok dengan NULL untuk kolom kanan
+        for (Row left : leftRows) {
+            if (!matchedLeftRows.contains(left)) {
+                Map<String, Object> mergedData = new HashMap<>(left.data());
+                
+                // Tambahkan kolom kanan dengan nilai NULL
+                if (!rightRows.isEmpty()) {
+                    for (String key : rightRows.get(0).data().keySet()) {
+                        mergedData.putIfAbsent(key, null);
+                    }
+                }
+                
+                result.add(new Row(mergedData));
+            }
+        }
+        
+        return result;
     }
     
     /**
      * RIGHT OUTER JOIN: Mengembalikan semua baris dari tabel kanan, dan baris yang cocok dari tabel kiri.
      * Baris kanan yang tidak cocok akan memiliki NULL untuk kolom kiri.
-     * TODO: Implementasi di JoinStrategy untuk optimasi.
      */
     private List<Row> executeRightOuterJoin(List<Row> leftRows, List<Row> rightRows,
                                             String joinColumn, Object joinCondition) {
-        // PLACEHOLDER: Sementara gunakan nested loop join (hanya INNER JOIN)
-        // Seharusnya menambahkan right unmatched rows dengan NULL values
-        return JoinStrategy.nestedLoopJoin(leftRows, rightRows, joinColumn);
+        // gabungkan baris yang cocok
+        List<Row> innerResult = executeInnerJoin(leftRows, rightRows, joinColumn, joinCondition);
+        List<Row> result = new ArrayList<>(innerResult);
+        
+        // right rows yang tidak ada di inner result
+        Set<Row> matchedRightRows = new HashSet<>();
+        for (Row innerRow : innerResult) {
+            for (Row right : rightRows) {
+                if (rowContainsData(innerRow, right)) {
+                    matchedRightRows.add(right);
+                    break;
+                }
+            }
+        }
+        
+        // Tambahkan baris kanan yang tidak cocok dengan NULL untuk kolom kiri
+        for (Row right : rightRows) {
+            if (!matchedRightRows.contains(right)) {
+                Map<String, Object> mergedData = new HashMap<>();
+                
+                // Tambahkan kolom kiri dengan nilai NULL
+                if (!leftRows.isEmpty()) {
+                    for (String key : leftRows.get(0).data().keySet()) {
+                        mergedData.put(key, null);
+                    }
+                }
+                
+                // Tambahkan kolom kanan
+                mergedData.putAll(right.data());
+                
+                result.add(new Row(mergedData));
+            }
+        }
+        
+        return result;
     }
     
     /**
      * FULL OUTER JOIN: Mengembalikan semua baris dari kedua tabel.
      * Baris yang tidak cocok akan memiliki NULL untuk kolom tabel lain.
-     * TODO: Implementasi di JoinStrategy untuk optimasi.
      */
     private List<Row> executeFullOuterJoin(List<Row> leftRows, List<Row> rightRows,
                                            String joinColumn, Object joinCondition) {
-        // PLACEHOLDER: Sementara gunakan nested loop join (hanya INNER JOIN)
-        // Seharusnya menambahkan left & right unmatched rows dengan NULL values
-        return JoinStrategy.nestedLoopJoin(leftRows, rightRows, joinColumn);
+        // Inner join
+        List<Row> innerResult = executeInnerJoin(leftRows, rightRows, joinColumn, joinCondition);
+        List<Row> result = new ArrayList<>(innerResult);
+        
+        // left and right rows that are not in inner result
+        Set<Row> matchedLeftRows = new HashSet<>();
+        Set<Row> matchedRightRows = new HashSet<>();
+        
+        for (Row innerRow : innerResult) {
+            for (Row left : leftRows) {
+                if (rowContainsData(innerRow, left)) {
+                    matchedLeftRows.add(left);
+                    break;
+                }
+            }
+            for (Row right : rightRows) {
+                if (rowContainsData(innerRow, right)) {
+                    matchedRightRows.add(right);
+                    break;
+                }
+            }
+        }
+        
+        // Tambahkan baris kiri yang tidak cocok
+        for (Row left : leftRows) {
+            if (!matchedLeftRows.contains(left)) {
+                Map<String, Object> mergedData = new HashMap<>(left.data());
+                
+                if (!rightRows.isEmpty()) {
+                    for (String key : rightRows.get(0).data().keySet()) {
+                        mergedData.putIfAbsent(key, null);
+                    }
+                }
+                
+                result.add(new Row(mergedData));
+            }
+        }
+        
+        // Tambahkan baris kanan yang tidak cocok
+        for (Row right : rightRows) {
+            if (!matchedRightRows.contains(right)) {
+                Map<String, Object> mergedData = new HashMap<>();
+                
+                if (!leftRows.isEmpty()) {
+                    for (String key : leftRows.get(0).data().keySet()) {
+                        mergedData.put(key, null);
+                    }
+                }
+                
+                mergedData.putAll(right.data());
+                
+                result.add(new Row(mergedData));
+            }
+        }
+        
+        return result;
     }
     
     /**
      * CROSS JOIN: Mengembalikan cartesian product dari kedua tabel.
-     * TODO: Implementasi di JoinStrategy untuk optimasi.
      */
     private List<Row> executeCrossJoin(List<Row> leftRows, List<Row> rightRows) {
-        // PLACEHOLDER: Sementara gunakan cartesian join dari JoinStrategy
         return JoinStrategy.cartesianJoin(leftRows, rightRows);
+    }
+    
+    /**
+     * NATURAL JOIN: Menggabungkan tabel berdasarkan kolom dengan nama yang sama.
+     * Otomatis mendeteksi kolom yang sama dan melakukan equi-join.
+     * Kolom yang sama hanya muncul sekali di hasil.
+     */
+    
+    private List<Row> executeNaturalJoin(List<Row> leftRows, List<Row> rightRows) {
+        if (leftRows.isEmpty() || rightRows.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // Common Columns
+        Set<String> leftCols = leftRows.get(0).data().keySet();
+        List<String> commonCols = rightRows.get(0).data().keySet().stream()
+                .filter(leftCols::contains)
+                .collect(Collectors.toList());
+
+        // Jika tidak ada kolom sama menjadi CROSS JOIN (Cartesian)
+        if (commonCols.isEmpty()) {
+            return JoinStrategy.cartesianJoin(leftRows, rightRows);
+        }
+
+        // Pastikan JoinStrategy.hashJoin Anda sudah support List<String> (seperti diskusi sebelumnya)
+        return JoinStrategy.hashJoin(leftRows, rightRows, commonCols);
     }
     
     /**
