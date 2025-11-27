@@ -12,7 +12,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -277,6 +279,40 @@ class LogReplayerTest {
         }
 
         @Test
+        void testReplaySkipsUncommittedTransactions() throws IOException {
+                createTestLog(
+                                "1000|TX7|BEGIN|employees|-|-",
+                                "1001|TX7|INSERT|employees|-|Row{data={id=1}}",
+                                "1010|TX8|BEGIN|employees|-|-",
+                                "1011|TX8|INSERT|employees|-|Row{data={id=2}}",
+                                "1012|TX7|COMMIT|employees|-|-");
+
+                RecoveryCriteria criteria = new RecoveryCriteria("FULL_REPLAY", null, null);
+                logReplayer.replayLogs(criteria);
+
+                assertEquals(1, mockStorageManager.getWriteCount(),
+                                "Only committed transaction TX7 should be replayed");
+        }
+
+        @Test
+        void testReplayHonorsTargetTimeCutoff() throws IOException {
+                createTestLog(
+                                "1000|TX9|BEGIN|employees|-|-",
+                                "1001|TX9|INSERT|employees|-|Row{data={id=1, name=Early}}",
+                                "1002|TX9|COMMIT|employees|-|-",
+                                "1003|TX9|UPDATE|employees|Row{data={id=1, name=Early}}|Row{data={id=1, name=Late}}",
+                                "1004|TX9|COMMIT|employees|-|-");
+
+                LocalDateTime cutoff = LocalDateTime.ofInstant(Instant.ofEpochMilli(1002), ZoneOffset.UTC);
+                RecoveryCriteria criteria = new RecoveryCriteria("POINT_IN_TIME", null, cutoff);
+
+                logReplayer.replayLogs(criteria);
+
+                assertEquals(1, mockStorageManager.getWriteCount(),
+                                "Only entries at or before cutoff should be replayed");
+        }
+
+        @Test
         void testReplayWithNullStorageManager() throws IOException {
                 LogReplayer replayerWithNullSM = new LogReplayer(TEST_LOG_PATH, null);
                 createTestLog(
@@ -430,6 +466,41 @@ class LogReplayerTest {
                 // All 3 INSERTs should be undone
                 assertEquals(3, mockStorageManager.getDeleteCount(),
                                 "Should undo all 3 INSERT operations in reverse order");
+        }
+
+        @Test
+        void testRollbackToTimeProcessesEntriesBackward() throws IOException {
+                createTestLog(
+                                "1000|TX10|BEGIN|employees|-|-",
+                                "1001|TX10|INSERT|employees|-|Row{data={id=1, name=Stay}}",
+                                "1002|TX10|UPDATE|employees|Row{data={id=1, name=Old}}|Row{data={id=1, name=New}}",
+                                "1003|TX10|DELETE|employees|Row{data={id=2, name=Removed}}|-");
+
+                LocalDateTime cutoff = LocalDateTime.ofInstant(Instant.ofEpochMilli(1002), ZoneOffset.UTC);
+                RecoveryCriteria criteria = new RecoveryCriteria("POINT_IN_TIME", null, cutoff);
+
+                logReplayer.rollbackToTime(criteria);
+
+                assertEquals(2, mockStorageManager.getWriteCount(),
+                                "UPDATE dan DELETE setelah cutoff harus di-rollback");
+                assertEquals(0, mockStorageManager.getDeleteCount(),
+                                "Rollback ke waktu tidak menghapus data tambahan");
+        }
+
+        @Test
+        void testRollbackToTimeUndoesInsertsAfterCutoff() throws IOException {
+                createTestLog(
+                                "1100|TX11|BEGIN|employees|-|-",
+                                "1101|TX11|INSERT|employees|-|Row{data={id=10}}",
+                                "1102|TX11|INSERT|employees|-|Row{data={id=11}}");
+
+                LocalDateTime cutoff = LocalDateTime.ofInstant(Instant.ofEpochMilli(1101), ZoneOffset.UTC);
+                RecoveryCriteria criteria = new RecoveryCriteria("POINT_IN_TIME", null, cutoff);
+
+                logReplayer.rollbackToTime(criteria);
+
+                assertEquals(2, mockStorageManager.getDeleteCount(),
+                                "Inserts at or after the cutoff should be deleted");
         }
 
         // ========== Helper Methods ==========

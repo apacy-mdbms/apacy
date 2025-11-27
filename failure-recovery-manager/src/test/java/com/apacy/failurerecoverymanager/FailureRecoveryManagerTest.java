@@ -10,7 +10,11 @@ import org.junit.jupiter.api.AfterEach;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
@@ -195,6 +199,41 @@ class FailureRecoveryManagerTest {
                 "Should handle null operation");
     }
 
+    @Test
+    void testWriteLogPersistsExecutionResultPayload() throws IOException {
+        resetWal();
+
+        Row row = new Row(Map.of("id", 5, "name", "Persisted"));
+        ExecutionResult result = new ExecutionResult(true, "ok", 500, "INSERT", 1, List.of(row));
+
+        failureRecoveryManager.writeLog(result);
+        failureRecoveryManager.getLogWriter().flush();
+
+        LogEntry entry = LogEntry.fromLogLine(readLastLogLine());
+        assertNotNull(entry);
+        assertEquals("500", entry.getTransactionId());
+        assertEquals("INSERT", entry.getOperation());
+        assertTrue(entry.getDataAfter().toString().contains("Persisted"), "Payload should be serialized");
+    }
+
+    @Test
+    void testWriteDataLogPersistsBeforeAndAfterRows() throws IOException {
+        resetWal();
+
+        Row before = new Row(Map.of("id", 9, "name", "Old"));
+        Row after = new Row(Map.of("id", 9, "name", "New"));
+
+        failureRecoveryManager.writeDataLog("TX900", "UPDATE", "students", before, after);
+        failureRecoveryManager.getLogWriter().flush();
+
+        LogEntry entry = LogEntry.fromLogLine(readLastLogLine());
+        assertNotNull(entry);
+        assertEquals("TX900", entry.getTransactionId());
+        assertEquals("UPDATE", entry.getOperation());
+        assertTrue(entry.getDataBefore().toString().contains("Old"));
+        assertTrue(entry.getDataAfter().toString().contains("New"));
+    }
+
     // @Test
     // void testWriteLogCreatesLogFile() throws IOException {
     // Row row = new Row(Map.of("id", 1, "name", "Test"));
@@ -347,6 +386,25 @@ class FailureRecoveryManagerTest {
     }
 
     @Test
+    void testRecoverPointInTimeWithTargetTimestampRollsBackChanges() throws IOException {
+        createTestLog(
+                "1000|TX7|BEGIN|employees|-|-",
+                "1001|TX7|INSERT|employees|-|Row{data={id=1, name=Before}}",
+                "1002|TX7|UPDATE|employees|Row{data={id=1, name=Before}}|Row{data={id=1, name=After}}");
+
+        LocalDateTime cutoff = LocalDateTime.ofInstant(Instant.ofEpochMilli(1002), ZoneOffset.UTC);
+        RecoveryCriteria criteria = new RecoveryCriteria("POINT_IN_TIME", null, cutoff);
+
+        mockStorageManager.clearOperations();
+
+        assertDoesNotThrow(() -> failureRecoveryManager.recover(criteria),
+                "Rollback-to-time should not throw");
+
+        assertEquals(1, mockStorageManager.getWriteCount(),
+                "Rollback should restore UPDATE change once");
+    }
+
+    @Test
     void testRecoverWithUnknownRecoveryType() throws IOException {
         createTestLog(
                 "1000|TX3|BEGIN|test|-",
@@ -468,5 +526,24 @@ class FailureRecoveryManagerTest {
         Files.write(
                 Paths.get(TEST_LOG_PATH),
                 String.join("\n", logLines).getBytes());
+    }
+
+    private void resetWal() throws IOException {
+        failureRecoveryManager.getLogWriter().rotateLog();
+    }
+
+    private String readLastLogLine() throws IOException {
+        Path path = Paths.get(TEST_LOG_PATH);
+        if (!Files.exists(path)) {
+            return null;
+        }
+        List<String> lines = Files.readAllLines(path);
+        for (int i = lines.size() - 1; i >= 0; i--) {
+            String line = lines.get(i);
+            if (line != null && !line.isBlank()) {
+                return line;
+            }
+        }
+        return null;
     }
 }
