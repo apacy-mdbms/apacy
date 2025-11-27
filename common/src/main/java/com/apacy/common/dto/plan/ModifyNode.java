@@ -13,6 +13,7 @@ public record ModifyNode(
     List<String> targetColumns, // Kolom target (diisi untuk INSERT/UPDATE, null untuk DELETE)
     List<Object> values         // Nilai konstan (diisi untuk INSERT VALUES/UPDATE SET, null untuk DELETE)
 ) implements PlanNode {
+    private static final long serialVersionUID = 1L;
 
     @Override 
     public List<PlanNode> getChildren() { 

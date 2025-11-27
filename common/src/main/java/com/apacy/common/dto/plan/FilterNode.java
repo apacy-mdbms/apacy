@@ -7,5 +7,7 @@ public record FilterNode(
     PlanNode child,
     Object predicate
 ) implements PlanNode {
+    private static final long serialVersionUID = 1L;
+    
     @Override public List<PlanNode> getChildren() { return List.of(child); }
 }

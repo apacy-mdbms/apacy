@@ -10,6 +10,7 @@ public record LimitNode(
     PlanNode child,
     int limit
 ) implements PlanNode {
+    private static final long serialVersionUID = 1L;
 
     @Override 
     public List<PlanNode> getChildren() { 

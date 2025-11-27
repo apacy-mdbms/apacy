@@ -1,5 +1,6 @@
 package com.apacy.common.dto;
 
+import java.io.Serializable;
 import java.util.List;
 
 import com.apacy.common.dto.plan.PlanNode;
@@ -24,7 +25,8 @@ public record ParsedQuery(
     boolean isOptimized,
     Integer limit,
     Integer offset
-) {
+) implements Serializable {
+    private static final long serialVersionUID = 1L;
     // --- KONSTRUKTOR UNTUK BACKWARD COMPATIBILITY ---
     // Ini agar kode lama/test lain tidak error karena jumlah argumen berubah.
     public ParsedQuery(
