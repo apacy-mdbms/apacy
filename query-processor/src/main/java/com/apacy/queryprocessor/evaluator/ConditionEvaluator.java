@@ -57,6 +57,10 @@ public class ConditionEvaluator {
             return lit.value();
         } else if (factor instanceof ColumnFactor col) {
             String colName = col.columnName();
+
+            if (colName.contains(".")) {
+                colName = colName.substring(colName.indexOf('.') + 1);
+            }
             
             // 1. Cek Exact Match
             if (row.data().containsKey(colName)) {
