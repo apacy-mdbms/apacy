@@ -43,6 +43,7 @@ public class QueryProcessor extends DBMSComponent {
     private final PlanTranslator planTranslator;
     private final JoinStrategy joinStrategy;
     private final SortStrategy sortStrategy;
+    private QueryBinder queryBinder;
     
     private boolean initialized = false;
 
@@ -66,6 +67,14 @@ public class QueryProcessor extends DBMSComponent {
     @Override
     public void initialize() throws Exception {
         this.initialized = true;
+
+        if (this.sm instanceof com.apacy.storagemanager.StorageManager concreteSM) {
+            this.queryBinder = new QueryBinder(concreteSM.getCatalogManager());
+            System.out.println("Query Binder initialized successfully.");
+        } else {
+            System.err.println("Warning: Could not initialize QueryBinder (StorageManager is not concrete implementation)");
+        }
+
         System.out.println("Query Processor has been initialized.");
     }
     
@@ -93,6 +102,22 @@ public class QueryProcessor extends DBMSComponent {
             ParsedQuery initialQuery = qo.parseQuery(sqlQuery);
             if (initialQuery == null) {
                 throw new IllegalArgumentException("Query tidak valid atau tidak dikenali.");
+            }
+
+            ParsedQuery boundQuery = initialQuery;
+            
+            if (queryBinder != null) {
+                System.out.println("\n--- [DEBUG QP] BEFORE BINDING ---");
+                System.out.println("Columns: " + initialQuery.targetColumns());
+                System.out.println("Where  : " + initialQuery.whereClause());
+                
+                // Lakukan Binding
+                boundQuery = queryBinder.bind(initialQuery);
+                
+                System.out.println("--- [DEBUG QP] AFTER BINDING ---");
+                System.out.println("Columns: " + boundQuery.targetColumns());
+                System.out.println("Where  : " + boundQuery.whereClause());
+                System.out.println("----------------------------------\n");
             }
 
             parsedQuery = qo.optimizeQuery(initialQuery, sm.getAllStats());
