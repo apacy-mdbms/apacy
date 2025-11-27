@@ -19,6 +19,7 @@ import com.apacy.common.dto.ddl.ColumnDefinition;
 import com.apacy.common.dto.ddl.ParsedQueryCreate;
 import com.apacy.common.dto.ddl.ParsedQueryDDL;
 import com.apacy.common.dto.ddl.ParsedQueryDrop;
+import com.apacy.common.dto.plan.CartesianNode;
 import com.apacy.common.dto.plan.DDLNode;
 import com.apacy.common.dto.plan.FilterNode;
 import com.apacy.common.dto.plan.JoinNode;
@@ -146,6 +147,13 @@ public class PlanTranslator {
         }
         
         return result;
+    }
+
+    public List<Row> executeCartesian(CartesianNode node, Function<PlanNode, List<Row>> childExecutor,
+                                      int txId, IConcurrencyControlManager ccm) {
+        // TODO: Implementasi Cartesian Product
+        
+        throw new UnsupportedOperationException("CartesianNode execution not yet implemented");
     }
 
     /**

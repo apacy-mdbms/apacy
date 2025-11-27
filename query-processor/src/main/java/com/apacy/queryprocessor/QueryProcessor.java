@@ -11,6 +11,7 @@ import com.apacy.common.dto.RecoveryCriteria;
 import com.apacy.common.dto.Response;
 import com.apacy.common.dto.Row;
 import com.apacy.common.dto.ddl.ParsedQueryDDL;
+import com.apacy.common.dto.plan.CartesianNode;
 import com.apacy.common.dto.plan.DDLNode;
 import com.apacy.common.dto.plan.FilterNode;
 import com.apacy.common.dto.plan.JoinNode;
@@ -170,6 +171,9 @@ public class QueryProcessor extends DBMSComponent {
         }
         if (node instanceof TCLNode n) {
             return planTranslator.executeTCL(n, ccm, txId);
+        }
+        if (node instanceof CartesianNode n) {
+            return planTranslator.executeCartesian(n, childExecutor, txId, ccm);
         }
 
         throw new UnsupportedOperationException(
