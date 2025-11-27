@@ -5,7 +5,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Map;
 
+import com.apacy.common.dto.Row;
+import com.apacy.failurerecoverymanager.mocks.MockStorageManagerForRecovery;
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -100,5 +103,29 @@ class CheckpointManagerTest {
         List<CheckpointManager.CheckpointInfo> list = checkpointManager.listCheckpoints();
         assertEquals(1, list.size(), "Harusnya sisa 1 checkpoint saja");
         assertEquals(newestId, list.get(0).checkpointId, "Yang tersisa harusnya checkpoint paling baru");
+    }
+
+    @Test
+    void testCheckpointFlushesWalEntriesToStorage() throws Exception {
+        String walPath = TEST_DIR + "/wal.log";
+        MockStorageManagerForRecovery mockStorage = new MockStorageManagerForRecovery();
+        LogWriter writer = new LogWriter(walPath);
+
+        try {
+            // tulis dua operasi data ke WAL
+            LogEntry insertEntry = new LogEntry("TX1", "INSERT", "students", null, new Row(Map.of("id", 1, "name", "Alice")));
+            LogEntry deleteEntry = new LogEntry("TX2", "DELETE", "students", new Row(Map.of("id", 2, "name", "Bob")), null);
+            writer.writeLog(insertEntry);
+            writer.writeLog(deleteEntry);
+
+            CheckpointManager manager = new CheckpointManager(TEST_DIR, writer, mockStorage);
+            manager.createCheckpoint();
+
+            assertEquals(1, mockStorage.getWriteCount(), "INSERT harus diterapkan ke storage");
+            assertEquals(1, mockStorage.getDeleteCount(), "DELETE harus diterapkan ke storage");
+        } finally {
+            writer.close();
+            Files.deleteIfExists(Paths.get(walPath));
+        }
     }
 }
