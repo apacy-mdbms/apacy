@@ -14,7 +14,6 @@ public class LogWriter {
 
     public LogWriter(String logFilePath) {
         this.logFilePath = logFilePath;
-
         try {
             initialize();
         } catch (IOException e) {
@@ -26,51 +25,55 @@ public class LogWriter {
         File logFile = new File(logFilePath);
         File parentDir = logFile.getParentFile();
         if (parentDir != null && !parentDir.exists()) {
-            parentDir.mkdirs(); 
+            parentDir.mkdirs();
         }
-        writer = new FileWriter(logFile, true); 
+        writer = new FileWriter(logFile, true);
+    }
+
+    public synchronized void writeLog(LogEntry entry) throws IOException {
+        if (entry == null) return;
+        writer.write(entry.toString());
+        writer.write("\n");
+        writer.flush();
     }
 
     /**
-     * Menulis satu baris log transaksi.
-     * Format: timestamp|transactionId|operation|tableName|data
+     * Backwards compatible helper (old-style)
      */
-    public synchronized void writeLog(LogEntry entry) throws IOException {
-        if (entry == null) return;
-
-        writer.write(entry.toString());
-        writer.write("\n");      
-        writer.flush();         
-    }
-
-    public synchronized void writeLog(String transactionId, String operation, String tableName, Object data) throws IOException {
-        LogEntry entry = new LogEntry(transactionId, operation, tableName, data);
+    public synchronized void writeLog(String transactionId, String operation, String tableName, Object dataAfter) throws IOException {
+        LogEntry entry = new LogEntry(transactionId, operation, tableName, null, dataAfter);
         writeLog(entry);
     }
 
     /** Memaksa flush buffer ke file. */
-    public void flush() throws IOException {
-        if (writer != null) {
-            writer.flush();
-        }
+    public synchronized void flush() throws IOException {
+        if (writer != null) writer.flush();
     }
 
     /** Menutup file writer dengan aman. */
-    public void close() throws IOException {
+    public synchronized void close() throws IOException {
         if (writer != null) {
             writer.flush();
             writer.close();
+            writer = null;
         }
     }
 
-    /** Melakukan rotasi log dengan mengganti nama file log lama. */
-    public void rotateLog() throws IOException {
+    /** Mengembalikan lokasi file WAL yang sedang digunakan. */
+    public String getLogFilePath() {
+        return logFilePath;
+    }
+
+    /** Melakukan rotasi / archive log: rename current log and initialize a new one. */
+    public synchronized void rotateLog() throws IOException {
         close();
         File oldFile = new File(logFilePath);
-        File rotated = new File(logFilePath + "." + System.currentTimeMillis() + ".bak");
         if (oldFile.exists()) {
-            oldFile.renameTo(rotated);
+            File rotated = new File(logFilePath + "." + System.currentTimeMillis() + ".bak");
+            if (!oldFile.renameTo(rotated)) {
+                throw new IOException("Gagal merename log file untuk rotation");
+            }
         }
-        initialize(); 
+        initialize();
     }
 }
