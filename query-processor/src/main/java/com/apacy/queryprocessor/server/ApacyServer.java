@@ -1,16 +1,16 @@
 package com.apacy.queryprocessor.server;
 
-import com.apacy.concurrencycontrolmanager.ConcurrencyControlManager;
-import com.apacy.failurerecoverymanager.FailureRecoveryManager;
-import com.apacy.queryoptimizer.QueryOptimizer;
-import com.apacy.queryprocessor.QueryProcessor;
-import com.apacy.storagemanager.StorageManager;
-
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import com.apacy.concurrencycontrolmanager.ConcurrencyControlManager;
+import com.apacy.failurerecoverymanager.FailureRecoveryManager;
+import com.apacy.queryoptimizer.QueryOptimizer;
+import com.apacy.queryprocessor.QueryProcessor;
+import com.apacy.storagemanager.StorageManager;
 
 /**
  * mDBMS Apacy Server - Mengelola koneksi client dan menjalankan komponen database utama
@@ -70,7 +70,7 @@ public class ApacyServer {
         System.out.println("Initializing database components...");
         
         // Inisialisasi storage manager
-        StorageManager storageManager = new StorageManager("./data");
+        StorageManager storageManager = new StorageManager("../data");
         storageManager.initialize();
         
         // Inisialisasi komponen lainnya
