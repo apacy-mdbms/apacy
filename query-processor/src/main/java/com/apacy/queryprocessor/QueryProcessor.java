@@ -127,7 +127,58 @@ public class QueryProcessor extends DBMSComponent {
             }
 
             // 3. Execute Plan Tree using Volcano Model
-            Operator rootOperator = planTranslator.build(parsedQuery.planRoot(), txId, sm, ccm, frm);
+            System.out.println("[DEBUG] Plan Root: " + (parsedQuery.planRoot() != null ? parsedQuery.planRoot().getClass().getSimpleName() : "NULL"));
+            
+            com.apacy.common.dto.plan.PlanNode planRoot = parsedQuery.planRoot();
+
+            // Fallback: If Optimizer failed to set planRoot for Modify Queries, build it manually
+            if (planRoot == null) {
+                String qType = parsedQuery.queryType().toUpperCase();
+                if (List.of("INSERT", "UPDATE", "DELETE").contains(qType)) {
+                    System.out.println("[DEBUG] Manually constructing ModifyNode for " + qType);
+                    
+                    // Extract filter predicate if present
+                    com.apacy.common.dto.plan.PlanNode childNode = null;
+                    if (parsedQuery.whereClause() != null) {
+                        // For UPDATE/DELETE, we usually need a Scan + Filter
+                        // But for simple storage manager calls, passing the predicate to ModifyNode might be enough
+                        // depending on how PlanTranslator handles it.
+                        // Checking PlanTranslator.executeModify / ModifyOperator:
+                        // It checks node.getChildren().get(0) for FilterNode.
+                        
+                        if (!"INSERT".equals(qType)) {
+                            // Create a dummy Scan + Filter structure
+                            // ScanNode is needed as child of FilterNode?
+                            // ModifyOperator checks children for FilterNode.
+                            // FilterNode needs a child.
+                            com.apacy.common.dto.plan.ScanNode dummyScan = new com.apacy.common.dto.plan.ScanNode(parsedQuery.targetTables().get(0), "t");
+                            childNode = new com.apacy.common.dto.plan.FilterNode(dummyScan, parsedQuery.whereClause());
+                        }
+                    }
+
+                    // Sanitize values: Extract raw literals from AST nodes if necessary
+                    List<Object> rawValues = new ArrayList<>();
+                    if (parsedQuery.values() != null) {
+                        for (Object val : parsedQuery.values()) {
+                            rawValues.add(extractValue(val));
+                        }
+                    }
+
+                    planRoot = new com.apacy.common.dto.plan.ModifyNode(
+                        qType, 
+                        childNode, 
+                        parsedQuery.targetTables().get(0), 
+                        parsedQuery.targetColumns(), 
+                        rawValues
+                    );
+                } else {
+                    throw new RuntimeException("Query Optimizer returned null plan for " + qType);
+                }
+            }
+
+            Operator rootOperator = planTranslator.build(planRoot, txId, sm, ccm, frm);
+            System.out.println("[DEBUG] Root Operator: " + (rootOperator != null ? rootOperator.getClass().getSimpleName() : "NULL"));
+
             List<Row> resultRows = new ArrayList<>();
             
             if (rootOperator != null) {
@@ -156,6 +207,19 @@ public class QueryProcessor extends DBMSComponent {
             String opType = (parsedQuery != null) ? parsedQuery.queryType() : "UNKNOWN";
             return new ExecutionResult(false, e.getMessage(), txId, opType, 0, Collections.emptyList());
         }
+    }
+
+    private Object extractValue(Object val) {
+        if (val instanceof com.apacy.queryoptimizer.ast.expression.ExpressionNode expr) {
+            return extractValue(expr.term());
+        }
+        if (val instanceof com.apacy.queryoptimizer.ast.expression.TermNode term) {
+            return extractValue(term.factor());
+        }
+        if (val instanceof com.apacy.queryoptimizer.ast.expression.LiteralFactor lit) {
+            return lit.value();
+        }
+        return val;
     }
 
     public ExecutionResult executeQuery(String sqlQuery) {

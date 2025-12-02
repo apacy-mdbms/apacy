@@ -31,6 +31,7 @@ public class ScanOperator implements Operator {
             false
         );
         this.buffer = sm.readBlock(dr);
+        System.out.println("[DEBUG] ScanOperator: Read " + (this.buffer != null ? this.buffer.size() : 0) + " rows from " + node.tableName());
         if (this.buffer != null) {
             this.iterator = this.buffer.iterator();
         }

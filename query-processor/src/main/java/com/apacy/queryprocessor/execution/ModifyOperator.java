@@ -30,6 +30,7 @@ public class ModifyOperator implements Operator {
 
     @Override
     public Row next() {
+        System.out.println("[DEBUG] ModifyOperator.next() called. Operation: " + node.operation() + ", Executed: " + executed);
         if (executed) {
             return null;
         }
@@ -62,8 +63,13 @@ public class ModifyOperator implements Operator {
                     dataMap.put(cols.get(i), vals.get(i));
                 }
             }
+            System.out.println("[DEBUG] ModifyOperator INSERT: Table=" + node.targetTable() + ", Data=" + dataMap);
             DataWrite dw = new DataWrite(node.targetTable(), new Row(dataMap), null);
             affectedRows = sm.writeBlock(dw);
+            
+            if (affectedRows == 0) {
+                throw new RuntimeException("INSERT failed: Zero rows affected. Possible Duplicate Primary Key or Constraint Violation.");
+            }
 
         } else if ("DELETE".equals(operation)) {
             Object filterCondition = null;
