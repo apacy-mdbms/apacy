@@ -5,7 +5,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.apacy.common.dto.ParsedQuery;
+import com.apacy.common.dto.plan.ModifyNode;
 import com.apacy.common.dto.plan.PlanNode;
+import com.apacy.queryoptimizer.ast.join.TableNode;
 import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
 /**
@@ -39,7 +41,11 @@ public class DeleteParser extends AbstractParser {
             consume(TokenType.SEMICOLON);
         }
 
-        PlanNode planRoot = generatePlanNode(null, where, null);
+        TableNode sourceTable = new TableNode(tableToken.getValue());
+        PlanNode searchPlan = generatePlanNode(sourceTable, where, null);
+
+        ModifyNode planRoot = new ModifyNode("DELETE", searchPlan, tableToken.getValue(), null, null);
+
         return new ParsedQuery("DELETE", planRoot, targetTables, null,
                                 null, null, where,
                                 null, false, false);

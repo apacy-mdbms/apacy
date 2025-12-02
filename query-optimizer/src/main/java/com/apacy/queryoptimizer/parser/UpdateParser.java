@@ -5,7 +5,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.apacy.common.dto.ParsedQuery;
+import com.apacy.common.dto.plan.ModifyNode;
 import com.apacy.common.dto.plan.PlanNode;
+import com.apacy.queryoptimizer.ast.join.TableNode;
 import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
 /**
@@ -51,7 +53,10 @@ public class UpdateParser extends AbstractParser {
 
         Object whereClause = where;
 
-        PlanNode planRoot = generatePlanNode(null, where, targetColumns);
+        TableNode sourceTable = new TableNode(targetTable.getValue());
+        PlanNode searchPlan = generatePlanNode(sourceTable, where, null);
+
+        ModifyNode planRoot = new ModifyNode("UPDATE", searchPlan, targetTable.getValue(), targetColumns, writeValues);
         return new ParsedQuery(
             "UPDATE",
             planRoot,
