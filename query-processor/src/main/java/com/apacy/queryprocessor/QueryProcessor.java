@@ -68,13 +68,8 @@ public class QueryProcessor extends DBMSComponent {
     public void initialize() throws Exception {
         this.initialized = true;
 
-        if (this.sm instanceof com.apacy.storagemanager.StorageManager concreteSM) {
-            this.queryBinder = new QueryBinder(concreteSM.getCatalogManager());
-            System.out.println("Query Binder initialized successfully.");
-        } else {
-            System.err.println("Warning: Could not initialize QueryBinder (StorageManager is not concrete implementation)");
-        }
-
+        this.queryBinder = new QueryBinder(this.sm);
+        System.out.println("Query Binder initialized successfully.");
         System.out.println("Query Processor has been initialized.");
     }
     
