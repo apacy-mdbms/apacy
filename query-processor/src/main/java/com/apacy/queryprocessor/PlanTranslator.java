@@ -16,6 +16,7 @@ import com.apacy.common.dto.DataDeletion;
 import com.apacy.common.dto.DataRetrieval;
 import com.apacy.common.dto.DataWrite;
 import com.apacy.common.dto.IndexSchema;
+import com.apacy.common.dto.RecoveryCriteria;
 import com.apacy.common.dto.Row;
 import com.apacy.common.dto.Schema;
 import com.apacy.common.dto.ddl.ColumnDefinition;
@@ -513,6 +514,8 @@ public class PlanTranslator {
                                    IStorageManager sm, IConcurrencyControlManager ccm, IFailureRecoveryManager frm) {
         int affectedRows = 0;
         String operation = node.operation().toUpperCase();
+        String tableName = node.targetTable();
+        String txIdStr = String.valueOf(txId);
 
         if ("INSERT".equals(operation)) {
             Map<String, Object> dataMap = new HashMap<>();
@@ -532,8 +535,12 @@ public class PlanTranslator {
                 }
             }
             
-            DataWrite dw = new DataWrite(node.targetTable(), new Row(dataMap), null);
+            Row newRow = new Row(dataMap);
+            frm.writeDataLog(txIdStr, "INSERT", tableName, null, newRow);
+
+            DataWrite dw = new DataWrite(node.targetTable(), newRow, null);
             affectedRows = sm.writeBlock(dw);
+
         } else if ("DELETE".equals(operation)) {
             Object filterCondition = null;
             
@@ -557,6 +564,13 @@ public class PlanTranslator {
                 }
             }
             
+            DataRetrieval retrieval = new DataRetrieval(tableName, null, finalFilterForStorage, false);
+            List<Row> rowsToDelete = sm.readBlock(retrieval);
+
+            for (Row oldRow : rowsToDelete) {
+                frm.writeDataLog(txIdStr, "DELETE", tableName, oldRow, null);
+            }
+
             DataDeletion dd = new DataDeletion(node.targetTable(), finalFilterForStorage);
             affectedRows = sm.deleteBlock(dd);
 
@@ -591,6 +605,20 @@ public class PlanTranslator {
                     }
                 }
             }
+
+            List<Row> newRowsToInsert = new ArrayList<>();
+
+            for (Row oldRow : rowsToUpdate) {
+                Map<String, Object> mergedData = new HashMap<>(oldRow.data());
+                if (targetCols != null && resolvedVals.size() == targetCols.size()) {
+                    for (int i = 0; i < targetCols.size(); i++) mergedData.put(targetCols.get(i), resolvedVals.get(i));
+                }
+                Row newRow = new Row(mergedData);
+                newRowsToInsert.add(newRow);
+
+                frm.writeDataLog(txIdStr, "UPDATE", tableName, oldRow, newRow);
+            }
+
             DataDeletion dd = new DataDeletion(node.targetTable(), finalFilterForStorage);
             sm.deleteBlock(dd);
 
@@ -677,7 +705,7 @@ public class PlanTranslator {
      * @param txId Transaction ID saat ini
      * @return List<Row> berisi status eksekusi
      */
-    public List<Row> executeTCL(TCLNode node, IConcurrencyControlManager ccm, int txId) {
+    public List<Row> executeTCL(TCLNode node, IFailureRecoveryManager frm, IConcurrencyControlManager ccm, int txId) {
         String command = node.command().toUpperCase();
         
         Map<String, Object> resultData = new HashMap<>();
@@ -695,6 +723,7 @@ public class PlanTranslator {
             case "COMMIT":
                 // Commit transaksi
                 ccm.endTransaction(txId, true);
+                frm.writeTransactionLog(txId, "COMMIT");
                 resultData.put("status", "Transaction committed");
                 resultData.put("transaction_id", txId);
                 System.out.println("[TCL] COMMIT: txId=" + txId);
@@ -704,6 +733,8 @@ public class PlanTranslator {
             case "ABORT":
                 // Rollback transaksi
                 ccm.endTransaction(txId, false);
+                frm.writeTransactionLog(txId, "ABORT");
+                frm.recover(new RecoveryCriteria("UNDO_TRANSACTION", String.valueOf(txId), null));
                 resultData.put("status", "Transaction rolled back");
                 resultData.put("transaction_id", txId);
                 System.out.println("[TCL] ROLLBACK: txId=" + txId);

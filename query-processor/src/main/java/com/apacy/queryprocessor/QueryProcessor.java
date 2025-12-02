@@ -102,6 +102,8 @@ public class QueryProcessor extends DBMSComponent {
         } else {
             txId = ccm.beginTransaction();
             isAutoCommit = true;
+
+            frm.writeTransactionLog(txId, "BEGIN");
         }
 
         ParsedQuery parsedQuery = null;
@@ -153,6 +155,8 @@ public class QueryProcessor extends DBMSComponent {
             
             if (isAutoCommit && !isTCL) {
                 ccm.endTransaction(txId, true);
+
+                frm.writeTransactionLog(txId, "COMMIT");
             }
             
             return createExecutionResult(parsedQuery, resultRows, txId);
@@ -160,6 +164,9 @@ public class QueryProcessor extends DBMSComponent {
         } catch (Exception e) {
             // Error Handling: Rollback & Recover
             ccm.endTransaction(txId, false);
+
+            frm.writeTransactionLog(txId, "ABORT");
+
             frm.recover(new RecoveryCriteria("UNDO_TRANSACTION", String.valueOf(txId), null));
             
             String opType = (parsedQuery != null) ? parsedQuery.queryType() : "UNKNOWN";
@@ -208,7 +215,7 @@ public class QueryProcessor extends DBMSComponent {
             return planTranslator.executeDDL(n, sm);
         }
         if (node instanceof TCLNode n) {
-            return planTranslator.executeTCL(n, ccm, txId);
+            return planTranslator.executeTCL(n, frm, ccm, txId);
         }
         if (node instanceof CartesianNode n) {
             return planTranslator.executeCartesian(n, childExecutor, txId, ccm);
