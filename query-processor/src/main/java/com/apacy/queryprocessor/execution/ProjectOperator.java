@@ -18,6 +18,9 @@ public class ProjectOperator implements Operator {
 
     @Override
     public void open() {
+        if (child == null) {
+            throw new RuntimeException("ProjectOperator: child operator is null. PlanNode might be missing a child.");
+        }
         child.open();
     }
 

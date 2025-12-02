@@ -30,7 +30,6 @@ public class ModifyOperator implements Operator {
 
     @Override
     public Row next() {
-        System.out.println("[DEBUG] ModifyOperator.next() called. Operation: " + node.operation() + ", Executed: " + executed);
         if (executed) {
             return null;
         }
@@ -63,7 +62,6 @@ public class ModifyOperator implements Operator {
                     dataMap.put(cols.get(i), vals.get(i));
                 }
             }
-            System.out.println("[DEBUG] ModifyOperator INSERT: Table=" + node.targetTable() + ", Data=" + dataMap);
             DataWrite dw = new DataWrite(node.targetTable(), new Row(dataMap), null);
             affectedRows = sm.writeBlock(dw);
             
@@ -94,6 +92,8 @@ public class ModifyOperator implements Operator {
             if (!node.getChildren().isEmpty() && node.getChildren().get(0) instanceof FilterNode fn) {
                 filterCondition = fn.predicate();
             }
+
+            System.out.println("[DEBUG] ModifyOperator UPDATE: Table=" + node.targetTable() + ", Data=" + dataMap);
 
             DataWrite dw = new DataWrite(node.targetTable(), new Row(dataMap), filterCondition);
             affectedRows = sm.writeBlock(dw);

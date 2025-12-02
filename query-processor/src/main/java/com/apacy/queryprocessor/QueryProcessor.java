@@ -127,30 +127,19 @@ public class QueryProcessor extends DBMSComponent {
             }
 
             // 3. Execute Plan Tree using Volcano Model
-            System.out.println("[DEBUG] Plan Root: " + (parsedQuery.planRoot() != null ? parsedQuery.planRoot().getClass().getSimpleName() : "NULL"));
-            
             com.apacy.common.dto.plan.PlanNode planRoot = parsedQuery.planRoot();
+            String qType = parsedQuery.queryType().toUpperCase();
+            boolean isModifyQuery = List.of("INSERT", "UPDATE", "DELETE").contains(qType);
 
-            // Fallback: If Optimizer failed to set planRoot for Modify Queries, build it manually
-            if (planRoot == null) {
-                String qType = parsedQuery.queryType().toUpperCase();
-                if (List.of("INSERT", "UPDATE", "DELETE").contains(qType)) {
-                    System.out.println("[DEBUG] Manually constructing ModifyNode for " + qType);
-                    
+            // Fallback: If Optimizer failed to set planRoot, OR if it returned a non-ModifyNode for a Modify Query
+            if (planRoot == null || (isModifyQuery && !(planRoot instanceof com.apacy.common.dto.plan.ModifyNode))) {
+                
+                if (isModifyQuery) {
                     // Extract filter predicate if present
                     com.apacy.common.dto.plan.PlanNode childNode = null;
                     if (parsedQuery.whereClause() != null) {
-                        // For UPDATE/DELETE, we usually need a Scan + Filter
-                        // But for simple storage manager calls, passing the predicate to ModifyNode might be enough
-                        // depending on how PlanTranslator handles it.
-                        // Checking PlanTranslator.executeModify / ModifyOperator:
-                        // It checks node.getChildren().get(0) for FilterNode.
-                        
                         if (!"INSERT".equals(qType)) {
                             // Create a dummy Scan + Filter structure
-                            // ScanNode is needed as child of FilterNode?
-                            // ModifyOperator checks children for FilterNode.
-                            // FilterNode needs a child.
                             com.apacy.common.dto.plan.ScanNode dummyScan = new com.apacy.common.dto.plan.ScanNode(parsedQuery.targetTables().get(0), "t");
                             childNode = new com.apacy.common.dto.plan.FilterNode(dummyScan, parsedQuery.whereClause());
                         }
@@ -177,7 +166,6 @@ public class QueryProcessor extends DBMSComponent {
             }
 
             Operator rootOperator = planTranslator.build(planRoot, txId, sm, ccm, frm);
-            System.out.println("[DEBUG] Root Operator: " + (rootOperator != null ? rootOperator.getClass().getSimpleName() : "NULL"));
 
             List<Row> resultRows = new ArrayList<>();
             

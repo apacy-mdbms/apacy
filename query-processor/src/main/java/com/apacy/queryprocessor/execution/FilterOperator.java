@@ -15,6 +15,9 @@ public class FilterOperator implements Operator {
 
     @Override
     public void open() {
+        if (child == null) {
+            throw new RuntimeException("FilterOperator: child operator is null. PlanNode might be missing a child.");
+        }
         child.open();
     }
 
