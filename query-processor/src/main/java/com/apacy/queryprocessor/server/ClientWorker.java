@@ -18,6 +18,7 @@ public class ClientWorker implements Runnable {
     private final QueryProcessor queryProcessor;
     private ObjectInputStream inputStream;
     private ObjectOutputStream outputStream;
+    private int currentTxId = -1;
     
     public ClientWorker(Socket clientSocket, QueryProcessor queryProcessor) {
         this.clientSocket = clientSocket;
@@ -60,7 +61,19 @@ public class ClientWorker implements Runnable {
                     // Execute query menggunakan QueryProcessor
                     ExecutionResult result;
                     try {
-                        result = queryProcessor.executeQuery(sqlQuery);
+                        result = queryProcessor.executeQuery(sqlQuery, currentTxId);
+                        if (result.success()) {
+                            String op = result.operation().toUpperCase();
+                            
+                            if (op.equals("BEGIN") || op.equals("BEGIN TRANSACTION")) {
+                                this.currentTxId = result.transactionId();
+                                System.out.println("Session " + clientSocket.getInetAddress() + " started Tx: " + currentTxId);
+                            } 
+                            else if (op.equals("COMMIT") || op.equals("ROLLBACK") || op.equals("ABORT")) {
+                                System.out.println("Session " + clientSocket.getInetAddress() + " finished Tx: " + currentTxId);
+                                this.currentTxId = -1;
+                            }
+                        }
                     } catch (Exception e) {
                         // Handle execution error
                         result = new ExecutionResult(

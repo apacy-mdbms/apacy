@@ -88,39 +88,39 @@ public class QueryProcessor extends DBMSComponent {
      * Entry point eksekusi query.
      * Menangani Transaction Lifecycle, Parsing, Optimization, dan Dispatching.
      */
-    public ExecutionResult executeQuery(String sqlQuery) {
+    public ExecutionResult executeQuery(String sqlQuery, int clientTxId) {
         MockDDLParser ddlParser = new MockDDLParser(sqlQuery);
         if (ddlParser.isDDL()) {
             return executeDDL(ddlParser);
         }
 
-        int txId = ccm.beginTransaction();
+        int txId;
+        boolean isAutoCommit = false;
+
+        if (clientTxId != -1) {
+            txId = clientTxId;
+        } else {
+            txId = ccm.beginTransaction();
+            isAutoCommit = true;
+        }
+
         ParsedQuery parsedQuery = null;
         
         try {
             // 1. Parsing & Optimization
-            ParsedQuery initialQuery = qo.parseQuery(sqlQuery);
-            if (initialQuery == null) {
+            parsedQuery = qo.parseQuery(sqlQuery);
+            if (parsedQuery == null) {
                 throw new IllegalArgumentException("Query tidak valid atau tidak dikenali.");
             }
 
-            ParsedQuery boundQuery = initialQuery;
-            
-            if (queryBinder != null) {
-                System.out.println("\n--- [DEBUG QP] BEFORE BINDING ---");
-                System.out.println("Columns: " + initialQuery.targetColumns());
-                System.out.println("Where  : " + initialQuery.whereClause());
-                
-                // Lakukan Binding
-                boundQuery = queryBinder.bind(initialQuery);
-                
-                System.out.println("--- [DEBUG QP] AFTER BINDING ---");
-                System.out.println("Columns: " + boundQuery.targetColumns());
-                System.out.println("Where  : " + boundQuery.whereClause());
-                System.out.println("----------------------------------\n");
+            String type = parsedQuery.queryType().toUpperCase();
+
+            if (type.equals("BEGIN") || type.equals("BEGIN TRANSACTION")) {
+                isAutoCommit = false; 
             }
 
-            parsedQuery = qo.optimizeQuery(initialQuery, sm.getAllStats());
+            ParsedQuery boundQuery = (queryBinder != null) ? queryBinder.bind(parsedQuery) : parsedQuery;
+            ParsedQuery optimizedQuery = qo.optimizeQuery(boundQuery, sm.getAllStats());
 
             Action action = parsedQuery.queryType().equalsIgnoreCase("SELECT") 
                 ? Action.READ 
@@ -140,11 +140,20 @@ public class QueryProcessor extends DBMSComponent {
                 }
             }
 
+            if (optimizedQuery.targetTables() != null) {
+                List<String> tables = optimizedQuery.targetTables().stream().map(t -> "TABLE::"+t).toList();
+                Response res = ccm.validateObjects(tables, txId, action);
+                if (!res.isAllowed()) throw new Exception("Lock denied: " + res.reason());
+            }
+
             // 3. Execute Plan Tree (Recursive)
             List<Row> resultRows = executeNode(parsedQuery.planRoot(), txId);
 
-            // 4. Commit & Wrap Result
-            ccm.endTransaction(txId, true);
+            boolean isTCL = type.equals("BEGIN") || type.equals("COMMIT") || type.equals("ABORT") || type.equals("ROLLBACK");
+            
+            if (isAutoCommit && !isTCL) {
+                ccm.endTransaction(txId, true);
+            }
             
             return createExecutionResult(parsedQuery, resultRows, txId);
 
@@ -156,6 +165,10 @@ public class QueryProcessor extends DBMSComponent {
             String opType = (parsedQuery != null) ? parsedQuery.queryType() : "UNKNOWN";
             return new ExecutionResult(false, e.getMessage(), txId, opType, 0, Collections.emptyList());
         }
+    }
+
+    public ExecutionResult executeQuery(String sqlQuery) {
+        return executeQuery(sqlQuery, -1);
     }
 
     /**
