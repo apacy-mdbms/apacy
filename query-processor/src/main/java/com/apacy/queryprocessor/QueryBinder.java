@@ -18,7 +18,7 @@ import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
 import com.apacy.queryoptimizer.ast.where.LiteralConditionNode;
 import com.apacy.queryoptimizer.ast.where.UnaryConditionNode;
 import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
-import com.apacy.storagemanager.CatalogManager;
+import com.apacy.common.interfaces.IStorageManager;
 
 /**
  * Binds identifiers in the ParsedQuery by resolving table and column references,
@@ -26,10 +26,10 @@ import com.apacy.storagemanager.CatalogManager;
  */
 public class QueryBinder {
 
-    private final CatalogManager catalogManager;
+    private final IStorageManager storageManager;
 
-    public QueryBinder(CatalogManager catalogManager) {
-        this.catalogManager = catalogManager;
+    public QueryBinder(IStorageManager storageManager) {
+        this.storageManager = storageManager;
     }
 
     public ParsedQuery bind(ParsedQuery query) {
@@ -41,7 +41,7 @@ public class QueryBinder {
         List<String> tables = query.targetTables();
 
         for (String tableName : tables) {
-            if (catalogManager.getSchema(tableName) == null) {
+            if (storageManager.getSchema(tableName) == null) {
                 throw new IllegalArgumentException("Semantic Error: Table '" + tableName + "' does not exist.");
             }
         }
@@ -233,7 +233,7 @@ public class QueryBinder {
     }
 
     private boolean hasColumn(String table, String col) {
-        Schema s = catalogManager.getSchema(table);
+        Schema s = storageManager.getSchema(table);
         return s != null && s.getColumnByName(col) != null;
     }
 
