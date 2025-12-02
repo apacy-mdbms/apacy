@@ -70,7 +70,7 @@ public class ApacyServer {
         System.out.println("Initializing database components...");
         
         // Inisialisasi storage manager
-        StorageManager storageManager = new StorageManager("../data");
+        StorageManager storageManager = new StorageManager("./data");
         storageManager.initialize();
         
         // Inisialisasi komponen lainnya
