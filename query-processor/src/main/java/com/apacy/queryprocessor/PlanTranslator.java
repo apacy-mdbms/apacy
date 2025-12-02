@@ -37,7 +37,9 @@ import com.apacy.common.enums.IndexType;
 import com.apacy.common.interfaces.IConcurrencyControlManager;
 import com.apacy.common.interfaces.IFailureRecoveryManager;
 import com.apacy.common.interfaces.IStorageManager;
+import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
 import com.apacy.queryprocessor.evaluator.ConditionEvaluator;
+import com.apacy.queryprocessor.evaluator.ExpressionEvaluator;
 import com.apacy.queryprocessor.execution.JoinStrategy;
 import com.apacy.queryprocessor.execution.SortStrategy;
 
@@ -509,65 +511,102 @@ public class PlanTranslator {
      */
     public List<Row> executeModify(ModifyNode node, int txId, Function<PlanNode, List<Row>> childExecutor,
                                    IStorageManager sm, IConcurrencyControlManager ccm, IFailureRecoveryManager frm) {
-        // 1. Translate ModifyNode ke DTO storage (DataWrite / DataDeletion)
-        // 2. Panggil sm.writeBlock atau sm.deleteBlock
-        // 3. Buat Row dummy berisi info "affected_rows" untuk dikembalikan
         int affectedRows = 0;
         String operation = node.operation().toUpperCase();
 
         if ("INSERT".equals(operation)) {
-            // INSERT: Gabungkan columns dan values menjadi Row
             Map<String, Object> dataMap = new HashMap<>();
             List<String> cols = node.targetColumns();
-            List<Object> vals = node.values();
-
-            if (cols != null && vals != null && cols.size() == vals.size()) {
-                for (int i = 0; i < cols.size(); i++) {
-                    dataMap.put(cols.get(i), vals.get(i));
+            
+            List<Object> rawVals = node.values();
+            List<Object> resolvedVals = new ArrayList<>();
+            if (rawVals != null) {
+                for (Object val : rawVals) {
+                    resolvedVals.add(ExpressionEvaluator.evaluate(val));
                 }
             }
-            // Buat DataWrite
+
+            if (cols != null && resolvedVals.size() == cols.size()) {
+                for (int i = 0; i < cols.size(); i++) {
+                    dataMap.put(cols.get(i), resolvedVals.get(i));
+                }
+            }
+            
             DataWrite dw = new DataWrite(node.targetTable(), new Row(dataMap), null);
             affectedRows = sm.writeBlock(dw);
-
         } else if ("DELETE".equals(operation)) {
-            // DELETE: Ambil kondisi WHERE dari child node (biasanya FilterNode)
             Object filterCondition = null;
-            // Cek apakah child adalah FilterNode
+            
             if (!node.getChildren().isEmpty() && node.getChildren().get(0) instanceof FilterNode fn) {
                 filterCondition = fn.predicate();
             }
 
-            // Buat DataDeletion
-            DataDeletion dd = new DataDeletion(node.targetTable(), filterCondition);
+            Object finalFilterForStorage = filterCondition;
+
+            if (filterCondition instanceof com.apacy.queryoptimizer.ast.where.ComparisonConditionNode comp) {
+                String colName = extractColumnNameFromExpression(comp.leftOperand());
+                
+                Object val = ExpressionEvaluator.evaluate(comp.rightOperand());
+                
+                if (colName != null && val != null) {
+                    if (val instanceof String) {
+                        finalFilterForStorage = colName + "='" + val + "'";
+                    } else {
+                        finalFilterForStorage = colName + "=" + val;
+                    }
+                }
+            }
+            
+            DataDeletion dd = new DataDeletion(node.targetTable(), finalFilterForStorage);
             affectedRows = sm.deleteBlock(dd);
 
         } else if ("UPDATE".equals(operation)) {
-            // UPDATE: mapping values +  ambil kondisi
-            Map<String, Object> dataMap = new HashMap<>();
-            List<String> cols = node.targetColumns();
-            List<Object> vals = node.values();
+            List<Row> rowsToUpdate = new ArrayList<>();
+            if (!node.getChildren().isEmpty()) rowsToUpdate = childExecutor.apply(node.getChildren().get(0));
 
-            if (cols != null && vals != null) {
-                for (int i = 0; i < cols.size(); i++) {
-                    dataMap.put(cols.get(i), vals.get(i));
-                }
+            if (rowsToUpdate.isEmpty()) return List.of(new Row(Map.of("affected_rows", 0)));
+
+            List<String> targetCols = node.targetColumns();
+            List<Object> resolvedVals = new ArrayList<>();
+            if (node.values() != null) {
+                for (Object val : node.values()) resolvedVals.add(ExpressionEvaluator.evaluate(val));
             }
 
             Object filterCondition = null;
             if (!node.getChildren().isEmpty() && node.getChildren().get(0) instanceof FilterNode fn) {
                 filterCondition = fn.predicate();
             }
+            Object finalFilterForStorage = filterCondition;
+    
+            if (filterCondition instanceof ComparisonConditionNode comp) {
+                String colName = extractColumnNameFromExpression(comp.leftOperand());
+                
+                Object val = ExpressionEvaluator.evaluate(comp.rightOperand());
+                
+                if (colName != null && val != null) {
+                    if (val instanceof String) {
+                        finalFilterForStorage = colName + "='" + val + "'";
+                    } else {
+                        finalFilterForStorage = colName + "=" + val;
+                    }
+                }
+            }
+            DataDeletion dd = new DataDeletion(node.targetTable(), finalFilterForStorage);
+            sm.deleteBlock(dd);
 
-            DataWrite dw = new DataWrite(node.targetTable(), new Row(dataMap), filterCondition);
-            affectedRows = sm.writeBlock(dw);
+            for (Row oldRow : rowsToUpdate) {
+                Map<String, Object> mergedData = new HashMap<>(oldRow.data());
+                if (targetCols != null && resolvedVals.size() == targetCols.size()) {
+                    for (int i = 0; i < targetCols.size(); i++) mergedData.put(targetCols.get(i), resolvedVals.get(i));
+                }
+                DataWrite dw = new DataWrite(node.targetTable(), new Row(mergedData), null);
+                affectedRows += sm.writeBlock(dw);
+            }
         }
 
-        // 3. Buat Row dummy berisi info "affected_rows"
-        Map<String, Object> resultData = new HashMap<>();
-        resultData.put("affected_rows", affectedRows);
-        return List.of(new Row(resultData));
+        return List.of(new Row(Map.of("affected_rows", affectedRows)));
     }
+
 
 
     // ==================================================================================
