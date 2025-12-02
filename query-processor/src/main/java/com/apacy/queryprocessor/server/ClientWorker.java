@@ -1,14 +1,14 @@
 package com.apacy.queryprocessor.server;
 
-import com.apacy.common.dto.ExecutionResult;
-import com.apacy.queryprocessor.QueryProcessor;
-
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.net.SocketException;
+
+import com.apacy.common.dto.ExecutionResult;
+import com.apacy.queryprocessor.QueryProcessor;
 
 /**
  * Worker thread yang menangani satu koneksi client
@@ -73,6 +73,11 @@ public class ClientWorker implements Runnable {
                                 System.out.println("Session " + clientSocket.getInetAddress() + " finished Tx: " + currentTxId);
                                 this.currentTxId = -1;
                             }
+                        } else {
+                            if (this.currentTxId != -1) {
+                                System.out.println("Session " + clientSocket.getInetAddress() + " Tx " + currentTxId + " aborted by server due to error.");
+                                this.currentTxId = -1;
+                            }
                         }
                     } catch (Exception e) {
                         // Handle execution error
@@ -81,6 +86,10 @@ public class ClientWorker implements Runnable {
                             0, "ERROR", 0, null
                         );
                         e.printStackTrace();
+
+                        if (this.currentTxId != -1) {
+                            this.currentTxId = -1;
+                        }
                     }
                     
                     // Kirim hasil kembali ke client
