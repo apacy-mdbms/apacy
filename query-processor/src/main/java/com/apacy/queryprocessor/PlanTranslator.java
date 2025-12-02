@@ -543,41 +543,24 @@ public class PlanTranslator {
             affectedRows = sm.deleteBlock(dd);
 
         } else if ("UPDATE".equals(operation)) {
-            DataRetrieval dr = new DataRetrieval(node.targetTable(), List.of("*"), filterCondition, false);
-            List<Row> rowsToUpdate = sm.readBlock(dr);
-            
-            if (!rowsToUpdate.isEmpty()) {
-                // Hapus data lama dari storage
-                DataDeletion dd = new DataDeletion(node.targetTable(), filterCondition);
-                sm.deleteBlock(dd);
+            // UPDATE: mapping values +  ambil kondisi
+            Map<String, Object> dataMap = new HashMap<>();
+            List<String> cols = node.targetColumns();
+            List<Object> vals = node.values();
 
-                // Iterasi data lama, update di memori, lalu insert data baru
-                List<String> updateCols = node.targetColumns();
-                List<Object> updateVals = node.values();
-
-                for (Row oldRow : rowsToUpdate) {
-                    Map<String, Object> newDataMap = new HashMap<>(oldRow.data());
-                    
-                    // Timpa kolom yang di-request user dengan nilai baru
-                    if (updateCols != null && updateVals != null) {
-                        for (int i = 0; i < updateCols.size(); i++) {
-                            String colName = updateCols.get(i);
-                            Object newVal = updateVals.get(i);
-                            
-                            if (newDataMap.containsKey(colName)) {
-                                newDataMap.put(colName, newVal);
-                            }
-                        }
-                    }
-                    
-                    // Insert data yang sudah di-update sebagai baris baru
-                    // Filter condition null karena ini insert murni
-                    DataWrite dw = new DataWrite(node.targetTable(), new Row(newDataMap), null);
-                    sm.writeBlock(dw);
-                    
-                    affectedRows++;
+            if (cols != null && vals != null) {
+                for (int i = 0; i < cols.size(); i++) {
+                    dataMap.put(cols.get(i), vals.get(i));
                 }
             }
+
+            Object filterCondition = null;
+            if (!node.getChildren().isEmpty() && node.getChildren().get(0) instanceof FilterNode fn) {
+                filterCondition = fn.predicate();
+            }
+
+            DataWrite dw = new DataWrite(node.targetTable(), new Row(dataMap), filterCondition);
+            affectedRows = sm.writeBlock(dw);
         }
 
         // 3. Buat Row dummy berisi info "affected_rows"
