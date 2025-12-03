@@ -6,18 +6,18 @@ import java.util.Map;
 
 import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.Schema;
-import com.apacy.queryoptimizer.ast.expression.ColumnFactor;
-import com.apacy.queryoptimizer.ast.expression.ExpressionNode;
-import com.apacy.queryoptimizer.ast.expression.FactorNode;
-import com.apacy.queryoptimizer.ast.expression.TermNode;
-import com.apacy.queryoptimizer.ast.join.JoinConditionNode;
-import com.apacy.queryoptimizer.ast.join.JoinOperand;
-import com.apacy.queryoptimizer.ast.join.TableNode;
-import com.apacy.queryoptimizer.ast.where.BinaryConditionNode;
-import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
-import com.apacy.queryoptimizer.ast.where.LiteralConditionNode;
-import com.apacy.queryoptimizer.ast.where.UnaryConditionNode;
-import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
+import com.apacy.common.dto.ast.expression.ColumnFactor;
+import com.apacy.common.dto.ast.expression.ExpressionNode;
+import com.apacy.common.dto.ast.expression.FactorNode;
+import com.apacy.common.dto.ast.expression.TermNode;
+import com.apacy.common.dto.ast.join.JoinConditionNode;
+import com.apacy.common.dto.ast.join.JoinOperand;
+import com.apacy.common.dto.ast.join.TableNode;
+import com.apacy.common.dto.ast.where.BinaryConditionNode;
+import com.apacy.common.dto.ast.where.ComparisonConditionNode;
+import com.apacy.common.dto.ast.where.LiteralConditionNode;
+import com.apacy.common.dto.ast.where.UnaryConditionNode;
+import com.apacy.common.dto.ast.where.WhereConditionNode;
 import com.apacy.common.interfaces.IStorageManager;
 
 /**

@@ -1,19 +1,13 @@
 package com.apacy.failurerecoverymanager;
 
-import com.apacy.common.dto.Row;
-
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Utility helper to convert serialized log payloads (String / Row / Map)
- * into a mutable {@link Map} representation that can be consumed by the
- * storage manager for redo/undo operations.
- */
+import com.apacy.common.dto.Row;
+
 final class LogDataParser {
 
     private LogDataParser() {
-        // utility
     }
 
     @SuppressWarnings("unchecked")

@@ -4,7 +4,6 @@ import com.apacy.common.DBMSComponent;
 import com.apacy.common.dto.Response;
 import com.apacy.common.dto.Row;
 import com.apacy.common.enums.Action;
-import com.apacy.common.interfaces.IConcurrencyControlManager;
 
 import java.util.HashMap;
 import java.util.List;
@@ -15,7 +14,7 @@ import java.util.Map;
  * 1. validateObject() selalu return ALLOWED (true)
  * 2. conflict check hanya pada endTransaction().
  */
-public class ConcurrencyControlManagerValidation extends DBMSComponent implements IConcurrencyControlManager {
+public class ConcurrencyControlManagerValidation extends DBMSComponent implements IConcurrencyControlManagerAlgorithm {
 
     private final ValidationManager validationManager;
     private final Map<Integer, Transaction> transactionMap;
@@ -29,7 +28,7 @@ public class ConcurrencyControlManagerValidation extends DBMSComponent implement
     }
 
     @Override
-    public synchronized void initialize() throws Exception {
+    public synchronized void initialize() {
         transactionMap.clear();
         transactionCounter = 0;
     }

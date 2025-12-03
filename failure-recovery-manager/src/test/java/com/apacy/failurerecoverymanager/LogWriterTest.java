@@ -1,10 +1,17 @@
 package com.apacy.failurerecoverymanager;
 
-import org.junit.jupiter.api.*;
-import java.io.*;
-import java.nio.file.*;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.AfterEach;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 class LogWriterTest {
 
@@ -42,7 +49,8 @@ class LogWriterTest {
     void testLogWriterCreatesFileAndWritesLogEntry() throws Exception {
         LogWriter writer = new LogWriter(TEST_LOG_PATH);
 
-        writer.writeLog("T1", "INSERT", "Users", "{id=1}");
+        LogEntry entry = new LogEntry("T1", "INSERT", "Users", null, "{id=1}");
+        writer.writeLog(entry);
         writer.close();
 
         File file = new File(TEST_LOG_PATH);
@@ -50,29 +58,37 @@ class LogWriterTest {
         assertTrue(file.exists(), "Log file should be created");
         assertTrue(file.length() > 0, "Log file should not be empty");
 
-        // Read back the content
+        // Read back the content - should be in JSON format
         String content = Files.readString(Paths.get(TEST_LOG_PATH));
-        assertTrue(content.contains("T1|INSERT|Users"), "Log entry should contain correct values");
+        assertTrue(content.contains("\"transactionId\": \"T1\""), "Log entry should contain transactionId in JSON");
+        assertTrue(content.contains("\"operation\": \"INSERT\""), "Log entry should contain operation in JSON");
+        assertTrue(content.contains("\"tableName\": \"Users\""), "Log entry should contain tableName in JSON");
     }
 
     @Test
     void testWriteMultipleLogs() throws Exception {
         LogWriter writer = new LogWriter(TEST_LOG_PATH);
 
-        writer.writeLog("TX10", "UPDATE", "Orders", "{id=99,total=45000}");
-        writer.writeLog("TX11", "DELETE", "Items", "{id=7}");
+        LogEntry entry1 = new LogEntry("TX10", "UPDATE", "Orders", "{id=99}", "{id=99,total=45000}");
+        LogEntry entry2 = new LogEntry("TX11", "DELETE", "Items", "{id=7}", null);
+        
+        writer.writeLog(entry1);
+        writer.writeLog(entry2);
         writer.close();
 
         String content = Files.readString(Paths.get(TEST_LOG_PATH));
 
         assertTrue(content.lines().count() >= 2, "Log should contain at least two entries");
+        assertTrue(content.contains("\"transactionId\": \"TX10\""), "First entry should be present");
+        assertTrue(content.contains("\"transactionId\": \"TX11\""), "Second entry should be present");
     }
 
     @Test
     void testFlushDoesNotThrow() {
         assertDoesNotThrow(() -> {
             LogWriter writer = new LogWriter(TEST_LOG_PATH);
-            writer.writeLog("T1", "INSERT", "Users", "{id=1}");
+            LogEntry entry = new LogEntry("T1", "INSERT", "Users", null, "{id=1}");
+            writer.writeLog(entry);
             writer.flush();
             writer.close();
         });
@@ -82,7 +98,8 @@ class LogWriterTest {
     void testRotateLogCreatesNewFile() throws Exception {
         LogWriter writer = new LogWriter(TEST_LOG_PATH);
 
-        writer.writeLog("T1", "INSERT", "Users", "{id=1}");
+        LogEntry entry = new LogEntry("T1", "INSERT", "Users", null, "{id=1}");
+        writer.writeLog(entry);
 
         writer.rotateLog(); // should rename file and create new empty one
 

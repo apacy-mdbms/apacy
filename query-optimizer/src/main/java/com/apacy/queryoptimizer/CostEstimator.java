@@ -2,7 +2,7 @@ package com.apacy.queryoptimizer;
 
 import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.Statistic;
-import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
+import com.apacy.common.dto.ast.where.WhereConditionNode;
 
 import java.util.Map;
 

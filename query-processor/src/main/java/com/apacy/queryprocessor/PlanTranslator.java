@@ -106,12 +106,12 @@ public class PlanTranslator {
     // ==================================================================================
 
     private String extractJoinColumn(Object condition) {
-        if (!(condition instanceof com.apacy.queryoptimizer.ast.where.ComparisonConditionNode)) {
+        if (!(condition instanceof com.apacy.common.dto.ast.where.ComparisonConditionNode)) {
             return null;
         }
         
-        com.apacy.queryoptimizer.ast.where.ComparisonConditionNode comp = 
-            (com.apacy.queryoptimizer.ast.where.ComparisonConditionNode) condition;
+        com.apacy.common.dto.ast.where.ComparisonConditionNode comp = 
+            (com.apacy.common.dto.ast.where.ComparisonConditionNode) condition;
         
         // Only support "="
         if (!"=".equals(comp.operator())) {
@@ -128,7 +128,11 @@ public class PlanTranslator {
         return null;
     }
     
-    private String extractColumnNameFromExpression(com.apacy.queryoptimizer.ast.expression.ExpressionNode expr) {
+    /**
+     * Ekstrak nama kolom dari ExpressionNode
+     * Method ini mirip dengan extractColumnsFromExpression di DistributeProjectRewriter
+     */
+    private String extractColumnNameFromExpression(com.apacy.common.dto.ast.expression.ExpressionNode expr) {
         if (expr == null || expr.term() == null) {
             return null;
         }
@@ -150,12 +154,16 @@ public class PlanTranslator {
         return null;
     }
     
-    private String extractColumnNameFromTerm(com.apacy.queryoptimizer.ast.expression.TermNode term) {
+    /**
+     * Ekstrak nama kolom dari TermNode
+     */
+    private String extractColumnNameFromTerm(com.apacy.common.dto.ast.expression.TermNode term) {
         if (term == null || term.factor() == null) {
             return null;
         }
         
-        if (term.factor() instanceof com.apacy.queryoptimizer.ast.expression.ColumnFactor colFactor) {
+        // Cek factor utama
+        if (term.factor() instanceof com.apacy.common.dto.ast.expression.ColumnFactor colFactor) {
             String colName = colFactor.columnName();
             if (colName.contains(".")) {
                 String[] parts = colName.split("[.]");
@@ -166,7 +174,7 @@ public class PlanTranslator {
         
         if (term.remainderFactors() != null && !term.remainderFactors().isEmpty()) {
             for (var pair : term.remainderFactors()) {
-                if (pair.factor() instanceof com.apacy.queryoptimizer.ast.expression.ColumnFactor colFactor) {
+                if (pair.factor() instanceof com.apacy.common.dto.ast.expression.ColumnFactor colFactor) {
                     String colName = colFactor.columnName();
                     if (colName.contains(".")) {
                         String[] parts = colName.split("[.]");

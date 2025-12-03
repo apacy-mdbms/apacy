@@ -1,4 +1,4 @@
-package com.apacy.queryoptimizer.ast.expression;
+package com.apacy.common.dto.ast.expression;
 
 
 public sealed interface FactorNode

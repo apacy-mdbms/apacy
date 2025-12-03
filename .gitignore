@@ -54,7 +54,13 @@ out/
 # Project-specific data files
 storage-manager/data/*.dat
 storage-manager/data/*.metadata
+**.idx
+**.dat
 
 # Project-specific log files
 failure-recovery-manager/failure-recovery/log/*.log
 failure-recovery/log/*.log
+failure-recovery/log/*.
+failure-recovery/checkpoints/*.bak
+failure-recovery-manager/failure-recovery/log/*.bak
+failure-recovery-manager/failure-recovery/checkpoints/*.meta
