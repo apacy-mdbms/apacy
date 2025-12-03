@@ -33,16 +33,20 @@ class FailureRecoveryManagerTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        
+        // Clean up any existing log files and checkpoints
+        cleanupTestFiles();
         // Create a mock StorageManager for testing
         mockStorageManager = new MockStorageManagerForRecovery();
         failureRecoveryManager = new FailureRecoveryManager(mockStorageManager);
 
-        // Clean up any existing log files and checkpoints
-        cleanupTestFiles();
     }
 
     @AfterEach
-    void tearDown() {
+    void tearDown() throws IOException {
+        if (failureRecoveryManager != null) {
+            failureRecoveryManager.shutdown();
+        }
         // Clean up test files
         cleanupTestFiles();
     }
@@ -238,29 +242,29 @@ class FailureRecoveryManagerTest {
         assertTrue(entry.getDataAfter().toString().contains("New"));
     }
 
-    // @Test
-    // void testWriteLogCreatesLogFile() throws IOException {
-    // Row row = new Row(Map.of("id", 1, "name", "Test"));
-    // ExecutionResult result = new ExecutionResult(
-    // true,
-    // "Success",
-    // 111,
-    // "INSERT",
-    // 1,
-    // List.of(row));
-    //
-    // failureRecoveryManager.writeLog(result);
-    //
-    // // Give it a moment to write
-    // try {
-    // Thread.sleep(100);
-    // } catch (InterruptedException e) {
-    // // Ignore
-    // }
-    //
-    // // assertTrue(Files.exists(Paths.get(TEST_LOG_PATH)),
-    // // "Log file should be created");
-    // }
+    @Test
+    void testWriteLogCreatesLogFile() throws IOException {
+        Row row = new Row(Map.of("id", 1, "name", "Test"));
+        ExecutionResult result = new ExecutionResult(
+                true,
+                "Success",
+                111,
+                "INSERT",
+                1,
+                List.of(row));
+
+        failureRecoveryManager.writeLog(result);
+
+        // Give it a moment to write
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            // Ignore
+        }
+
+        assertTrue(Files.exists(Paths.get(TEST_LOG_PATH)),
+                "Log file should be created");
+    }
 
     @Test
     void testMultipleWriteLogCalls() {
@@ -394,7 +398,8 @@ class FailureRecoveryManagerTest {
         createTestLog(
                 createJsonLogEntry(1000, "TX7", "BEGIN", "employees", null, null),
                 createJsonLogEntry(1001, "TX7", "INSERT", "employees", null, "Row{data={id=1, name=Before}}"),
-                createJsonLogEntry(1002, "TX7", "UPDATE", "employees", "Row{data={id=1, name=Before}}", "Row{data={id=1, name=After}}"));
+                createJsonLogEntry(1002, "TX7", "UPDATE", "employees", "Row{data={id=1, name=Before}}",
+                        "Row{data={id=1, name=After}}"));
 
         LocalDateTime cutoff = LocalDateTime.ofInstant(Instant.ofEpochMilli(1002), ZoneOffset.UTC);
         RecoveryCriteria criteria = new RecoveryCriteria("POINT_IN_TIME", null, cutoff);
@@ -491,7 +496,8 @@ class FailureRecoveryManagerTest {
                 createJsonLogEntry(1000, "TX200", "BEGIN", "employees", null, null),
                 createJsonLogEntry(1001, "TX200", "INSERT", "employees", null, "Row{data={id=1, name=John}}"),
                 createJsonLogEntry(1002, "TX200", "INSERT", "employees", null, "Row{data={id=2, name=Jane}}"),
-                createJsonLogEntry(1003, "TX200", "UPDATE", "employees", "Row{data={id=1, name=OldJohn}}", "Row{data={id=1, name=NewJohn}}")
+                createJsonLogEntry(1003, "TX200", "UPDATE", "employees", "Row{data={id=1, name=OldJohn}}",
+                        "Row{data={id=1, name=NewJohn}}")
         // No COMMIT - transaction incomplete
         );
 
@@ -562,7 +568,7 @@ class FailureRecoveryManagerTest {
     }
 
     private String createJsonLogEntry(long timestamp, String transactionId, String operation,
-                                      String tableName, String dataBefore, String dataAfter) {
+            String tableName, String dataBefore, String dataAfter) {
         return "{" +
                 "\"timestamp\": " + timestamp + ", " +
                 "\"transactionId\": \"" + transactionId + "\", " +
