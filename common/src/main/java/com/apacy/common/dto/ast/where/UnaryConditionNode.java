@@ -1,4 +1,4 @@
-package com.apacy.queryoptimizer.ast.where;
+package com.apacy.common.dto.ast.where;
 
 /**
  * UnaryConditionNode used for applying unary operator like 'NOT' to a condition
