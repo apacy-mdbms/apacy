@@ -10,6 +10,7 @@ import com.apacy.common.dto.DataWrite;
 import com.apacy.common.dto.Row;
 import com.apacy.common.dto.Schema;
 import com.apacy.common.dto.Statistic;
+import com.apacy.common.dto.DataUpdate;
 
 /**
  * Kontrak untuk: Storage Manager
@@ -24,6 +25,8 @@ public interface IStorageManager {
     int deleteBlock(DataDeletion dataDeletion); // returns affected rows
 
     void setIndex(String table, String column, String indexType);
+
+    int updateBlock(DataUpdate dataUpdate); // inplace-update
 
     Map<String, Statistic> getAllStats(); // returns statistic of each tables. String == Table name
 
