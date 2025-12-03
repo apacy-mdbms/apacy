@@ -7,17 +7,17 @@ import java.util.Map;
 import java.util.Set;
 
 import com.apacy.common.dto.Statistic;
+import com.apacy.common.dto.ast.expression.ColumnFactor;
+import com.apacy.common.dto.ast.expression.ExpressionNode;
+import com.apacy.common.dto.ast.expression.TermNode;
+import com.apacy.common.dto.ast.where.BinaryConditionNode;
+import com.apacy.common.dto.ast.where.ComparisonConditionNode;
+import com.apacy.common.dto.ast.where.UnaryConditionNode;
+import com.apacy.common.dto.ast.where.WhereConditionNode;
 import com.apacy.common.dto.plan.JoinNode;
 import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.common.dto.plan.ProjectNode;
 import com.apacy.queryoptimizer.CostEstimator;
-import com.apacy.queryoptimizer.ast.expression.ColumnFactor;
-import com.apacy.queryoptimizer.ast.expression.ExpressionNode;
-import com.apacy.queryoptimizer.ast.expression.TermNode;
-import com.apacy.queryoptimizer.ast.where.BinaryConditionNode;
-import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
-import com.apacy.queryoptimizer.ast.where.UnaryConditionNode;
-import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
 /**
  * Rule 8: Distribute Project over Join

@@ -12,10 +12,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.apacy.common.dto.ParsedQuery;
+import com.apacy.common.dto.ast.expression.ExpressionNode;
+import com.apacy.common.dto.ast.expression.LiteralFactor;
+import com.apacy.common.dto.ast.expression.TermNode;
 import com.apacy.queryoptimizer.QueryParser;
-import com.apacy.queryoptimizer.ast.expression.ExpressionNode;
-import com.apacy.queryoptimizer.ast.expression.LiteralFactor;
-import com.apacy.queryoptimizer.ast.expression.TermNode;
 
 class InsertParserTest {
 

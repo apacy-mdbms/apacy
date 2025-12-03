@@ -4,13 +4,12 @@ import com.apacy.common.DBMSComponent;
 import com.apacy.common.dto.Response;
 import com.apacy.common.dto.Row;
 import com.apacy.common.enums.Action;
-import com.apacy.common.interfaces.IConcurrencyControlManager;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class ConcurrencyControlManagerTimestamp extends DBMSComponent implements IConcurrencyControlManager {
+public class ConcurrencyControlManagerTimestamp extends DBMSComponent implements IConcurrencyControlManagerAlgorithm {
 
     private final TimestampManager timestampManager;
     private final Map<Integer, Transaction> transactionMap;

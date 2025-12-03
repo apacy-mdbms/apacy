@@ -7,12 +7,12 @@ import java.util.List;
 import java.util.Map;
 
 import com.apacy.common.dto.ParsedQuery;
+import com.apacy.common.dto.ast.join.JoinConditionNode;
+import com.apacy.common.dto.ast.join.JoinOperand;
+import com.apacy.common.dto.ast.join.TableNode;
+import com.apacy.common.dto.ast.where.WhereConditionNode;
 import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.common.dto.plan.SortNode;
-import com.apacy.queryoptimizer.ast.join.JoinConditionNode;
-import com.apacy.queryoptimizer.ast.join.JoinOperand;
-import com.apacy.queryoptimizer.ast.join.TableNode;
-import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
 public class SelectParser extends AbstractParser {
 
