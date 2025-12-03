@@ -373,6 +373,24 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
             }
             String fileName = schema.dataFile();
 
+            // Global duplicate-row prevention: if an identical row (all columns)
+            // already exists in the table, reject the insert.
+            try {
+                long existingBlocks = blockManager.getBlockCount(fileName);
+                for (long b = 0; b < existingBlocks; b++) {
+                    byte[] blockData = blockManager.readBlock(fileName, b);
+                    List<Row> rows = serializer.deserializeBlock(blockData, schema);
+                    for (Row r : rows) {
+                        if (r != null && r.data().equals(dataWrite.newData().data())) {
+                            System.err.println("Duplicate row detected. Insert rejected.");
+                            return 0;
+                        }
+                    }
+                }
+            } catch (Exception dupScanErr) {
+                System.err.println("Warning: duplicate scan failed: " + dupScanErr.getMessage());
+            }
+
             long blockCount = blockManager.getBlockCount(fileName);
             long targetBlockNumber = -1;
             int newSlotId = -1;
@@ -404,8 +422,9 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
             blockManager.flush();
 
             for (IndexSchema idxSchema : schema.indexes()) {
-                IIndex index = indexManager.get(schema.tableName(), idxSchema.columnName(),
-                        idxSchema.indexType().toString());
+                @SuppressWarnings("unchecked")
+                IIndex<Object, Integer> index = (IIndex<Object, Integer>) indexManager.get(
+                        schema.tableName(), idxSchema.columnName(), idxSchema.indexType().toString());
 
                 if (index != null) {
                     Object key = dataWrite.newData().data().get(idxSchema.columnName());
@@ -598,7 +617,8 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
     private void removeRowFromIndexes(Schema schema, long blockNumber, int slotId, Row row) {
         int ridValue = (int) ((blockNumber << 16) | (slotId & 0xFFFF));
         for (IndexSchema idxSchema : schema.indexes()) {
-            IIndex index = indexManager.get(
+            @SuppressWarnings("unchecked")
+            IIndex<Object, Integer> index = (IIndex<Object, Integer>) indexManager.get(
                     schema.tableName(),
                     idxSchema.columnName(),
                     idxSchema.indexType().toString());
