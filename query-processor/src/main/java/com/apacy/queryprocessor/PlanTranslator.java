@@ -385,12 +385,12 @@ public class PlanTranslator {
      * Return null jika kondisi terlalu kompleks.
      */
     private String extractJoinColumn(Object condition) {
-        if (!(condition instanceof com.apacy.queryoptimizer.ast.where.ComparisonConditionNode)) {
+        if (!(condition instanceof com.apacy.common.dto.ast.where.ComparisonConditionNode)) {
             return null;
         }
         
-        com.apacy.queryoptimizer.ast.where.ComparisonConditionNode comp = 
-            (com.apacy.queryoptimizer.ast.where.ComparisonConditionNode) condition;
+        com.apacy.common.dto.ast.where.ComparisonConditionNode comp = 
+            (com.apacy.common.dto.ast.where.ComparisonConditionNode) condition;
         
         // Hanya support operator "="
         if (!"=".equals(comp.operator())) {
@@ -413,7 +413,7 @@ public class PlanTranslator {
      * Ekstrak nama kolom dari ExpressionNode
      * Method ini mirip dengan extractColumnsFromExpression di DistributeProjectRewriter
      */
-    private String extractColumnNameFromExpression(com.apacy.queryoptimizer.ast.expression.ExpressionNode expr) {
+    private String extractColumnNameFromExpression(com.apacy.common.dto.ast.expression.ExpressionNode expr) {
         if (expr == null || expr.term() == null) {
             return null;
         }
@@ -440,13 +440,13 @@ public class PlanTranslator {
     /**
      * Ekstrak nama kolom dari TermNode
      */
-    private String extractColumnNameFromTerm(com.apacy.queryoptimizer.ast.expression.TermNode term) {
+    private String extractColumnNameFromTerm(com.apacy.common.dto.ast.expression.TermNode term) {
         if (term == null || term.factor() == null) {
             return null;
         }
         
         // Cek factor utama
-        if (term.factor() instanceof com.apacy.queryoptimizer.ast.expression.ColumnFactor colFactor) {
+        if (term.factor() instanceof com.apacy.common.dto.ast.expression.ColumnFactor colFactor) {
             String colName = colFactor.columnName();
             
             // Jika ada table prefix (table.column), ambil hanya column name
@@ -461,7 +461,7 @@ public class PlanTranslator {
         // Cek remainder factors jika ada
         if (term.remainderFactors() != null && !term.remainderFactors().isEmpty()) {
             for (var pair : term.remainderFactors()) {
-                if (pair.factor() instanceof com.apacy.queryoptimizer.ast.expression.ColumnFactor colFactor) {
+                if (pair.factor() instanceof com.apacy.common.dto.ast.expression.ColumnFactor colFactor) {
                     String colName = colFactor.columnName();
                     
                     if (colName.contains(".")) {
