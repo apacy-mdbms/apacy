@@ -130,7 +130,7 @@ public class PlanRewriter {
             return node;
         }
         // optimization happened in lower depth, do Path Copying
-        return new LimitNode(newChild, node.limit());
+        return new LimitNode(newChild, node.limit(), node.offset());
     }
 
     protected PlanNode visitScan(ScanNode node, Map<String, Statistic> allStats) {
