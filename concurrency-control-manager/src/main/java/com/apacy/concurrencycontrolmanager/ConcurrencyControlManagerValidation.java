@@ -4,6 +4,7 @@ import com.apacy.common.DBMSComponent;
 import com.apacy.common.dto.Response;
 import com.apacy.common.dto.Row;
 import com.apacy.common.enums.Action;
+import com.apacy.common.interfaces.IFailureRecoveryManager;
 
 import java.util.HashMap;
 import java.util.List;
@@ -18,13 +19,19 @@ public class ConcurrencyControlManagerValidation extends DBMSComponent implement
 
     private final ValidationManager validationManager;
     private final Map<Integer, Transaction> transactionMap;
+    private final IFailureRecoveryManager failureRecoveryManager;
     private int transactionCounter;
 
     public ConcurrencyControlManagerValidation() {
+        this(null);
+    }
+
+    public ConcurrencyControlManagerValidation(IFailureRecoveryManager failureRecoveryManager) {
         super("Concurrency Control Manager (Validation/OCC)");
         this.validationManager = new ValidationManager();
         this.transactionMap = new HashMap<>();
         this.transactionCounter = 0;
+        this.failureRecoveryManager = failureRecoveryManager;
     }
 
     @Override

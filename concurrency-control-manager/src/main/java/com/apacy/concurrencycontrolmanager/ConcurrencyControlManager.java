@@ -29,7 +29,7 @@ public class ConcurrencyControlManager extends DBMSComponent implements IConcurr
         this.manager = switch(algorithm) {
             case "lock" -> new ConcurrencyControlManagerLockBased(failureRecoveryManager);
             case "timestamp" -> new ConcurrencyControlManagerTimestamp(failureRecoveryManager);
-            case "validation" -> new ConcurrencyControlManagerValidation();
+            case "validation" -> new ConcurrencyControlManagerValidation(failureRecoveryManager);
             default -> null;
         };
         if (this.manager == null) {
