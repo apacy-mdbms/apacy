@@ -1,10 +1,10 @@
 package com.apacy.queryprocessor.evaluator;
 
-import com.apacy.queryoptimizer.ast.expression.ColumnFactor;
-import com.apacy.queryoptimizer.ast.expression.ExpressionNode;
-import com.apacy.queryoptimizer.ast.expression.FactorNode;
-import com.apacy.queryoptimizer.ast.expression.LiteralFactor;
-import com.apacy.queryoptimizer.ast.expression.TermNode;
+import com.apacy.common.dto.ast.expression.ColumnFactor;
+import com.apacy.common.dto.ast.expression.ExpressionNode;
+import com.apacy.common.dto.ast.expression.FactorNode;
+import com.apacy.common.dto.ast.expression.LiteralFactor;
+import com.apacy.common.dto.ast.expression.TermNode;
 
 /**
  * Utility class to evaluate AST ExpressionNodes.

@@ -10,6 +10,9 @@ import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.RecoveryCriteria;
 import com.apacy.common.dto.Response;
 import com.apacy.common.dto.Row;
+import com.apacy.common.dto.ast.expression.ExpressionNode;
+import com.apacy.common.dto.ast.expression.LiteralFactor;
+import com.apacy.common.dto.ast.expression.TermNode;
 import com.apacy.common.dto.ddl.ParsedQueryDDL;
 import com.apacy.common.dto.plan.DDLNode;
 import com.apacy.common.enums.Action;
@@ -205,13 +208,13 @@ public class QueryProcessor extends DBMSComponent {
     }
 
     private Object extractValue(Object val) {
-        if (val instanceof com.apacy.queryoptimizer.ast.expression.ExpressionNode expr) {
+        if (val instanceof ExpressionNode expr) {
             return extractValue(expr.term());
         }
-        if (val instanceof com.apacy.queryoptimizer.ast.expression.TermNode term) {
+        if (val instanceof TermNode term) {
             return extractValue(term.factor());
         }
-        if (val instanceof com.apacy.queryoptimizer.ast.expression.LiteralFactor lit) {
+        if (val instanceof LiteralFactor lit) {
             return lit.value();
         }
         return val;
