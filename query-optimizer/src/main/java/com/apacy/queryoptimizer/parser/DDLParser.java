@@ -10,6 +10,8 @@ import com.apacy.common.dto.ddl.ColumnDefinition;
 import com.apacy.common.dto.ddl.ParsedQueryCreate;
 import com.apacy.common.dto.ddl.ParsedQueryDDL;
 import com.apacy.common.dto.ddl.ParsedQueryDrop;
+import com.apacy.common.dto.plan.DDLNode;
+import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.common.enums.DataType;
 import com.apacy.queryoptimizer.QueryTokenizer;
 
@@ -25,25 +27,23 @@ public class DDLParser extends AbstractParser {
 
     @Override
     public ParsedQuery parse() throws ParseException {
-        return null;
-        // TODO: generalize ParsedQuery to support DDL
-        // Token t = peek();
+        Token t = peek();
 
-        // if (t.getType() == TokenType.CREATE) {
-        //     return parseCreateTable();
-        // }
-        // else if (t.getType() == TokenType.DROP) {
-        //     return parseDropTable();
-        // }
+        if (t.getType() == TokenType.CREATE) {
+            return parseCreateTable();
+        }
+        else if (t.getType() == TokenType.DROP) {
+            return parseDropTable();
+        }
 
-        // throw new RuntimeException("Unknown or unsupported DDL Command: " + t.getValue());
+        throw new RuntimeException("Unknown or unsupported DDL Command: " + t.getValue());
     }
 
     @Override
     public boolean validate() { return true; }
 
     // Create Table
-    private ParsedQueryCreate parseCreateTable() {
+    private ParsedQuery parseCreateTable() {
         consume(TokenType.CREATE);
         consume(TokenType.TABLE);
 
@@ -66,7 +66,21 @@ public class DDLParser extends AbstractParser {
 
         consume(TokenType.RPARENTHESIS);
 
-        return new ParsedQueryCreate(tableName, columns, foreignKeys);
+        ParsedQueryDDL ddl = new ParsedQueryCreate(tableName, columns, foreignKeys);
+        PlanNode planRoot = new DDLNode(ddl);
+
+        return new ParsedQuery(
+            "CREATE",
+            planRoot,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            false,
+            false
+        );
     }
 
     private ColumnDefinition parseColumnDefinition() {
@@ -151,7 +165,7 @@ public class DDLParser extends AbstractParser {
     }
 
     // Drop Table
-    private ParsedQueryDrop parseDropTable() {
+    private ParsedQuery parseDropTable() {
         consume(TokenType.DROP);
         consume(TokenType.TABLE);
 
@@ -165,7 +179,21 @@ public class DDLParser extends AbstractParser {
             consumeKeyword("RESTRICT");
         }
 
-        return new ParsedQueryDrop(tableName, isCascading);
+        ParsedQueryDDL ddl = new ParsedQueryDrop(tableName, isCascading);
+        PlanNode planRoot = new DDLNode(ddl);
+
+        return new ParsedQuery(
+            "DROP",
+            planRoot,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            false,
+            false
+        );
     }
 
     /**

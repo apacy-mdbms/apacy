@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.apacy.common.dto.ParsedQuery;
 import com.apacy.queryoptimizer.parser.AbstractParser;
+import com.apacy.queryoptimizer.parser.DDLParser;
 import com.apacy.queryoptimizer.parser.DeleteParser;
 import com.apacy.queryoptimizer.parser.InsertParser;
 import com.apacy.queryoptimizer.parser.SelectParser;
@@ -42,6 +43,10 @@ public class QueryParser {
             case ABORT:
             case COMMIT:
                 parser = new TCLParser(tokens);
+                break;
+            case CREATE:
+            case DROP:
+                parser = new DDLParser(tokens);
                 break;
             default:
                 throw new UnsupportedOperationException("only SELECT, UPDATE, INSERT, and DELETE are currently supported");
