@@ -9,7 +9,7 @@ import java.util.List;
 public record LimitNode(
     PlanNode child,
     int limit,
-    int offset,
+    int offset
 ) implements PlanNode {
     private static final long serialVersionUID = 1L;
 
