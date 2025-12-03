@@ -14,10 +14,6 @@ import com.apacy.common.dto.ast.where.WhereConditionNode;
 import com.apacy.common.dto.plan.LimitNode;
 import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.common.dto.plan.SortNode;
-import com.apacy.queryoptimizer.ast.join.JoinConditionNode;
-import com.apacy.queryoptimizer.ast.join.JoinOperand;
-import com.apacy.queryoptimizer.ast.join.TableNode;
-import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
 public class SelectParser extends AbstractParser {
 
@@ -148,7 +144,7 @@ public class SelectParser extends AbstractParser {
 
         if (limitValue != null) {
             int finalOffset = (offsetValue != null) ? offsetValue : 0;
-            // planRoot = new LimitNode(planRoot, limitValue, finalOffset);
+            planRoot = new LimitNode(planRoot, limitValue, finalOffset);
         }
 
         // Gunakan konstruktor BARU yang ada limit & offset

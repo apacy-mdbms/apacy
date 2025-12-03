@@ -7,6 +7,7 @@ import com.apacy.common.dto.ast.expression.ColumnFactor;
 import com.apacy.common.dto.ast.expression.ExpressionNode;
 import com.apacy.common.dto.ast.expression.ExpressionNode.TermPair;
 import com.apacy.common.dto.ast.expression.FactorNode;
+import com.apacy.common.dto.ast.expression.LiteralFactor;
 import com.apacy.common.dto.ast.expression.TermNode;
 import com.apacy.common.dto.ast.expression.TermNode.FactorPair;
 import com.apacy.common.dto.ast.where.BinaryConditionNode;
@@ -96,8 +97,9 @@ public class CostEstimator {
         PlanNode child = filter.getChildren().get(0);
 
         DerivedCost childCost = estimatePlanCostHelper(child, stats);
+        DerivedCost filteredCost = estimateSelectivity((WhereConditionNode)filter.predicate(), stats, childCost);
 
-        return childCost;
+        return filteredCost;
     }
 
     private SelectivityResult estimateSelectivityHelper(WhereConditionNode conditionNode, Map<String, Statistic> stats, DerivedCost derivedCost) {
@@ -136,47 +138,89 @@ public class CostEstimator {
             if (leftAttr == null ^ rightAttr == null) {
                 return new SelectivityResult(0,0);
             }
+            String attribute;
+            Object value = null;
+            if (leftAttr == null) {
+                attribute = rightAttr;
+                value = getExpressionValue(comp.leftOperand());
+            } else {
+                attribute = leftAttr;
+                value = getExpressionValue(comp.rightOperand());
+            }
             String singleAttribute = leftAttr == null ? rightAttr : leftAttr;
 
             String tableName = singleAttribute.substring(0, singleAttribute.indexOf('.'));
             String columnName = singleAttribute.substring(singleAttribute.indexOf('.') + 1);
             double sel = 1.0;
             Map<String, Integer> Vs = stats.get(tableName).V();
+            double V = stats.get(tableName).V().get(columnName);
+            Double max = (Double) stats.get(tableName).maxVal().get(columnName);
+            Double min = (Double) stats.get(tableName).minVal().get(columnName);
             switch (comp.operator().toUpperCase()) {
                 case "=":
                     // return use equality
-                    if (V != null)
+                    if (V != 0.0)
                         sel = 1.0 / V;
-                    return new SelectivityResult(sel, (int)(nr * sel));
+                    return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
                 case "<":
                 case "<=":
-                    if (min != null && max != null) {
-                        int v = (int) value;
+                    if (value instanceof Number num && min != null && max != null) {
+                        int v = (int) num;
                         if (v <= min) sel = 0;
                         else if (v >= max) sel = 1;
                         else sel = (double)(v - min) / (double)(max - min);
                     }
-                    return new SelectivityResult(sel, (int)(nr * sel));
+                    return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
                 case ">":
                 case ">=":
                     // return use inequality
-                    if (min != null && max != null) {
-                        int v = (int) value;
+                    if (value instanceof Number num && min != null && max != null) {
+                        int v = (int) num;
                         if (v >= max) sel = 0;
                         else if (v <= min) sel = 1;
                         else sel = (double)(max - v) / (double)(max - min);
                     }
-                    return new SelectivityResult(sel, (int)(nr * sel));
+                    return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
                 default:
                     throw new RuntimeException("Illegal binary condition operator");
             }
-        }
-        if (conditionNode instanceof LiteralConditionNode lit) {
+        } else if (conditionNode instanceof LiteralConditionNode lit) {
             if (lit.value())
                 return new SelectivityResult(1.0, derivedCost.nr());
             else
                 return new SelectivityResult(0.0, 0);
         }
+
+        throw new RuntimeException("Unknown condition node");
+    }
+
+    private Object getExpressionValue(ExpressionNode expr) {
+        Object first = getTermValue(expr.term());
+        if (first == null) return first;
+        for (TermPair remainder : expr.remainderTerms()) {
+            Object next = getTermValue(remainder.term());
+            if (next != null) return null;
+        }
+        return first;
+    }
+
+    private Object getTermValue(TermNode term) {
+        Object first = getFactorValue(term.factor());
+        if (first == null) return first;
+        for (FactorPair remainder : term.remainderFactors()) {
+            Object next = getFactorValue(remainder.factor());
+            if (next != null) return null;
+        }
+        return first;
+    }
+
+    private Object getFactorValue(FactorNode factor) {
+        if (factor instanceof LiteralFactor literal) {
+            return literal.value();
+        } else if (factor instanceof ExpressionNode expr) {
+            return getExpressionValue(expr);
+        }
+        return null;
     }
 
     // book only allow one attribute
@@ -208,6 +252,8 @@ public class CostEstimator {
                 colName = colName.substring(colName.indexOf('.') + 1);
             }
             return colName;
+        } else if (factor instanceof ExpressionNode expr) {
+            return getExpressionAttribute(expr);
         }
         return null;
     }
