@@ -1,6 +1,6 @@
-package com.apacy.queryoptimizer.ast.join;
+package com.apacy.common.dto.ast.join;
 
-import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
+import com.apacy.common.dto.ast.where.WhereConditionNode;
 
 /**
  * AST for join clauses.
