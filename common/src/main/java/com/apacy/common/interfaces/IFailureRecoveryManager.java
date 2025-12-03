@@ -9,7 +9,7 @@ import com.apacy.common.dto.Row;
  * Tugas: Mencatat log dan memulihkan data jika terjadi kegagalan.
  */
 public interface IFailureRecoveryManager {
-    
+
     void writeLog(ExecutionResult info);
 
     void writeDataLog(String transactionId, String operation, String tableName, Row dataBefore, Row dataAfter);
