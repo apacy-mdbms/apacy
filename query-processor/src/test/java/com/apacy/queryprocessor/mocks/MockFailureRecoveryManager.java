@@ -1,3 +1,9 @@
+package com.apacy.queryprocessor.mocks;
+
+import com.apacy.common.dto.ExecutionResult;
+import com.apacy.common.dto.RecoveryCriteria;
+import com.apacy.common.interfaces.IFailureRecoveryManager;
+
 public class MockFailureRecoveryManager implements IFailureRecoveryManager {
 
     @Override
