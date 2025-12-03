@@ -8,6 +8,7 @@ import java.util.Map;
 
 import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.plan.PlanNode;
+import com.apacy.common.dto.plan.SortNode;
 import com.apacy.queryoptimizer.ast.join.JoinConditionNode;
 import com.apacy.queryoptimizer.ast.join.JoinOperand;
 import com.apacy.queryoptimizer.ast.join.TableNode;
@@ -129,7 +130,8 @@ public class SelectParser extends AbstractParser {
             offsetValue = Integer.parseInt(offsetToken.getValue());
         }
 
-        if (peek().getType() == TokenType.SEMICOLON) consume(TokenType.SEMICOLON);
+        consume(TokenType.SEMICOLON);
+        consume(TokenType.EOF);
 
         Object joinConditions = joinAst;
         Object whereClause = where;

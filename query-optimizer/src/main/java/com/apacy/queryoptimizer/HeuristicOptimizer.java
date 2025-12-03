@@ -15,7 +15,6 @@ import com.apacy.queryoptimizer.rewriter.SelectionJoinRewriter;
 
 /**
  * Heuristic-based query optimizer that applies optimization rules.
- * TODO: Implement rule-based optimization including predicate pushdown, join reordering, and index selection
  */
 public class HeuristicOptimizer {
 
@@ -63,21 +62,13 @@ public class HeuristicOptimizer {
             true);
     }
 
-    /**
-     * Generate the best execution plan from multiple alternatives.
-     * TODO: Implement plan generation with cost comparison
-     */
+    @Deprecated
     public ParsedQuery generateBestPlan(ParsedQuery query, Map<String, Statistic> allStats) {
-        // TODO: Generate and compare multiple execution plans
         throw new UnsupportedOperationException("generateBestPlan not implemented yet");
     }
 
-    /**
-     * Rewrite query using transformation rules.
-     * TODO: Implement query rewriting using algebraic transformations
-     */
+    @Deprecated
     public ParsedQuery rewrite(ParsedQuery query) {
-        // TODO: Apply query rewriting rules
         throw new UnsupportedOperationException("rewrite not implemented yet");
     }
 }

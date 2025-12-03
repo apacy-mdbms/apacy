@@ -37,9 +37,9 @@ public class DeleteParser extends AbstractParser {
 
         // `DELETE FROM [TABLE NAME]
         // ...;`
-        if (peek().getType() == TokenType.SEMICOLON) {
-            consume(TokenType.SEMICOLON);
-        }
+
+        consume(TokenType.SEMICOLON);
+        consume(TokenType.EOF);
 
         TableNode sourceTable = new TableNode(tableToken.getValue());
         PlanNode searchPlan = generatePlanNode(sourceTable, where, null);

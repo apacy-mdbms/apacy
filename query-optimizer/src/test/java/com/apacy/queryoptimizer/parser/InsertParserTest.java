@@ -56,7 +56,7 @@ class InsertParserTest {
 
     @Test
     void testParseInsert_Fail_MismatchCount() {
-        String query = "INSERT INTO users (id, name) VALUES ('user1')"; // Kolom 2, Nilai 1
+        String query = "INSERT INTO users (id, name) VALUES ('user1');"; // Kolom 2, Nilai 1
 
         // Panggil parser.parse() di dalam assertThrows
         Exception exception = assertThrows(Exception.class, () -> {
