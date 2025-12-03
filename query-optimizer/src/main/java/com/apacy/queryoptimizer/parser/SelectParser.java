@@ -11,8 +11,13 @@ import com.apacy.common.dto.ast.join.JoinConditionNode;
 import com.apacy.common.dto.ast.join.JoinOperand;
 import com.apacy.common.dto.ast.join.TableNode;
 import com.apacy.common.dto.ast.where.WhereConditionNode;
+import com.apacy.common.dto.plan.LimitNode;
 import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.common.dto.plan.SortNode;
+import com.apacy.queryoptimizer.ast.join.JoinConditionNode;
+import com.apacy.queryoptimizer.ast.join.JoinOperand;
+import com.apacy.queryoptimizer.ast.join.TableNode;
+import com.apacy.queryoptimizer.ast.where.WhereConditionNode;
 
 public class SelectParser extends AbstractParser {
 
@@ -130,8 +135,7 @@ public class SelectParser extends AbstractParser {
             offsetValue = Integer.parseInt(offsetToken.getValue());
         }
 
-        consume(TokenType.SEMICOLON);
-        consume(TokenType.EOF);
+        if (peek().getType() == TokenType.SEMICOLON) consume(TokenType.SEMICOLON);
 
         Object joinConditions = joinAst;
         Object whereClause = where;
@@ -140,6 +144,11 @@ public class SelectParser extends AbstractParser {
 
         if (orderBy != null) {
             planRoot = new SortNode(planRoot, orderBy, isDesc);
+        }
+
+        if (limitValue != null) {
+            int finalOffset = (offsetValue != null) ? offsetValue : 0;
+            // planRoot = new LimitNode(planRoot, limitValue, finalOffset);
         }
 
         // Gunakan konstruktor BARU yang ada limit & offset
