@@ -1,13 +1,5 @@
 package com.apacy.failurerecoverymanager;
 
-import com.apacy.common.dto.ExecutionResult;
-import com.apacy.common.dto.RecoveryCriteria;
-import com.apacy.common.dto.Row;
-import com.apacy.failurerecoverymanager.mocks.MockStorageManagerForRecovery;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.AfterEach;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,7 +10,19 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.AfterEach;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import com.apacy.common.dto.ExecutionResult;
+import com.apacy.common.dto.RecoveryCriteria;
+import com.apacy.common.dto.Row;
+import com.apacy.failurerecoverymanager.mocks.MockStorageManagerForRecovery;
 
 class FailureRecoveryManagerTest {
 
@@ -29,16 +33,20 @@ class FailureRecoveryManagerTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        
+        // Clean up any existing log files and checkpoints
+        cleanupTestFiles();
         // Create a mock StorageManager for testing
         mockStorageManager = new MockStorageManagerForRecovery();
         failureRecoveryManager = new FailureRecoveryManager(mockStorageManager);
 
-        // Clean up any existing log files and checkpoints
-        cleanupTestFiles();
     }
 
     @AfterEach
-    void tearDown() {
+    void tearDown() throws IOException {
+        if (failureRecoveryManager != null) {
+            failureRecoveryManager.shutdown();
+        }
         // Clean up test files
         cleanupTestFiles();
     }
@@ -234,29 +242,29 @@ class FailureRecoveryManagerTest {
         assertTrue(entry.getDataAfter().toString().contains("New"));
     }
 
-    // @Test
-    // void testWriteLogCreatesLogFile() throws IOException {
-    // Row row = new Row(Map.of("id", 1, "name", "Test"));
-    // ExecutionResult result = new ExecutionResult(
-    // true,
-    // "Success",
-    // 111,
-    // "INSERT",
-    // 1,
-    // List.of(row));
-    //
-    // failureRecoveryManager.writeLog(result);
-    //
-    // // Give it a moment to write
-    // try {
-    // Thread.sleep(100);
-    // } catch (InterruptedException e) {
-    // // Ignore
-    // }
-    //
-    // // assertTrue(Files.exists(Paths.get(TEST_LOG_PATH)),
-    // // "Log file should be created");
-    // }
+    @Test
+    void testWriteLogCreatesLogFile() throws IOException {
+        Row row = new Row(Map.of("id", 1, "name", "Test"));
+        ExecutionResult result = new ExecutionResult(
+                true,
+                "Success",
+                111,
+                "INSERT",
+                1,
+                List.of(row));
+
+        failureRecoveryManager.writeLog(result);
+
+        // Give it a moment to write
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            // Ignore
+        }
+
+        assertTrue(Files.exists(Paths.get(TEST_LOG_PATH)),
+                "Log file should be created");
+    }
 
     @Test
     void testMultipleWriteLogCalls() {
@@ -346,8 +354,8 @@ class FailureRecoveryManagerTest {
     void testRecoverWithUndoTransactionType() throws IOException {
         // Create a log with transaction to undo
         createTestLog(
-                "1000|TX1|BEGIN|employees|-",
-                "1001|TX1|INSERT|employees|Row{data={id=1, name=John}}");
+                createJsonLogEntry(1000, "TX1", "BEGIN", "employees", null, null),
+                createJsonLogEntry(1001, "TX1", "INSERT", "employees", null, "Row{data={id=1, name=John}}"));
 
         RecoveryCriteria criteria = new RecoveryCriteria("UNDO_TRANSACTION", "TX1", null);
 
@@ -371,9 +379,9 @@ class FailureRecoveryManagerTest {
     void testRecoverWithPointInTimeType() throws IOException {
         // Create a log with operations to replay
         createTestLog(
-                "1000|TX2|BEGIN|employees|-",
-                "1001|TX2|INSERT|employees|Row{data={id=1, name=Jane}}",
-                "1002|TX2|COMMIT|employees|-");
+                createJsonLogEntry(1000, "TX2", "BEGIN", "employees", null, null),
+                createJsonLogEntry(1001, "TX2", "INSERT", "employees", null, "Row{data={id=1, name=Jane}}"),
+                createJsonLogEntry(1002, "TX2", "COMMIT", "employees", null, null));
 
         RecoveryCriteria criteria = new RecoveryCriteria("POINT_IN_TIME", null, null);
 
@@ -388,9 +396,10 @@ class FailureRecoveryManagerTest {
     @Test
     void testRecoverPointInTimeWithTargetTimestampRollsBackChanges() throws IOException {
         createTestLog(
-                "1000|TX7|BEGIN|employees|-|-",
-                "1001|TX7|INSERT|employees|-|Row{data={id=1, name=Before}}",
-                "1002|TX7|UPDATE|employees|Row{data={id=1, name=Before}}|Row{data={id=1, name=After}}");
+                createJsonLogEntry(1000, "TX7", "BEGIN", "employees", null, null),
+                createJsonLogEntry(1001, "TX7", "INSERT", "employees", null, "Row{data={id=1, name=Before}}"),
+                createJsonLogEntry(1002, "TX7", "UPDATE", "employees", "Row{data={id=1, name=Before}}",
+                        "Row{data={id=1, name=After}}"));
 
         LocalDateTime cutoff = LocalDateTime.ofInstant(Instant.ofEpochMilli(1002), ZoneOffset.UTC);
         RecoveryCriteria criteria = new RecoveryCriteria("POINT_IN_TIME", null, cutoff);
@@ -407,8 +416,8 @@ class FailureRecoveryManagerTest {
     @Test
     void testRecoverWithUnknownRecoveryType() throws IOException {
         createTestLog(
-                "1000|TX3|BEGIN|test|-",
-                "1001|TX3|INSERT|test|Row{data={id=1}}");
+                createJsonLogEntry(1000, "TX3", "BEGIN", "test", null, null),
+                createJsonLogEntry(1001, "TX3", "INSERT", "test", null, "Row{data={id=1}}"));
 
         RecoveryCriteria criteria = new RecoveryCriteria("UNKNOWN_TYPE", "TX3", null);
 
@@ -427,10 +436,10 @@ class FailureRecoveryManagerTest {
     @Test
     void testRecoverWithMultipleCriteria() throws IOException {
         createTestLog(
-                "1000|TX5|BEGIN|test|-",
-                "1001|TX5|INSERT|test|Row{data={id=1}}",
-                "1002|TX5|UPDATE|test|Row{data={id=1, name=Updated}}",
-                "1003|TX5|COMMIT|test|-");
+                createJsonLogEntry(1000, "TX5", "BEGIN", "test", null, null),
+                createJsonLogEntry(1001, "TX5", "INSERT", "test", null, "Row{data={id=1}}"),
+                createJsonLogEntry(1002, "TX5", "UPDATE", "test", null, "Row{data={id=1, name=Updated}}"),
+                createJsonLogEntry(1003, "TX5", "COMMIT", "test", null, null));
 
         RecoveryCriteria[] criteriaArray = {
                 new RecoveryCriteria("UNDO_TRANSACTION", "TX5", null),
@@ -484,10 +493,11 @@ class FailureRecoveryManagerTest {
     void testUndoTransactionAfterFailure() throws IOException {
         // Simulate a transaction that needs to be undone
         createTestLog(
-                "1000|TX200|BEGIN|employees|-",
-                "1001|TX200|INSERT|employees|Row{data={id=1, name=John}}",
-                "1002|TX200|INSERT|employees|Row{data={id=2, name=Jane}}",
-                "1003|TX200|UPDATE|employees|Row{data={id=1, name=OldJohn}}"
+                createJsonLogEntry(1000, "TX200", "BEGIN", "employees", null, null),
+                createJsonLogEntry(1001, "TX200", "INSERT", "employees", null, "Row{data={id=1, name=John}}"),
+                createJsonLogEntry(1002, "TX200", "INSERT", "employees", null, "Row{data={id=2, name=Jane}}"),
+                createJsonLogEntry(1003, "TX200", "UPDATE", "employees", "Row{data={id=1, name=OldJohn}}",
+                        "Row{data={id=1, name=NewJohn}}")
         // No COMMIT - transaction incomplete
         );
 
@@ -529,7 +539,17 @@ class FailureRecoveryManagerTest {
     }
 
     private void resetWal() throws IOException {
-        failureRecoveryManager.getLogWriter().rotateLog();
+        // Simple approach: truncate the log file to empty it out
+        Path logPath = Paths.get(TEST_LOG_PATH);
+        Files.createDirectories(logPath.getParent());
+        // Truncate the file to 0 bytes if it exists
+        try (var channel = java.nio.channels.FileChannel.open(logPath,
+                java.nio.file.StandardOpenOption.WRITE,
+                java.nio.file.StandardOpenOption.CREATE)) {
+            channel.truncate(0);
+        } catch (IOException e) {
+            // If file is locked, just continue - the test will work with clean state
+        }
     }
 
     private String readLastLogLine() throws IOException {
@@ -545,5 +565,16 @@ class FailureRecoveryManagerTest {
             }
         }
         return null;
+    }
+
+    private String createJsonLogEntry(long timestamp, String transactionId, String operation,
+            String tableName, String dataBefore, String dataAfter) {
+        return "{" +
+                "\"timestamp\": " + timestamp + ", " +
+                "\"transactionId\": \"" + transactionId + "\", " +
+                "\"operation\": \"" + operation + "\", " +
+                "\"tableName\": \"" + tableName + "\", " +
+                "\"dataBefore\": \"" + (dataBefore != null ? dataBefore : "-") + "\", " +
+                "\"dataAfter\": \"" + (dataAfter != null ? dataAfter : "-") + "\"}";
     }
 }

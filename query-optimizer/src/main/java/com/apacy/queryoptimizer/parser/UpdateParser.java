@@ -5,10 +5,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.apacy.common.dto.ParsedQuery;
-import com.apacy.common.dto.plan.ModifyNode;
-import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.common.dto.ast.join.TableNode;
 import com.apacy.common.dto.ast.where.WhereConditionNode;
+import com.apacy.common.dto.plan.ModifyNode;
+import com.apacy.common.dto.plan.PlanNode;
 
 /**
  * Parser for UPDATE query

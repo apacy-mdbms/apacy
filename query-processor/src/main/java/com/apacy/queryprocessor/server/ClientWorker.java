@@ -1,14 +1,14 @@
 package com.apacy.queryprocessor.server;
 
-import com.apacy.common.dto.ExecutionResult;
-import com.apacy.queryprocessor.QueryProcessor;
-
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.net.SocketException;
+
+import com.apacy.common.dto.ExecutionResult;
+import com.apacy.queryprocessor.QueryProcessor;
 
 /**
  * Worker thread yang menangani satu koneksi client
@@ -18,6 +18,7 @@ public class ClientWorker implements Runnable {
     private final QueryProcessor queryProcessor;
     private ObjectInputStream inputStream;
     private ObjectOutputStream outputStream;
+    private int currentTxId = -1;
     
     public ClientWorker(Socket clientSocket, QueryProcessor queryProcessor) {
         this.clientSocket = clientSocket;
@@ -60,7 +61,24 @@ public class ClientWorker implements Runnable {
                     // Execute query menggunakan QueryProcessor
                     ExecutionResult result;
                     try {
-                        result = queryProcessor.executeQuery(sqlQuery);
+                        result = queryProcessor.executeQuery(sqlQuery, currentTxId);
+                        if (result.success()) {
+                            String op = result.operation().toUpperCase();
+                            
+                            if (op.equals("BEGIN") || op.equals("BEGIN TRANSACTION")) {
+                                this.currentTxId = result.transactionId();
+                                System.out.println("Session " + clientSocket.getInetAddress() + " started Tx: " + currentTxId);
+                            } 
+                            else if (op.equals("COMMIT") || op.equals("ROLLBACK") || op.equals("ABORT")) {
+                                System.out.println("Session " + clientSocket.getInetAddress() + " finished Tx: " + currentTxId);
+                                this.currentTxId = -1;
+                            }
+                        } else {
+                            if (this.currentTxId != -1) {
+                                System.out.println("Session " + clientSocket.getInetAddress() + " Tx " + currentTxId + " aborted by server due to error.");
+                                this.currentTxId = -1;
+                            }
+                        }
                     } catch (Exception e) {
                         // Handle execution error
                         result = new ExecutionResult(
@@ -68,6 +86,10 @@ public class ClientWorker implements Runnable {
                             0, "ERROR", 0, null
                         );
                         e.printStackTrace();
+
+                        if (this.currentTxId != -1) {
+                            this.currentTxId = -1;
+                        }
                     }
                     
                     // Kirim hasil kembali ke client

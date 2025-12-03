@@ -3,12 +3,13 @@ package com.apacy.common.dto.plan;
 import java.util.List;
 
 /**
- * Merepresentasikan klausa LIMIT.
+ * Merepresentasikan klausa LIMIT atau OFFSET.
  * Membatasi jumlah baris yang mengalir ke atas pohon.
  */
 public record LimitNode(
     PlanNode child,
-    int limit
+    int limit,
+    int offset
 ) implements PlanNode {
     private static final long serialVersionUID = 1L;
 

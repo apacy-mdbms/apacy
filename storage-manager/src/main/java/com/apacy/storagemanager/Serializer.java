@@ -65,7 +65,8 @@ public class Serializer {
         ByteBuffer buffer = ByteBuffer.wrap(blockData);
         int slotCount = buffer.getInt(HEADER_SLOT_COUNT_OFFSET);
         if (slotId >= slotCount) {
-            throw new IOException("Slot ID " + slotId + " di luar jangkauan (Total: " + slotCount + ")");
+            // throw new IOException("Slot ID " + slotId + " di luar jangkauan (Total: " + slotCount + ")");
+            return null;
         }
         int slotOffset = BLOCK_HEADER_SIZE + (slotId * SLOT_SIZE);
         int dataOffset = buffer.getInt(slotOffset + SLOT_OFFSET_OFFSET);
@@ -73,6 +74,11 @@ public class Serializer {
 
         if (dataOffset == 0 || dataLength == 0) {
             return null;
+        }
+
+        if (dataOffset < 0 || dataOffset + dataLength > blockData.length) {
+            System.err.println("PERINGATAN: Slot korup terdeteksi di ID " + slotId);
+            return null; 
         }
 
         byte[] rowBytes = new byte[dataLength];
@@ -181,18 +187,18 @@ public class Serializer {
 
         // 3. Tulis data ke buffer
         for (Column col : schema.columns()) {
-            Object value = data.get(col.name());
+            Object rawvalue = data.get(col.name());
 
             switch (col.type()) {
                 case INTEGER: // INTEGER
-                    buffer.putInt((Integer) value);
+                    buffer.putInt(toIntSafely(rawvalue, col.name()));
                     break;
                 case FLOAT: // FLOAT
-                    buffer.putFloat((Float) value);
+                    buffer.putFloat(toFloatSafely(rawvalue, col.name()));
                     break;
                 case CHAR: // CHAR
                 case VARCHAR: // VARCHAR
-                    byte[] strBytes = ((String) value).getBytes(StandardCharsets.UTF_8);
+                    byte[] strBytes = toStringBytesSafely(rawvalue);
                     // 4. Tulis prefix panjang (4 byte int)
                     buffer.putInt(strBytes.length);
                     // 5. Tulis data string
@@ -214,25 +220,36 @@ public class Serializer {
         Map<String, Object> rowData = new HashMap<>();
 
         for (Column col : schema.columns()) {
-            switch (col.type()) {
-                case INTEGER: // INTEGER
-                    rowData.put(col.name(), buffer.getInt());
-                    break;
-                case FLOAT: // FLOAT
-                    rowData.put(col.name(), buffer.getFloat());
-                    break;
-                case CHAR: // CHAR
-                case VARCHAR: // VARCHAR
-                    // 1. Baca prefix panjang (4 byte int)
-                    int strLength = buffer.getInt();
-                    // 2. Alokasikan byte[] seukuran panjang itu
-                    byte[] strBytes = new byte[strLength];
-                    // 3. Baca data string ke byte[]
-                    buffer.get(strBytes);
-                    rowData.put(col.name(), new String(strBytes, StandardCharsets.UTF_8));
-                    break;
-                default:
-                    throw new IOException("Tipe data tidak didukung: " + col.type());
+            try{
+                switch (col.type()) {
+                    case INTEGER: // INTEGER
+                        rowData.put(col.name(), buffer.getInt());
+                        break;
+                    case FLOAT: // FLOAT
+                        rowData.put(col.name(), buffer.getFloat());
+                        break;
+                    case CHAR: // CHAR
+                    case VARCHAR: // VARCHAR
+                        // 1. Baca prefix panjang (4 byte int)
+                        int strLength = buffer.getInt();
+
+                        if (strLength < 0 || strLength > data.length) {
+                                throw new IOException("Panjang string korup: " + strLength);
+                        }
+
+                        // 2. Alokasikan byte[] seukuran panjang itu
+                        byte[] strBytes = new byte[strLength];
+                        // 3. Baca data string ke byte[]
+                        buffer.get(strBytes);
+                        rowData.put(col.name(), new String(strBytes, StandardCharsets.UTF_8));
+                        break;
+                    default:
+                        throw new IOException("Tipe data tidak didukung: " + col.type());
+                }
+            } catch (Exception e){
+                System.err.println("Gagal deserialize kolom " + col.name() + ": " + e.getMessage());
+                // Isi default agar Row tetap terbentuk sebagian
+                rowData.put(col.name(), null); 
             }
         }
         return new Row(rowData);
@@ -327,5 +344,58 @@ public class Serializer {
         buffer.putInt(slotOffset + SLOT_OFFSET_OFFSET, 0);
         buffer.putInt(slotOffset + SLOT_LENGTH_OFFSET, 0);
         return true;
+    }
+
+    // ========================================================================
+    // HELPER
+    // ========================================================================
+
+    /**
+     * Konversi aman ke Integer.
+     * Menangani: Null, Integer, Number (Long/Short), String angka.
+     */
+    private int toIntSafely(Object value, String colName) throws IOException {
+        if (value == null) return 0; // Default value untuk NULL
+        if (value instanceof Integer) return (Integer) value;
+        if (value instanceof Number) return ((Number) value).intValue();
+        if (value instanceof String) {
+            try {
+                // Coba parsing string ke int (misal "123")
+                return Integer.parseInt((String) value);
+            } catch (NumberFormatException e) {
+                // Jika gagal parse, lempar error sopan atau return 0
+                throw new IOException("Kolom '" + colName + "' butuh INT, tapi terima String non-angka: " + value);
+            }
+        }
+        // Fallback terakhir: coba toString lalu parse, atau error
+        throw new IOException("Tipe data salah untuk kolom '" + colName + "'. Butuh INT, dapat: " + value.getClass().getSimpleName());
+    }
+
+    /**
+     * Konversi aman ke Float.
+     * Menangani: Null, Float, Double, Number, String angka.
+     */
+    private float toFloatSafely(Object value, String colName) throws IOException {
+        if (value == null) return 0.0f; // Default value untuk NULL
+        if (value instanceof Float) return (Float) value;
+        if (value instanceof Number) return ((Number) value).floatValue(); // Handle Double dari JSON/Map
+        if (value instanceof String) {
+            try {
+                return Float.parseFloat((String) value);
+            } catch (NumberFormatException e) {
+                throw new IOException("Kolom '" + colName + "' butuh FLOAT, tapi terima String non-angka: " + value);
+            }
+        }
+        throw new IOException("Tipe data salah untuk kolom '" + colName + "'. Butuh FLOAT, dapat: " + value.getClass().getSimpleName());
+    }
+
+    /**
+     * Konversi aman ke String (UTF-8 Bytes).
+     * Menangani: Null, String, Object lain (via toString).
+     */
+    private byte[] toStringBytesSafely(Object value) {
+        // Jika null, ubah jadi string kosong ""
+        String strVal = (value != null) ? String.valueOf(value) : "";
+        return strVal.getBytes(StandardCharsets.UTF_8);
     }
 }

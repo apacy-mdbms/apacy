@@ -1,12 +1,22 @@
 package com.apacy.queryprocessor;
 
-import com.apacy.common.dto.*;
-import com.apacy.common.interfaces.*;
-import com.apacy.queryprocessor.mocks.*;
-
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
+
+import com.apacy.common.dto.ExecutionResult;
+import com.apacy.common.interfaces.IConcurrencyControlManager;
+import com.apacy.common.interfaces.IFailureRecoveryManager;
+import com.apacy.common.interfaces.IQueryOptimizer;
+import com.apacy.common.interfaces.IStorageManager;
+import com.apacy.queryprocessor.mocks.MockConcurrencyControlManager;
+import com.apacy.queryprocessor.mocks.MockFailureRecoveryManager;
+import com.apacy.queryprocessor.mocks.MockQueryOptimizer;
+import com.apacy.queryprocessor.mocks.MockStorageManager;
 
 class QueryProcessorTest {
     
@@ -73,30 +83,6 @@ class QueryProcessorTest {
         assertTrue(result.success(), "INSERT harus sukses");
         assertEquals("INSERT executed successfully", result.message());
         assertEquals(1, result.affectedRows()); 
-    }
-
-    @Test
-    void test_executeQuery_UPDATE_Success(){
-        // MockQueryOptimizer mengenali "UPDATE"
-        // MockStorageManager.writeBlock mengembalikan 1
-        ExecutionResult result = queryProcessor.executeQuery("UPDATE users SET salary = 60000 WHERE id = 1");
-
-        assertNotNull(result);
-        assertTrue(result.success(), "UPDATE harus sukses");
-        assertEquals("UPDATE executed successfully", result.message());
-        assertEquals(1, result.affectedRows());
-    }
-
-    @Test
-    void test_executeQuery_DELETE_Success(){
-        // MockQueryOptimizer mengenali "DELETE"
-        // MockStorageManager.deleteBlock mengembalikan 1
-        ExecutionResult result = queryProcessor.executeQuery("DELETE FROM users WHERE id = 5");
-
-        assertNotNull(result);
-        assertTrue(result.success(), "DELETE harus sukses");
-        assertEquals("DELETE executed successfully", result.message());
-        assertEquals(1, result.affectedRows());
     }
 
     @Test

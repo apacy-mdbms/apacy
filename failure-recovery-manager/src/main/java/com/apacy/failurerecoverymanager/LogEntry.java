@@ -1,12 +1,5 @@
 package com.apacy.failurerecoverymanager;
 
-/**
- * LogEntry extended to store dataBefore (old) and dataAfter (new).
- * toString() uses pipe-separated fields:
- * timestamp|transactionId|operation|tableName|dataBefore|dataAfter
- *
- * dataBefore/dataAfter are serialized via their toString() (Row or "-")
- */
 public class LogEntry {
 
     private String transactionId;
@@ -15,6 +8,10 @@ public class LogEntry {
     private Object dataBefore; // old values
     private Object dataAfter;  // new values
     private long timestamp;
+
+    public LogEntry() {
+        this.timestamp = System.currentTimeMillis();
+    }
 
     public LogEntry(long timestamp, String transactionId, String operation, String tableName, Object dataBefore, Object dataAfter) {
         this.timestamp = timestamp;
@@ -37,7 +34,7 @@ public class LogEntry {
     public Object getDataAfter() { return dataAfter; }
     public long getTimestamp() { return timestamp; }
 
-    // Setters if needed
+    // Setters
     public void setTransactionId(String transactionId) { this.transactionId = transactionId; }
     public void setOperation(String operation) { this.operation = operation; }
     public void setTableName(String tableName) { this.tableName = tableName; }
@@ -45,58 +42,93 @@ public class LogEntry {
     public void setDataAfter(Object dataAfter) { this.dataAfter = dataAfter; }
     public void setTimestamp(long timestamp) { this.timestamp = timestamp; }
 
-    /**
-     * Format:
-     * timestamp|transactionId|operation|tableName|dataBefore|dataAfter
-     *
-     * Use '-' for nulls.
-     */
     @Override
     public String toString() {
-        String safeBefore = (dataBefore != null ? dataBefore.toString().replace("\n"," ").replace("|"," ") : "-");
-        String safeAfter  = (dataAfter  != null ? dataAfter.toString().replace("\n"," ").replace("|"," ")  : "-");
-
-        return timestamp + "|" +
-                (transactionId != null ? transactionId : "-") + "|" +
-                (operation != null ? operation : "-") + "|" +
-                (tableName != null ? tableName : "-") + "|" +
-                safeBefore + "|" +
-                safeAfter;
+        // Handle format log JSON
+        return "{" +
+                "\"timestamp\": " + timestamp + ", " +
+                "\"transactionId\": \"" + (transactionId != null ? transactionId : "-") + "\", " +
+                "\"operation\": \"" + (operation != null ? operation : "-") + "\", " +
+                "\"tableName\": \"" + (tableName != null ? tableName : "-") + "\", " +
+                "\"dataBefore\": \"" + (dataBefore != null ? dataBefore.toString() : "-") + "\", " +
+                "\"dataAfter\": \"" + (dataAfter != null ? dataAfter.toString() : "-") + "\"}";
     }
 
-    /**
-     * Backwards-compatible parser for lines written by the new format.
-     * If a line has 6 parts, map to the new fields.
-     * If it has 5 parts (old format), map dataAfter -> dataAfter and dataBefore = null
-     */
-    public static LogEntry fromLogLine(String line) {
-        if (line == null) return null;
-        String[] parts = line.split("\\|", 6);
+
+    //Parse log JSON ke LogEntry
+    public static LogEntry fromLogLine(String jsonLine) {
+        if (jsonLine == null || jsonLine.trim().isEmpty()) return null;
+        
         try {
-            if (parts.length == 6) {
-                long ts = Long.parseLong(parts[0]);
-                String tx = "-".equals(parts[1]) ? null : parts[1];
-                String op = "-".equals(parts[2]) ? null : parts[2];
-                String table = "-".equals(parts[3]) ? null : parts[3];
-                String before = "-".equals(parts[4]) ? null : parts[4];
-                String after  = "-".equals(parts[5]) ? null : parts[5];
-                return new LogEntry(ts, tx, op, table, before, after);
-            } else if (parts.length == 5) {
-                // old format: timestamp|txId|op|table|data
-                long ts = Long.parseLong(parts[0]);
-                String tx = "-".equals(parts[1]) ? null : parts[1];
-                String op = "-".equals(parts[2]) ? null : parts[2];
-                String table = "-".equals(parts[3]) ? null : parts[3];
-                String data = "-".equals(parts[4]) ? null : parts[4];
-                if (op != null && (op.equalsIgnoreCase("DELETE") || op.equalsIgnoreCase("UPDATE"))) {
-                    return new LogEntry(ts, tx, op, table, data, null);
-                }
-                return new LogEntry(ts, tx, op, table, null, data);
-            } else {
+            jsonLine = jsonLine.trim();
+            if (!jsonLine.startsWith("{") || !jsonLine.endsWith("}")) {
                 return null;
             }
+            
+            long ts = System.currentTimeMillis();
+            String tx = null;
+            String op = null;
+            String table = null;
+            String before = null;
+            String after = null;
+            
+            // Manual JSON parsing 
+            String content = jsonLine.substring(1, jsonLine.length() - 1); // Remove { }
+            
+            // Parse timestamp 
+            int timestampIndex = content.indexOf("\"timestamp\":");
+            if (timestampIndex >= 0) {
+                int colonIndex = content.indexOf(":", timestampIndex);
+                int commaIndex = content.indexOf(",", colonIndex);
+                if (commaIndex < 0) commaIndex = content.length();
+                String tsStr = content.substring(colonIndex + 1, commaIndex).trim();
+                try {
+                    ts = Long.parseLong(tsStr);
+                } catch (NumberFormatException e) {
+                    ts = System.currentTimeMillis();
+                }
+            }
+            
+            // Parse string lainnya
+            tx = extractJsonField(content, "transactionId");
+            op = extractJsonField(content, "operation");
+            table = extractJsonField(content, "tableName");
+            before = extractJsonField(content, "dataBefore");
+            after = extractJsonField(content, "dataAfter");
+            
+            // "-" dianggap null
+            tx = "-".equals(tx) ? null : tx;
+            op = "-".equals(op) ? null : op;
+            table = "-".equals(table) ? null : table;
+            before = "-".equals(before) ? null : before;
+            after = "-".equals(after) ? null : after;
+            
+            return new LogEntry(ts, tx, op, table, before, after);
         } catch (Exception e) {
+            System.err.println("Failed to parse log line: " + e.getMessage());
             return null;
         }
+    }
+    
+    private static String extractJsonField(String jsonContent, String fieldName) {
+        int index = jsonContent.indexOf("\"" + fieldName + "\":");
+        if (index < 0) return null;
+        
+        int colonIndex = jsonContent.indexOf(":", index);
+        int startQuote = jsonContent.indexOf("\"", colonIndex) + 1;
+        if (startQuote <= colonIndex) return null;
+        
+        int endQuote = startQuote;
+        while (endQuote < jsonContent.length()) {
+            if (jsonContent.charAt(endQuote) == '"' && 
+                (endQuote == 0 || jsonContent.charAt(endQuote - 1) != '\\')) {
+                break;
+            }
+            endQuote++;
+        }
+        
+        if (endQuote >= jsonContent.length()) return null;
+        
+        return jsonContent.substring(startQuote, endQuote);
     }
 }

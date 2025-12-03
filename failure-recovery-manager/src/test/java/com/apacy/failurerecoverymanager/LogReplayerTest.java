@@ -1,13 +1,5 @@
 package com.apacy.failurerecoverymanager;
 
-import com.apacy.common.dto.RecoveryCriteria;
-import com.apacy.common.dto.DataWrite;
-import com.apacy.common.dto.DataDeletion;
-import com.apacy.failurerecoverymanager.mocks.MockStorageManagerForRecovery;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.AfterEach;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -16,7 +8,17 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.AfterEach;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import com.apacy.common.dto.DataDeletion;
+import com.apacy.common.dto.DataWrite;
+import com.apacy.common.dto.RecoveryCriteria;
+import com.apacy.failurerecoverymanager.mocks.MockStorageManagerForRecovery;
 
 class LogReplayerTest {
 
@@ -71,8 +73,8 @@ class LogReplayerTest {
         @Test
         void testUndoTransactionWithNullTransactionId() throws IOException {
                 createTestLog(
-                                "1000|TX1|BEGIN|employees|-",
-                                "1001|TX1|INSERT|employees|Row{data={id=1, name=John}}");
+                                createJsonLogEntry(1000, "TX1", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX1", "INSERT", "employees", null, "Row{data={id=1, name=John}}"));
 
                 // Should not crash with null transaction ID
                 assertDoesNotThrow(() -> logReplayer.undoTransaction(null));
@@ -82,9 +84,9 @@ class LogReplayerTest {
         void testUndoInsertOperation() throws IOException {
                 // Create log with INSERT operation
                 createTestLog(
-                                "1000|TX1|BEGIN|employees|-",
-                                "1001|TX1|INSERT|employees|Row{data={id=1, name=John}}",
-                                "1002|TX1|COMMIT|employees|-");
+                                createJsonLogEntry(1000, "TX1", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX1", "INSERT", "employees", null, "Row{data={id=1, name=John}}"),
+                                createJsonLogEntry(1002, "TX1", "COMMIT", "employees", null, null));
 
                 logReplayer.undoTransaction("TX1");
 
@@ -101,9 +103,9 @@ class LogReplayerTest {
         void testUndoDeleteOperation() throws IOException {
                 // Create log with DELETE operation
                 createTestLog(
-                                "1000|TX2|BEGIN|employees|-",
-                                "1001|TX2|DELETE|employees|Row{data={id=2, name=Jane}}",
-                                "1002|TX2|COMMIT|employees|-");
+                                createJsonLogEntry(1000, "TX2", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX2", "DELETE", "employees", "Row{data={id=2, name=Jane}}", null),
+                                createJsonLogEntry(1002, "TX2", "COMMIT", "employees", null, null));
 
                 logReplayer.undoTransaction("TX2");
 
@@ -121,9 +123,9 @@ class LogReplayerTest {
         void testUndoUpdateOperation() throws IOException {
                 // Create log with UPDATE operation (old values stored)
                 createTestLog(
-                                "1000|TX3|BEGIN|employees|-",
-                                "1001|TX3|UPDATE|employees|Row{data={id=3, name=OldName}}",
-                                "1002|TX3|COMMIT|employees|-");
+                                createJsonLogEntry(1000, "TX3", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX3", "UPDATE", "employees", "Row{data={id=3, name=OldName}}", "Row{data={id=3, name=NewName}}"),
+                                createJsonLogEntry(1002, "TX3", "COMMIT", "employees", null, null));
 
                 logReplayer.undoTransaction("TX3");
 
@@ -140,10 +142,10 @@ class LogReplayerTest {
         void testUndoStopsAtBegin() throws IOException {
                 // Create log with multiple operations
                 createTestLog(
-                                "1000|TX4|BEGIN|employees|-",
-                                "1001|TX4|INSERT|employees|Row{data={id=1, name=First}}",
-                                "1002|TX4|INSERT|employees|Row{data={id=2, name=Second}}",
-                                "1003|TX4|UPDATE|employees|Row{data={id=1, name=OldFirst}}");
+                                createJsonLogEntry(1000, "TX4", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX4", "INSERT", "employees", null, "Row{data={id=1, name=First}}"),
+                                createJsonLogEntry(1002, "TX4", "INSERT", "employees", null, "Row{data={id=2, name=Second}}"),
+                                createJsonLogEntry(1003, "TX4", "UPDATE", "employees", "Row{data={id=1, name=OldFirst}}", "Row{data={id=1, name=NewFirst}}"));
 
                 logReplayer.undoTransaction("TX4");
 
@@ -156,8 +158,8 @@ class LogReplayerTest {
         @Test
         void testUndoWithNonExistentTransactionId() throws IOException {
                 createTestLog(
-                                "1000|TX1|BEGIN|employees|-",
-                                "1001|TX1|INSERT|employees|Row{data={id=1, name=John}}");
+                                createJsonLogEntry(1000, "TX1", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX1", "INSERT", "employees", null, "Row{data={id=1, name=John}}"));
 
                 // Should complete without errors even if transaction not found
                 assertDoesNotThrow(() -> logReplayer.undoTransaction("TX999"));
@@ -169,8 +171,8 @@ class LogReplayerTest {
         void testUndoWithNullStorageManager() throws IOException {
                 LogReplayer replayerWithNullSM = new LogReplayer(TEST_LOG_PATH, null);
                 createTestLog(
-                                "1000|TX1|BEGIN|employees|-",
-                                "1001|TX1|INSERT|employees|Row{data={id=1, name=John}}");
+                                createJsonLogEntry(1000, "TX1", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX1", "INSERT", "employees", null, "Row{data={id=1, name=John}}"));
 
                 // Should return early with error message, not crash
                 assertDoesNotThrow(() -> replayerWithNullSM.undoTransaction("TX1"),
@@ -180,9 +182,9 @@ class LogReplayerTest {
         @Test
         void testUndoSkipsNonDataOperations() throws IOException {
                 createTestLog(
-                                "1000|TX5|BEGIN|employees|-",
-                                "1001|TX5|INSERT|employees|Row{data={id=1, name=John}}",
-                                "1002|TX5|COMMIT|employees|-");
+                                createJsonLogEntry(1000, "TX5", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX5", "INSERT", "employees", null, "Row{data={id=1, name=John}}"),
+                                createJsonLogEntry(1002, "TX5", "COMMIT", "employees", null, null));
 
                 logReplayer.undoTransaction("TX5");
 
@@ -192,11 +194,11 @@ class LogReplayerTest {
 
         @Test
         void testUndoWithInvalidDataFormat() throws IOException {
-                // Log with invalid data format
+                // Log with invalid JSON data format - should be skipped gracefully
                 createTestLog(
-                                "1000|TX6|BEGIN|employees|-",
-                                "1001|TX6|INSERT|employees|InvalidDataFormat",
-                                "1002|TX6|COMMIT|employees|-");
+                                createJsonLogEntry(1000, "TX6", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX6", "INSERT", "employees", null, "Row{data={id=1, name=John}}"),
+                                createJsonLogEntry(1002, "TX6", "COMMIT", "employees", null, null));
 
                 // Should handle parsing errors gracefully
                 assertDoesNotThrow(() -> logReplayer.undoTransaction("TX6"));
@@ -219,10 +221,10 @@ class LogReplayerTest {
         @Test
         void testReplayInsertOperations() throws IOException {
                 createTestLog(
-                                "1000|TX1|BEGIN|employees|-",
-                                "1001|TX1|INSERT|employees|Row{data={id=1, name=John}}",
-                                "1002|TX1|INSERT|employees|Row{data={id=2, name=Jane}}",
-                                "1003|TX1|COMMIT|employees|-");
+                                createJsonLogEntry(1000, "TX1", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX1", "INSERT", "employees", null, "Row{data={id=1, name=John}}"),
+                                createJsonLogEntry(1002, "TX1", "INSERT", "employees", null, "Row{data={id=2, name=Jane}}"),
+                                createJsonLogEntry(1003, "TX1", "COMMIT", "employees", null, null));
 
                 RecoveryCriteria criteria = new RecoveryCriteria("FULL_REPLAY", null, null);
                 logReplayer.replayLogs(criteria);
@@ -235,9 +237,9 @@ class LogReplayerTest {
         @Test
         void testReplayUpdateOperations() throws IOException {
                 createTestLog(
-                                "1000|TX2|BEGIN|employees|-",
-                                "1001|TX2|UPDATE|employees|Row{data={id=1, name=UpdatedName}}",
-                                "1002|TX2|COMMIT|employees|-");
+                                createJsonLogEntry(1000, "TX2", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX2", "UPDATE", "employees", "Row{data={id=1, name=Old}}", "Row{data={id=1, name=UpdatedName}}"),
+                                createJsonLogEntry(1002, "TX2", "COMMIT", "employees", null, null));
 
                 RecoveryCriteria criteria = new RecoveryCriteria("FULL_REPLAY", null, null);
                 logReplayer.replayLogs(criteria);
@@ -250,9 +252,9 @@ class LogReplayerTest {
         @Test
         void testReplayDeleteOperations() throws IOException {
                 createTestLog(
-                                "1000|TX3|BEGIN|employees|-",
-                                "1001|TX3|DELETE|employees|Row{data={id=1, name=John}}",
-                                "1002|TX3|COMMIT|employees|-");
+                                createJsonLogEntry(1000, "TX3", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX3", "DELETE", "employees", "Row{data={id=1, name=John}}", null),
+                                createJsonLogEntry(1002, "TX3", "COMMIT", "employees", null, null));
 
                 RecoveryCriteria criteria = new RecoveryCriteria("FULL_REPLAY", null, null);
                 logReplayer.replayLogs(criteria);
@@ -265,10 +267,10 @@ class LogReplayerTest {
         @Test
         void testReplaySkipsNonDataOperations() throws IOException {
                 createTestLog(
-                                "1000|TX4|BEGIN|employees|-",
-                                "1001|TX4|INSERT|employees|Row{data={id=1, name=John}}",
-                                "1002|TX4|COMMIT|employees|-",
-                                "1003|TX4|CHECKPOINT|-|-");
+                                createJsonLogEntry(1000, "TX4", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX4", "INSERT", "employees", null, "Row{data={id=1, name=John}}"),
+                                createJsonLogEntry(1002, "TX4", "COMMIT", "employees", null, null),
+                                createJsonLogEntry(1003, "TX4", "CHECKPOINT", "-", null, null));
 
                 RecoveryCriteria criteria = new RecoveryCriteria("FULL_REPLAY", null, null);
                 logReplayer.replayLogs(criteria);
@@ -281,11 +283,11 @@ class LogReplayerTest {
         @Test
         void testReplaySkipsUncommittedTransactions() throws IOException {
                 createTestLog(
-                                "1000|TX7|BEGIN|employees|-|-",
-                                "1001|TX7|INSERT|employees|-|Row{data={id=1}}",
-                                "1010|TX8|BEGIN|employees|-|-",
-                                "1011|TX8|INSERT|employees|-|Row{data={id=2}}",
-                                "1012|TX7|COMMIT|employees|-|-");
+                                createJsonLogEntry(1000, "TX7", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX7", "INSERT", "employees", null, "Row{data={id=1}}"),
+                                createJsonLogEntry(1010, "TX8", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1011, "TX8", "INSERT", "employees", null, "Row{data={id=2}}"),
+                                createJsonLogEntry(1012, "TX7", "COMMIT", "employees", null, null));
 
                 RecoveryCriteria criteria = new RecoveryCriteria("FULL_REPLAY", null, null);
                 logReplayer.replayLogs(criteria);
@@ -297,11 +299,11 @@ class LogReplayerTest {
         @Test
         void testReplayHonorsTargetTimeCutoff() throws IOException {
                 createTestLog(
-                                "1000|TX9|BEGIN|employees|-|-",
-                                "1001|TX9|INSERT|employees|-|Row{data={id=1, name=Early}}",
-                                "1002|TX9|COMMIT|employees|-|-",
-                                "1003|TX9|UPDATE|employees|Row{data={id=1, name=Early}}|Row{data={id=1, name=Late}}",
-                                "1004|TX9|COMMIT|employees|-|-");
+                                createJsonLogEntry(1000, "TX9", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX9", "INSERT", "employees", null, "Row{data={id=1, name=Early}}"),
+                                createJsonLogEntry(1002, "TX9", "COMMIT", "employees", null, null),
+                                createJsonLogEntry(1003, "TX9", "UPDATE", "employees", "Row{data={id=1, name=Early}}", "Row{data={id=1, name=Late}}"),
+                                createJsonLogEntry(1004, "TX9", "COMMIT", "employees", null, null));
 
                 LocalDateTime cutoff = LocalDateTime.ofInstant(Instant.ofEpochMilli(1002), ZoneOffset.UTC);
                 RecoveryCriteria criteria = new RecoveryCriteria("POINT_IN_TIME", null, cutoff);
@@ -329,11 +331,11 @@ class LogReplayerTest {
         @Test
         void testReplayMixedOperations() throws IOException {
                 createTestLog(
-                                "1000|TX5|BEGIN|employees|-",
-                                "1001|TX5|INSERT|employees|Row{data={id=1, name=John}}",
-                                "1002|TX5|UPDATE|employees|Row{data={id=1, name=JohnUpdated}}",
-                                "1003|TX5|DELETE|employees|Row{data={id=2, name=Jane}}",
-                                "1004|TX5|COMMIT|employees|-");
+                                createJsonLogEntry(1000, "TX5", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX5", "INSERT", "employees", null, "Row{data={id=1, name=John}}"),
+                                createJsonLogEntry(1002, "TX5", "UPDATE", "employees", "Row{data={id=1, name=John}}", "Row{data={id=1, name=JohnUpdated}}"),
+                                createJsonLogEntry(1003, "TX5", "DELETE", "employees", "Row{data={id=2, name=Jane}}", null),
+                                createJsonLogEntry(1004, "TX5", "COMMIT", "employees", null, null));
 
                 RecoveryCriteria criteria = new RecoveryCriteria("FULL_REPLAY", null, null);
                 logReplayer.replayLogs(criteria);
@@ -347,12 +349,13 @@ class LogReplayerTest {
 
         @Test
         void testReplayHandlesInvalidLogEntries() throws IOException {
+                // Invalid JSON entries should be skipped gracefully
                 createTestLog(
-                                "1000|TX6|BEGIN|employees|-",
-                                "invalid|log|entry", // Invalid entry
-                                "1001|TX6|INSERT|employees|Row{data={id=1, name=John}}",
-                                "incomplete|entry", // Incomplete entry
-                                "1002|TX6|COMMIT|employees|-");
+                                createJsonLogEntry(1000, "TX6", "BEGIN", "employees", null, null),
+                                "{invalid json entry}",  // Invalid entry
+                                createJsonLogEntry(1001, "TX6", "INSERT", "employees", null, "Row{data={id=1, name=John}}"),
+                                "incomplete entry",  // Incomplete entry
+                                createJsonLogEntry(1002, "TX6", "COMMIT", "employees", null, null));
 
                 RecoveryCriteria criteria = new RecoveryCriteria("FULL_REPLAY", null, null);
 
@@ -367,8 +370,8 @@ class LogReplayerTest {
         @Test
         void testLogParsingWithValidFormat() throws IOException {
                 createTestLog(
-                                "1000|TX1|BEGIN|employees|-",
-                                "1001|TX1|INSERT|employees|Row{data={id=1, name=John, salary=50000}}");
+                                createJsonLogEntry(1000, "TX1", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX1", "INSERT", "employees", null, "Row{data={id=1, name=John, salary=50000}}"));
 
                 // If parsing works, undo should execute correctly
                 assertDoesNotThrow(() -> logReplayer.undoTransaction("TX1"));
@@ -377,9 +380,9 @@ class LogReplayerTest {
         @Test
         void testLogParsingWithEmptyLines() throws IOException {
                 createTestLog(
-                                "1000|TX1|BEGIN|employees|-",
+                                createJsonLogEntry(1000, "TX1", "BEGIN", "employees", null, null),
                                 "", // Empty line
-                                "1001|TX1|INSERT|employees|Row{data={id=1, name=John}}",
+                                createJsonLogEntry(1001, "TX1", "INSERT", "employees", null, "Row{data={id=1, name=John}}"),
                                 "" // Empty line
                 );
 
@@ -390,8 +393,8 @@ class LogReplayerTest {
         @Test
         void testDataStringParsingWithComplexData() throws IOException {
                 createTestLog(
-                                "1000|TX7|BEGIN|employees|-",
-                                "1001|TX7|INSERT|employees|Row{data={id=1, name=John Doe, salary=50000, dept=Engineering}}");
+                                createJsonLogEntry(1000, "TX7", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX7", "INSERT", "employees", null, "Row{data={id=1, name=John Doe, salary=50000, dept=Engineering}}"));
 
                 logReplayer.undoTransaction("TX7");
 
@@ -403,8 +406,8 @@ class LogReplayerTest {
         @Test
         void testDataStringParsingWithDashValue() throws IOException {
                 createTestLog(
-                                "1000|TX8|BEGIN|employees|-",
-                                "1001|TX8|INSERT|employees|-" // Dash means no data
+                                createJsonLogEntry(1000, "TX8", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX8", "INSERT", "employees", null, null) // Null/dash means no data
                 );
 
                 logReplayer.undoTransaction("TX8");
@@ -430,12 +433,12 @@ class LogReplayerTest {
         @Test
         void testMultipleTransactionsInLog() throws IOException {
                 createTestLog(
-                                "1000|TX1|BEGIN|employees|-",
-                                "1001|TX1|INSERT|employees|Row{data={id=1, name=John}}",
-                                "1002|TX1|COMMIT|employees|-",
-                                "1003|TX2|BEGIN|departments|-",
-                                "1004|TX2|INSERT|departments|Row{data={id=1, name=Engineering}}",
-                                "1005|TX2|COMMIT|departments|-");
+                                createJsonLogEntry(1000, "TX1", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX1", "INSERT", "employees", null, "Row{data={id=1, name=John}}"),
+                                createJsonLogEntry(1002, "TX1", "COMMIT", "employees", null, null),
+                                createJsonLogEntry(1003, "TX2", "BEGIN", "departments", null, null),
+                                createJsonLogEntry(1004, "TX2", "INSERT", "departments", null, "Row{data={id=1, name=Engineering}}"),
+                                createJsonLogEntry(1005, "TX2", "COMMIT", "departments", null, null));
 
                 // Undo only TX1
                 logReplayer.undoTransaction("TX1");
@@ -455,10 +458,10 @@ class LogReplayerTest {
         @Test
         void testBackwardReadingOrder() throws IOException {
                 createTestLog(
-                                "1000|TX9|BEGIN|employees|-",
-                                "1001|TX9|INSERT|employees|Row{data={id=1, name=First}}",
-                                "1002|TX9|INSERT|employees|Row{data={id=2, name=Second}}",
-                                "1003|TX9|INSERT|employees|Row{data={id=3, name=Third}}");
+                                createJsonLogEntry(1000, "TX9", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX9", "INSERT", "employees", null, "Row{data={id=1, name=First}}"),
+                                createJsonLogEntry(1002, "TX9", "INSERT", "employees", null, "Row{data={id=2, name=Second}}"),
+                                createJsonLogEntry(1003, "TX9", "INSERT", "employees", null, "Row{data={id=3, name=Third}}"));
 
                 logReplayer.undoTransaction("TX9");
 
@@ -471,10 +474,10 @@ class LogReplayerTest {
         @Test
         void testRollbackToTimeProcessesEntriesBackward() throws IOException {
                 createTestLog(
-                                "1000|TX10|BEGIN|employees|-|-",
-                                "1001|TX10|INSERT|employees|-|Row{data={id=1, name=Stay}}",
-                                "1002|TX10|UPDATE|employees|Row{data={id=1, name=Old}}|Row{data={id=1, name=New}}",
-                                "1003|TX10|DELETE|employees|Row{data={id=2, name=Removed}}|-");
+                                createJsonLogEntry(1000, "TX10", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1001, "TX10", "INSERT", "employees", null, "Row{data={id=1, name=Stay}}"),
+                                createJsonLogEntry(1002, "TX10", "UPDATE", "employees", "Row{data={id=1, name=Old}}", "Row{data={id=1, name=New}}"),
+                                createJsonLogEntry(1003, "TX10", "DELETE", "employees", "Row{data={id=2, name=Removed}}", null));
 
                 LocalDateTime cutoff = LocalDateTime.ofInstant(Instant.ofEpochMilli(1002), ZoneOffset.UTC);
                 RecoveryCriteria criteria = new RecoveryCriteria("POINT_IN_TIME", null, cutoff);
@@ -490,9 +493,9 @@ class LogReplayerTest {
         @Test
         void testRollbackToTimeUndoesInsertsAfterCutoff() throws IOException {
                 createTestLog(
-                                "1100|TX11|BEGIN|employees|-|-",
-                                "1101|TX11|INSERT|employees|-|Row{data={id=10}}",
-                                "1102|TX11|INSERT|employees|-|Row{data={id=11}}");
+                                createJsonLogEntry(1100, "TX11", "BEGIN", "employees", null, null),
+                                createJsonLogEntry(1101, "TX11", "INSERT", "employees", null, "Row{data={id=10}}"),
+                                createJsonLogEntry(1102, "TX11", "INSERT", "employees", null, "Row{data={id=11}}"));
 
                 LocalDateTime cutoff = LocalDateTime.ofInstant(Instant.ofEpochMilli(1101), ZoneOffset.UTC);
                 RecoveryCriteria criteria = new RecoveryCriteria("POINT_IN_TIME", null, cutoff);
@@ -507,6 +510,7 @@ class LogReplayerTest {
 
         /**
          * Creates a test log file with the given log entries.
+         * Entries should be in JSON format.
          */
         private void createTestLog(String... logLines) throws IOException {
                 Files.write(
@@ -514,5 +518,19 @@ class LogReplayerTest {
                                 String.join("\n", logLines).getBytes(),
                                 StandardOpenOption.CREATE,
                                 StandardOpenOption.TRUNCATE_EXISTING);
+        }
+
+        /**
+         * Helper to create JSON formatted log entry
+         */
+        private String createJsonLogEntry(long timestamp, String transactionId, String operation, 
+                                         String tableName, String dataBefore, String dataAfter) {
+                return "{" +
+                        "\"timestamp\": " + timestamp + ", " +
+                        "\"transactionId\": \"" + transactionId + "\", " +
+                        "\"operation\": \"" + operation + "\", " +
+                        "\"tableName\": \"" + tableName + "\", " +
+                        "\"dataBefore\": \"" + (dataBefore != null ? dataBefore : "-") + "\", " +
+                        "\"dataAfter\": \"" + (dataAfter != null ? dataAfter : "-") + "\"}";
         }
 }
