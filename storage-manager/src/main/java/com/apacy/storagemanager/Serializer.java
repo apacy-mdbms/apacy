@@ -398,4 +398,73 @@ public class Serializer {
         String strVal = (value != null) ? String.valueOf(value) : "";
         return strVal.getBytes(StandardCharsets.UTF_8);
     }
+
+    /**
+     * Update record di slot tertentu secara in-place.
+     * @param blockData
+     * @param schema 
+     * @param slotId 
+     * @param updatedRow 
+     * @return updated block
+     * @throws IOException if update fails
+    */
+    public byte[] updateRowInPlace(byte[] blockData, Schema schema, int slotId, Row updatedRow) throws IOException {
+        ByteBuffer buffer = ByteBuffer.wrap(blockData);
+
+        int slotCount = buffer.getInt(HEADER_SLOT_COUNT_OFFSET);
+        if (slotId < 0 || slotId >= slotCount) {
+            throw new IOException("Slot ID " + slotId + " is invalid");
+        }
+
+        int slotOffset = BLOCK_HEADER_SIZE + (slotId * SLOT_SIZE);
+        int oldDataOffset = buffer.getInt(slotOffset + SLOT_OFFSET_OFFSET);
+        int oldDataLength = buffer.getInt(slotOffset + SLOT_LENGTH_OFFSET);
+
+        if (oldDataOffset == 0 || oldDataLength == 0) {
+            throw new IOException("Slot " + slotId + " already deleted, can't be updated");
+        }
+
+        Row oldRow = readRowAtSlot(blockData, schema, slotId);
+        if (oldRow == null) {
+            throw new IOException("Failed to read old record in slot " + slotId);
+        }
+
+        Map<String, Object> mergedData = new HashMap<>(oldRow.data());
+        mergedData.putAll(updatedRow.data());
+        Row mergedRow = new Row(mergedData);
+
+        byte[] newRowBytes = serializeRow(mergedRow, schema);
+        int newRowLength = newRowBytes.length;
+
+        // kondisi muat di lokasi yang sama
+        if (newRowLength <= oldDataLength) {
+            // inplace update
+            System.arraycopy(newRowBytes, 0, blockData, oldDataOffset, newRowLength);
+            buffer.putInt(slotOffset + SLOT_LENGTH_OFFSET, newRowLength); // update slot directory
+            return blockData;
+        }
+
+        // kondisi ukuran lebih besar, cek muat di free-space apa gak
+        int freeSpaceOffset = buffer.getInt(HEADER_FREE_SPACE_OFFSET);
+        int slotDirectoryEnd = BLOCK_HEADER_SIZE + (slotCount * SLOT_SIZE);
+        int availableSpace = freeSpaceOffset - slotDirectoryEnd;
+
+        if (newRowLength <= availableSpace) {
+            // inplace update
+            int newDataOffset = freeSpaceOffset - newRowLength;
+            System.arraycopy(newRowBytes, 0, blockData, newDataOffset, newRowLength);
+
+            // update slot directory
+            buffer.putInt(slotOffset + SLOT_OFFSET_OFFSET, newDataOffset);
+            buffer.putInt(slotOffset + SLOT_LENGTH_OFFSET, newRowLength);
+
+            //update free space pointer
+            buffer.putInt(HEADER_FREE_SPACE_OFFSET, newDataOffset);
+
+            return blockData;
+        }
+
+        // kondisi gak muat samsek
+        throw new IOException("Record is too big for inplace update on this page, need " + newRowLength + " bytes, available: " + availableSpace + " bytes");
+    }
 }

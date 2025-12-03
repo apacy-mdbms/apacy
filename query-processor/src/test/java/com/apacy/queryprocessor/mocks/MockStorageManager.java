@@ -14,6 +14,7 @@ import com.apacy.common.dto.Schema;
 import com.apacy.common.dto.Statistic;
 import com.apacy.common.dto.Column;
 import com.apacy.common.dto.IndexSchema;
+import com.apacy.common.dto.DataUpdate;
 import com.apacy.common.enums.DataType;
 import com.apacy.common.enums.IndexType;
 import com.apacy.common.interfaces.IStorageManager;
@@ -77,6 +78,14 @@ public class MockStorageManager implements IStorageManager {
     public int deleteBlock(DataDeletion dataDeletion) {
         System.out.println("[MOCK-SM] deleteBlock dipanggil untuk tabel: " + dataDeletion.tableName());
         return 1; // Simulasi 1 row deleted
+    }
+
+    @Override
+    public int updateBlock(DataUpdate dataUpdate) { 
+        System.out.println("[MOCK-SM] updateBlock dipanggil untuk tabel: " + dataUpdate.tableName());
+        System.out.println("[MOCK-SM] Updated data: " + dataUpdate.updatedData());
+        System.out.println("[MOCK-SM] Filter condition: " + dataUpdate.filterCondition());
+        return 1;
     }
 
     @Override

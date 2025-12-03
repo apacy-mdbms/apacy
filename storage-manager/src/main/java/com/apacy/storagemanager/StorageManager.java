@@ -12,6 +12,7 @@ import com.apacy.common.dto.Schema;
 import com.apacy.common.dto.Statistic;
 import com.apacy.common.dto.ast.where.*;
 import com.apacy.common.dto.ast.expression.*;
+import com.apacy.common.dto.DataUpdate;
 import com.apacy.common.enums.DataType;
 import com.apacy.common.enums.IndexType;
 import com.apacy.common.interfaces.IStorageManager;
@@ -833,5 +834,115 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         
         System.out.println("\nStorage siap untuk testing JOIN oleh Query Processor!");
         sm.shutdown();
+    }
+
+    @Override
+    public int updateBlock(DataUpdate dataUpdate) {
+        try {
+            Schema schema = catalogManager.getSchema(dataUpdate.tableName());
+            if (schema == null) {
+                throw new IOException("Table not found: " + dataUpdate.tableName());
+            }
+
+            String fileName = schema.dataFile();
+            Object filterRoot = dataUpdate.filterCondition();
+            Map<String, Object> parsedFilter = parseFilterCondition(filterRoot, schema);
+            boolean isStringFilter = !(filterRoot instanceof WhereConditionNode) && filterRoot != null;
+        
+            long blockCount = blockManager.getBlockCount(fileName);
+            int updatedRows = 0;
+
+            for (long blockNumber = 0; blockNumber < blockCount; blockNumber++) {
+                byte[] blockData = blockManager.readBlock(fileName, blockNumber);
+                int slotCount = serializer.getSlotCount(blockData);
+                boolean blockDirty = false;
+
+                for (int slotId = 0; slotId < slotCount; slotId++) {
+                    Row row = serializer.readRowAtSlot(blockData, schema, slotId);
+
+                    // slot deleted
+                    if (row == null) {
+                        continue;
+                    }
+
+                    // cek row memenuhi filter condition atau tidak
+                    boolean matches = isStringFilter ? rowMatchesFilters(row, parsedFilter) : evaluateCondition(row, filterRoot);
+                    if (!matches) {
+                        continue;
+                    }
+
+                    // inplace update
+                    try {
+                        byte[] updatedBlock = serializer.updateRowInPlace(blockData, schema, slotId, dataUpdate.updatedData());
+
+                        blockData = updatedBlock;
+                        blockDirty = true;
+                        updatedRows++;
+
+                        updateIndexesForRow(schema, blockNumber, slotId, row, dataUpdate.updatedData());
+                    } catch (IOException e) {
+                        System.err.println("Warning: inplace update failed for slot " + slotId + " in block " + blockNumber + ": " + e.getMessage());
+                        System.err.println("Fallback...");
+
+                        // merge old row dengan updated data
+                        Map<String, Object> mergedData = new HashMap<>(row.data());
+                        mergedData.putAll(dataUpdate.updatedData().data());
+                        Row newRow = new Row(mergedData);
+
+                        if (serializer.deleteSlot(blockData, slotId)) {
+                            removeRowFromIndexes(schema, blockNumber, slotId, row);
+                            blockDirty = true;
+                        }
+
+                        DataWrite insertOp = new DataWrite(dataUpdate.tableName(), newRow, null);
+                        writeBlock(insertOp);
+                        updatedRows++;
+                    }
+                }
+
+                if (blockDirty) {
+                    blockManager.writeBlock(fileName, blockNumber, blockData);
+                }
+            }
+
+            blockManager.flush();
+            return updatedRows;
+
+        } catch (IOException e) {
+            System.err.println("Error updating block: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Helper: Update indeks jika kolom yang di-index berubah
+    */
+    private void updateIndexesForRow(Schema schema, long blockNumber, int slotId, Row oldRow, Row updatedData) {
+        int ridValue = (int) ((blockNumber << 16) | (slotId & 0xffff));
+
+        for (IndexSchema idxSchema : schema.indexes()) {
+            @SuppressWarnings("unchecked")
+            IIndex<Object, Integer> index = (IIndex<Object, Integer>) indexManager.get(schema.tableName(), idxSchema.columnName(), idxSchema.indexType().toString());
+
+            if (index == null) {
+                continue;
+            }
+
+            String colName = idxSchema.columnName();
+            Object oldKey = oldRow.data().get(colName);
+            Object newKey = updatedData.data().get(colName);
+
+            // kalo kolom di index berubah, update index
+            if (newKey != null && !newKey.equals(oldKey)) {
+                // hapus old entry
+                if (oldKey != null) {
+                    index.deleteData(oldKey, ridValue);
+                }
+
+                // insert new entry
+                index.insertData(newKey, ridValue);
+                index.writeToFile(this.catalogManager);
+            }
+        }
     }
 }
