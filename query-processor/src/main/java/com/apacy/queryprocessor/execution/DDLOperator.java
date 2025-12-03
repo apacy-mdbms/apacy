@@ -28,8 +28,6 @@ public class DDLOperator implements Operator {
 
     @Override
     public void open() {
-        // Execution logic in open() or first next()?
-        // open() is fine.
         ParsedQueryDDL ddlQuery = node.ddlQuery(); 
 
         try {

@@ -89,10 +89,7 @@ public class PlanTranslator {
         }
     }
     
-    // ==================================================================================
-    // HELPER METHODS (Preserved from original implementation)
-    // ==================================================================================
-
+    // HELPER METHODS
     private String extractJoinColumn(Object condition) {
         if (!(condition instanceof com.apacy.queryoptimizer.ast.where.ComparisonConditionNode)) {
             return null;

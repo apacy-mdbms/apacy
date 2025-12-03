@@ -22,8 +22,6 @@ public class NestedLoopJoinOperator implements Operator {
     @Override
     public void open() {
         leftChild.open();
-        // We don't open rightChild here immediately; we open it when we have a left row.
-        // Or we open it and then close/open in the loop.
         currentLeftRow = leftChild.next();
         if (currentLeftRow != null) {
             rightChild.open();
@@ -67,10 +65,6 @@ public class NestedLoopJoinOperator implements Operator {
 
     private Row mergeRows(Row leftRow, Row rightRow) {
         Map<String, Object> mergedData = new HashMap<>(leftRow.data());
-        // Right row data overrides collision? or preserve? 
-        // Standard SQL: columns should be distinct or prefixed. 
-        // Our previous JoinStrategy logic:
-        // mergedData.putIfAbsent(entry.getKey(), entry.getValue()); (Left takes precedence)
         
         for (Map.Entry<String, Object> entry : rightRow.data().entrySet()) {
             mergedData.putIfAbsent(entry.getKey(), entry.getValue());

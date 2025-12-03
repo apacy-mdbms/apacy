@@ -22,8 +22,6 @@ public class ScanOperator implements Operator {
 
     @Override
     public void open() {
-        // In a real implementation, this would open a cursor/file stream.
-        // Due to StorageManager limitations, we read the block into memory here.
         DataRetrieval dr = new DataRetrieval(
             node.tableName(), 
             null, 

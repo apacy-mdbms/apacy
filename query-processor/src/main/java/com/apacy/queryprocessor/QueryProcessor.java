@@ -167,6 +167,18 @@ public class QueryProcessor extends DBMSComponent {
 
             Operator rootOperator = planTranslator.build(planRoot, txId, sm, ccm, frm);
 
+            // Apply LIMIT/OFFSET if specified in ParsedQuery but not present in the Plan Tree
+            // (e.g. if Query Optimizer didn't include LimitNode)
+            boolean hasLimit = parsedQuery.limit() != null && parsedQuery.limit() > 0;
+            boolean hasOffset = parsedQuery.offset() != null && parsedQuery.offset() > 0;
+            
+            if ((hasLimit || hasOffset) && !(planRoot instanceof com.apacy.common.dto.plan.LimitNode)) {
+                int limitVal = hasLimit ? parsedQuery.limit() : Integer.MAX_VALUE;
+                int offsetVal = hasOffset ? parsedQuery.offset() : 0;
+                
+                rootOperator = new com.apacy.queryprocessor.execution.LimitOperator(rootOperator, limitVal, offsetVal);
+            }
+
             List<Row> resultRows = new ArrayList<>();
             
             if (rootOperator != null) {

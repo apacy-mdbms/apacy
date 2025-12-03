@@ -28,8 +28,6 @@ public class SortOperator implements Operator {
         }
         child.close();
 
-        // Perform Sort using existing Strategy logic
-        // SortStrategy.sort returns a new list, so we assign it
         buffer = SortStrategy.sort(buffer, node.sortColumn(), node.ascending());
         iterator = buffer.iterator();
     }
