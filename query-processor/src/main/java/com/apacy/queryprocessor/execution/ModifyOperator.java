@@ -4,9 +4,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.apacy.common.dto.Column;
 import com.apacy.common.dto.DataDeletion;
 import com.apacy.common.dto.DataWrite;
 import com.apacy.common.dto.Row;
+import com.apacy.common.dto.Schema;
+import com.apacy.common.enums.DataType;
 import com.apacy.common.dto.plan.FilterNode;
 import com.apacy.common.dto.plan.ModifyNode;
 import com.apacy.common.interfaces.IConcurrencyControlManager;
@@ -37,6 +40,14 @@ public class ModifyOperator implements Operator {
         int affectedRows = 0;
         String operation = node.operation().toUpperCase();
 
+        // Fetch Schema upfront to handle type conversion
+        Schema schema = null;
+        try {
+            schema = sm.getSchema(node.targetTable());
+        } catch (Exception e) {
+            System.err.println("Warning: Could not fetch schema for table " + node.targetTable());
+        }
+
         if ("INSERT".equals(operation)) {
             Map<String, Object> dataMap = new HashMap<>();
             List<String> cols = node.targetColumns();
@@ -44,22 +55,27 @@ public class ModifyOperator implements Operator {
 
             if (cols == null || cols.isEmpty()) {
                 // Fetch schema from Storage Manager if columns are not specified
-                try {
-                    var schema = sm.getSchema(node.targetTable());
-                    if (schema != null) {
-                        cols = schema.columns().stream()
-                                .map(com.apacy.common.dto.Column::name)
-                                .toList();
-                    }
-                } catch (Exception e) {
-                    // Ignore or handle error
-                    System.err.println("Warning: Could not fetch schema for table " + node.targetTable());
+                if (schema != null) {
+                    cols = schema.columns().stream()
+                            .map(Column::name)
+                            .toList();
                 }
             }
 
             if (cols != null && vals != null && cols.size() == vals.size()) {
                 for (int i = 0; i < cols.size(); i++) {
-                    dataMap.put(cols.get(i), vals.get(i));
+                    String colName = cols.get(i);
+                    Object val = vals.get(i);
+                    
+                    // Convert value based on schema
+                    if (schema != null) {
+                        Column colDef = schema.getColumnByName(colName);
+                        if (colDef != null) {
+                            val = convertValue(val, colDef.type());
+                        }
+                    }
+                    
+                    dataMap.put(colName, val);
                 }
             }
             DataWrite dw = new DataWrite(node.targetTable(), new Row(dataMap), null);
@@ -84,7 +100,18 @@ public class ModifyOperator implements Operator {
 
             if (cols != null && vals != null) {
                 for (int i = 0; i < cols.size(); i++) {
-                    dataMap.put(cols.get(i), vals.get(i));
+                    String colName = cols.get(i);
+                    Object val = vals.get(i);
+
+                    // Convert value based on schema
+                    if (schema != null) {
+                        Column colDef = schema.getColumnByName(colName);
+                        if (colDef != null) {
+                            val = convertValue(val, colDef.type());
+                        }
+                    }
+                    
+                    dataMap.put(colName, val);
                 }
             }
 
@@ -108,5 +135,36 @@ public class ModifyOperator implements Operator {
     @Override
     public void close() {
         // Nothing to close
+    }
+
+    private Object convertValue(Object value, DataType type) {
+        if (value == null) return null;
+        
+        try {
+            switch (type) {
+                case FLOAT:
+                    if (value instanceof Number n) {
+                        return n.floatValue();
+                    }
+                    if (value instanceof String s) {
+                        return Float.parseFloat(s);
+                    }
+                    break;
+                case INTEGER:
+                    if (value instanceof Number n) {
+                        return n.intValue();
+                    }
+                    if (value instanceof String s) {
+                        return Integer.parseInt(s);
+                    }
+                    break;
+                case VARCHAR:
+                case CHAR:
+                    return value.toString();
+            }
+        } catch (Exception e) {
+            // Keep original value if conversion fails
+        }
+        return value;
     }
 }
