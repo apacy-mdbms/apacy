@@ -4,6 +4,7 @@ import java.text.ParseException;
 import java.util.List;
 
 import com.apacy.common.dto.ParsedQuery;
+import com.apacy.common.dto.plan.TCLNode;
 
 /**
  * Parser for TCL query
@@ -20,7 +21,7 @@ public class TCLParser extends AbstractParser {
             consume(TokenType.TRANSACTION);
             return new ParsedQuery(
             "BEGIN",
-            null,
+            new TCLNode("BEGIN"),
             null,
             null,
             null,
@@ -33,7 +34,7 @@ public class TCLParser extends AbstractParser {
         if(match(TokenType.COMMIT)) {
             return new ParsedQuery(
             "COMMIT",
-            null,
+            new TCLNode("COMMIT"),
             null,
             null,
             null,
@@ -46,7 +47,7 @@ public class TCLParser extends AbstractParser {
         if(match(TokenType.ABORT)) {
             return new ParsedQuery(
             "ABORT",
-            null,
+            new TCLNode("ABORT"),
             null,
             null,
             null,
