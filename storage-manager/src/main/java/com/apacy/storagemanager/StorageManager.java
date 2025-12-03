@@ -10,6 +10,8 @@ import com.apacy.common.dto.IndexSchema;
 import com.apacy.common.dto.Row;
 import com.apacy.common.dto.Schema;
 import com.apacy.common.dto.Statistic;
+import com.apacy.common.dto.ast.where.*;
+import com.apacy.common.dto.ast.expression.*;
 import com.apacy.common.enums.DataType;
 import com.apacy.common.enums.IndexType;
 import com.apacy.common.interfaces.IStorageManager;
@@ -40,7 +42,6 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         this.serializer = new Serializer(this.catalogManager);
         this.statsCollector = new StatsCollector(this.catalogManager, this.blockManager, this.serializer);
         this.indexManager = new IndexManager();
-        // ... inisialisasi komponen internal
     }
 
     @Override
@@ -86,67 +87,75 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         return this.catalogManager.getSchema(tableName);
     }
 
-    private Object extractEqualityFilter(Map<String, Object> parsedFilters, Column colDef) {
-        if (parsedFilters == null || colDef == null) {
-            return null;
-        }
-        return parsedFilters.get(colDef.name());
-    }
-
     @Override
     public List<Row> readBlock(DataRetrieval dataRetrieval) {
         try {
             Schema schema = catalogManager.getSchema(dataRetrieval.tableName());
             if (schema == null) {
-                System.out.println(catalogManager.getAllSchemas());
                 throw new IOException("Tabel tidak ditemukan di katalog: " + dataRetrieval.tableName());
             }
             String fileName = schema.dataFile();
             List<Row> allRows = new ArrayList<>();
-            Map<String, Object> parsedFilter = parseFilterCondition(dataRetrieval.filterCondition(), schema);
+            Object filterRoot = dataRetrieval.filterCondition();
+            
+            // Parsing filter: jika String, konversi ke Map; jika AST, gunakan langsung
+            Map<String, Object> parsedFilter = parseFilterCondition(filterRoot, schema);
+            boolean isStringFilter = !(filterRoot instanceof WhereConditionNode) && filterRoot != null;
 
+            // --- 1. OPTIMASI INDEX SCAN ---
+            // Kita coba cari apakah ada kondisi "col = val" di dalam filter yang cocok dengan index
             if (dataRetrieval.useIndex() && !parsedFilter.isEmpty()) {
                 for (IndexSchema idxSchema : schema.indexes()) {
+                    Object filterValue = parsedFilter.get(idxSchema.columnName());
+                    if (filterValue == null) continue;
+                    
                     IIndex index = indexManager.get(
                             schema.tableName(),
                             idxSchema.columnName(),
                             idxSchema.indexType().toString());
 
-                    if (index == null)
-                        continue;
-                    Object filterValue = parsedFilter.get(idxSchema.columnName());
-                    if (filterValue == null)
-                        continue;
-                    List<Integer> ridList = index.getAddress(filterValue);
-                    List<Row> resultRows = new ArrayList<>();
-                    for (int encodedRid : ridList) {
-                        long blockNo = (encodedRid >>> 16);
-                        int slotNo = encodedRid & 0xFFFF;
+                    if (index != null) {
+                        // Index Hit! Ambil RID list dari index
+                        List<Integer> ridList = index.getAddress(filterValue);
+                        List<Row> resultRows = new ArrayList<>();
+                        
+                        for (int encodedRid : ridList) {
+                            long blockNo = (encodedRid >>> 16);
+                            int slotNo = encodedRid & 0xFFFF;
 
-                        byte[] block = blockManager.readBlock(schema.dataFile(), blockNo);
-                        Row r = serializer.readRowAtSlot(block, schema, slotNo);
-                        if (r != null && rowMatchesFilters(r, parsedFilter))
-                            resultRows.add(projectColumns(r, dataRetrieval.columns()));
+                            byte[] block = blockManager.readBlock(schema.dataFile(), blockNo);
+                            Row r = serializer.readRowAtSlot(block, schema, slotNo);
+                            
+                            // Tetap validasi ulang dengan FULL filter
+                            if (r != null) {
+                                boolean matches = isStringFilter ? 
+                                    rowMatchesFilters(r, parsedFilter) : 
+                                    evaluateCondition(r, filterRoot);
+                                if (matches) {
+                                    resultRows.add(projectColumns(r, dataRetrieval.columns()));
+                                }
+                            }
+                        }
+                        return resultRows;
                     }
-                    return resultRows;
                 }
             }
 
-            // --- Alur Full Table Scan ---
+            // --- 2. FALLBACK: FULL TABLE SCAN ---
             long blockCount = blockManager.getBlockCount(fileName);
 
             for (long blockNumber = 0; blockNumber < blockCount; blockNumber++) {
                 byte[] blockData = blockManager.readBlock(fileName, blockNumber);
-
                 List<Row> rowsOfBlock = serializer.deserializeBlock(blockData, schema);
                 allRows.addAll(rowsOfBlock);
             }
 
-            List<String> requestedColumns = dataRetrieval.columns();
-
+            // Filter: gunakan Map-based untuk String filter, AST-based untuk WhereConditionNode
             return allRows.stream()
-                    .filter((Row row) -> applyFilter(row, dataRetrieval))
-                    .map((Row row) -> projectColumns(row, requestedColumns))
+                    .filter((Row row) -> isStringFilter ? 
+                        rowMatchesFilters(row, parsedFilter) : 
+                        evaluateCondition(row, filterRoot))
+                    .map((Row row) -> projectColumns(row, dataRetrieval.columns()))
                     .collect(Collectors.toList());
 
         } catch (IOException e) {
@@ -155,6 +164,201 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         }
     }
 
+    // ==================================================================================
+    // [AST EVALUATOR] LOGIKA UTAMA FILTERING
+    // ==================================================================================
+
+    /**
+     * Mengevaluasi apakah Row memenuhi kondisi filter (AST).
+     * Mendukung: AND, OR, =, >, <, >=, <=, !=
+     */
+    private boolean evaluateCondition(Row row, Object condition) {
+        // Jika filter null, berarti "SELECT *", semua lolos.
+        if (condition == null) {
+            return true;
+        }
+
+        // 1. Handle Logika Binary (AND / OR)
+        if (condition instanceof BinaryConditionNode bin) {
+            boolean leftResult = evaluateCondition(row, bin.left());
+            boolean rightResult = evaluateCondition(row, bin.right());
+
+            if ("AND".equalsIgnoreCase(bin.operator())) {
+                return leftResult && rightResult;
+            } else if ("OR".equalsIgnoreCase(bin.operator())) {
+                return leftResult || rightResult;
+            }
+        }
+
+        // 2. Handle Perbandingan (=, >, <, dll)
+        if (condition instanceof ComparisonConditionNode comp) {
+            Object leftVal = extractValue(row, comp.leftOperand());
+            Object rightVal = extractValue(row, comp.rightOperand());
+            return compareValues(leftVal, rightVal, comp.operator());
+        }
+
+        // 3. Handle Unary (NOT) - Jika ada di DTO common
+        if (condition instanceof UnaryConditionNode unary) {
+            if ("NOT".equalsIgnoreCase(unary.operator())) {
+                return !evaluateCondition(row, unary.operand());
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Mengambil nilai real dari ExpressionNode (bisa dari Kolom Row atau Literal).
+     */
+    private Object extractValue(Row row, ExpressionNode expr) {
+        if (expr == null || expr.term() == null || expr.term().factor() == null) return null;
+        
+        FactorNode factor = expr.term().factor();
+
+        if (factor instanceof ColumnFactor col) {
+            // Ambil value dari map data Row berdasarkan nama kolom
+            return row.get(col.columnName());
+        } else if (factor instanceof LiteralFactor lit) {
+            // FIX: Tidak menggunakan lit.type(), kirim null sebagai type
+            String valStr = (lit.value() != null) ? lit.value().toString() : null;
+            return parseLiteral(valStr, null);
+        }
+        return null;
+    }
+
+    /**
+     * Konversi String literal ke Object Java yang sesuai.
+     */
+    private Object parseLiteral(String value, String type) {
+        if (value == null) return null;
+        String clean = value.replace("'", "").replace("\"", ""); // Hapus quote
+        
+        // Jika type tidak diberikan (null), coba tebak sendiri
+        if (type == null) {
+            try {
+                // Cek Integer
+                if (value.matches("-?\\d+")) {
+                    return Integer.parseInt(value);
+                } 
+                // Cek Double/Float
+                else if (value.matches("-?\\d+\\.\\d+")) {
+                    return Double.parseDouble(value);
+                }
+            } catch (NumberFormatException e) {
+                // Jika gagal parsing angka, anggap sebagai String biasa
+            }
+        } 
+        // Jika type diberikan (opsional, untuk masa depan)
+        else if ("INTEGER".equalsIgnoreCase(type)) {
+             try { return Integer.parseInt(value); } catch (Exception e) {}
+        }
+        
+        return clean;
+    }
+
+    /**
+     * Membandingkan dua nilai object dengan operator tertentu.
+     */
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private boolean compareValues(Object v1, Object v2, String operator) {
+        if (v1 == null || v2 == null) {
+            // Khusus != null logic jika diperlukan, tapi standar SQL null != anything is unknown (false)
+            if ("!=".equals(operator) || "<>".equals(operator)) {
+                return v1 != v2; // Simple check
+            }
+            return false; 
+        }
+
+        // Penanganan beda tipe (misal Integer vs Double, atau Integer vs String angka)
+        if (v1 instanceof Number && v2 instanceof String) {
+            try { v2 = Double.parseDouble((String) v2); } catch (Exception e) {}
+        }
+        if (v1 instanceof String && v2 instanceof Number) {
+            try { v1 = Double.parseDouble((String) v1); } catch (Exception e) {}
+        }
+
+        // Convert ke Double untuk perbandingan angka aman
+        if (v1 instanceof Number && v2 instanceof Number) {
+            double d1 = ((Number) v1).doubleValue();
+            double d2 = ((Number) v2).doubleValue();
+            int comparison = Double.compare(d1, d2);
+            return checkOp(comparison, operator);
+        }
+
+        // Default String comparison
+        if (v1 instanceof Comparable && v2 instanceof Comparable) {
+            try {
+                int comparison = ((Comparable) v1).compareTo((Comparable) v2);
+                return checkOp(comparison, operator);
+            } catch (ClassCastException e) {
+                return false; // Tipe data tidak kompatibel
+            }
+        }
+
+        return false;
+    }
+
+    private boolean checkOp(int comparison, String operator) {
+        return switch (operator) {
+            case "=" -> comparison == 0;
+            case ">" -> comparison > 0;
+            case "<" -> comparison < 0;
+            case ">=" -> comparison >= 0;
+            case "<=" -> comparison <= 0;
+            case "!=", "<>" -> comparison != 0;
+            default -> false;
+        };
+    }
+
+    /**
+     * Helper untuk Index: Mencari nilai equality "col = val" dari pohon AST.
+     * Digunakan agar StorageManager tahu key apa yang harus dicari di Index BTree/Hash.
+     */
+    private Object extractEqualityValue(Object condition, String columnName) {
+        if (condition == null) return null;
+
+        // Jika node adalah AND, cari rekursif di kiri atau kanan
+        if (condition instanceof BinaryConditionNode bin) {
+            if ("AND".equalsIgnoreCase(bin.operator())) {
+                Object left = extractEqualityValue(bin.left(), columnName);
+                if (left != null) return left;
+                return extractEqualityValue(bin.right(), columnName);
+            }
+        }
+
+        // Jika node adalah Comparison (=), cek apakah kolomnya cocok
+        if (condition instanceof ComparisonConditionNode comp) {
+            if ("=".equals(comp.operator())) {
+                String leftCol = getColumnNameSafe(comp.leftOperand());
+                if (columnName.equals(leftCol)) {
+                    return getLiteralValueSafe(comp.rightOperand());
+                }
+                
+                // Support juga jika dibalik: 'val' = col
+                String rightCol = getColumnNameSafe(comp.rightOperand());
+                if (columnName.equals(rightCol)) {
+                    return getLiteralValueSafe(comp.leftOperand());
+                }
+            }
+        }
+        return null;
+    }
+
+    private String getColumnNameSafe(ExpressionNode expr) {
+        if (expr != null && expr.term() != null && expr.term().factor() instanceof ColumnFactor col) {
+            return col.columnName();
+        }
+        return null;
+    }
+
+    private Object getLiteralValueSafe(ExpressionNode expr) {
+        if (expr != null && expr.term() != null && expr.term().factor() instanceof LiteralFactor lit) {
+            // FIX: Tidak menggunakan lit.type()
+            String valStr = (lit.value() != null) ? lit.value().toString() : null;
+            return parseLiteral(valStr, null);
+        }
+        return null;
+    }
     @Override
     public int writeBlock(DataWrite dataWrite) {
         // TODO:
@@ -249,11 +453,10 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
                 throw new IOException("Table " + dataDeletion.tableName() + " not found");
             }
 
-            Map<String, Object> filters = parseFilterCondition(dataDeletion.filterCondition(), schema);
-            if (filters.isEmpty()) {
-                throw new IOException("Filter delete is invalid or empty");
-            }
-
+            Object filterRoot = dataDeletion.filterCondition();
+            Map<String, Object> parsedFilter = parseFilterCondition(filterRoot, schema);
+            boolean isStringFilter = !(filterRoot instanceof WhereConditionNode) && filterRoot != null;
+            
             String fileName = schema.dataFile();
             long blockCount = blockManager.getBlockCount(fileName);
             int deletedRows = 0;
@@ -265,9 +468,14 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
 
                 for (int slotId = 0; slotId < slotCount; slotId++) {
                     Row row = serializer.readRowAtSlot(blockData, schema, slotId);
-                    if (row == null || !rowMatchesFilters(row, filters)) {
-                        continue;
-                    }
+                    
+                    if (row == null) continue;
+                    
+                    boolean matches = isStringFilter ? 
+                        rowMatchesFilters(row, parsedFilter) : 
+                        evaluateCondition(row, filterRoot);
+                    
+                    if (!matches) continue;
 
                     if (serializer.deleteSlot(blockData, slotId)) {
                         deletedRows++;
@@ -284,7 +492,7 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
             blockManager.flush();
             return deletedRows;
         } catch (IOException e) {
-            System.err.println("Error missing block: " + e.getMessage());
+            System.err.println("Error deleting block: " + e.getMessage());
             return 0;
         }
     }

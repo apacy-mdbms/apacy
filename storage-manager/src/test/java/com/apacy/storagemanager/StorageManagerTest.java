@@ -345,6 +345,7 @@ class StorageManagerTest {
         assertTrue(
                 results.stream().anyMatch(r -> r.data().get("id").equals(2) && r.data().get("name").equals(longName2)));
     }
+    
 
     // ========================================================================
     // --- Tes Fungsionalitas Statistik (get_stats) ---
@@ -535,5 +536,299 @@ class StorageManagerTest {
         } finally {
             sm2.shutdown();
         }
+    }
+
+    // ========================================================================
+    // --- Tes Komparasi & Filter (Equality dan Inequality) ---
+    // ========================================================================
+
+    @Test
+    @DisplayName("Test: Equality Filter (=) pada INTEGER column")
+    void testEqualityFilterInteger() {
+        System.out.println("--- testEqualityFilterInteger ---");
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 100, "name", "Alice", "gpa", 3.5f)), null));
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 200, "name", "Bob", "gpa", 2.9f)), null));
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 100, "name", "Charlie", "gpa", 3.8f)), null));
+
+        // Cari id=100 (duplikat)
+        DataRetrieval query = new DataRetrieval("students", List.of("*"), "id=100", false);
+        List<Row> results = storageManager.readBlock(query);
+
+        assertEquals(2, results.size(), "Harus ada 2 baris dengan id=100");
+        assertTrue(results.stream().allMatch(r -> r.data().get("id").equals(100)));
+        assertTrue(results.stream().anyMatch(r -> r.data().get("name").equals("Alice")));
+        assertTrue(results.stream().anyMatch(r -> r.data().get("name").equals("Charlie")));
+
+        // Cari id=200 (single)
+        query = new DataRetrieval("students", List.of("*"), "id=200", false);
+        results = storageManager.readBlock(query);
+
+        assertEquals(1, results.size(), "Harus ada 1 baris dengan id=200");
+        assertEquals("Bob", results.get(0).data().get("name"));
+
+        // Cari id=999 (tidak ada)
+        query = new DataRetrieval("students", List.of("*"), "id=999", false);
+        results = storageManager.readBlock(query);
+
+        assertEquals(0, results.size(), "Tidak boleh ada baris dengan id=999");
+    }
+
+    @Test
+    @DisplayName("Test: Equality Filter (=) pada VARCHAR column")
+    void testEqualityFilterVarchar() {
+        System.out.println("--- testEqualityFilterVarchar ---");
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 1, "name", "Alice", "gpa", 3.5f)), null));
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 2, "name", "Bob", "gpa", 2.9f)), null));
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 3, "name", "Alice", "gpa", 3.2f)), null));
+
+        // Cari name='Alice'
+        DataRetrieval query = new DataRetrieval("students", List.of("*"), "name=Alice", false);
+        List<Row> results = storageManager.readBlock(query);
+
+        assertEquals(2, results.size(), "Harus ada 2 baris dengan name='Alice'");
+        assertTrue(results.stream().allMatch(r -> r.data().get("name").equals("Alice")));
+
+        // Cari name='Bob'
+        query = new DataRetrieval("students", List.of("*"), "name=Bob", false);
+        results = storageManager.readBlock(query);
+
+        assertEquals(1, results.size(), "Harus ada 1 baris dengan name='Bob'");
+        assertEquals(2, results.get(0).data().get("id"));
+    }
+
+    @Test
+    @DisplayName("Test: Equality Filter (=) pada FLOAT column")
+    void testEqualityFilterFloat() {
+        System.out.println("--- testEqualityFilterFloat ---");
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 1, "name", "Alice", "gpa", 3.5f)), null));
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 2, "name", "Bob", "gpa", 3.5f)), null));
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 3, "name", "Charlie", "gpa", 2.7f)), null));
+
+        // Cari gpa=3.5
+        DataRetrieval query = new DataRetrieval("students", List.of("*"), "gpa=3.5", false);
+        List<Row> results = storageManager.readBlock(query);
+
+        assertEquals(2, results.size(), "Harus ada 2 baris dengan gpa=3.5");
+        assertTrue(results.stream().allMatch(r -> r.data().get("gpa").equals(3.5f)));
+    }
+
+    @Test
+    @DisplayName("Test: Multiple Filters dengan AND (Kombinasi)")
+    void testMultipleFiltersWithAnd() {
+        System.out.println("--- testMultipleFiltersWithAnd ---");
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 10, "name", "Alice", "gpa", 3.5f)), null));
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 20, "name", "Alice", "gpa", 2.9f)), null));
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 30, "name", "Bob", "gpa", 3.5f)), null));
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 40, "name", "Bob", "gpa", 2.9f)), null));
+
+        // Query: name=Alice AND gpa=3.5
+        DataRetrieval query = new DataRetrieval("students", List.of("*"), "name=Alice AND gpa=3.5", false);
+        List<Row> results = storageManager.readBlock(query);
+
+        assertEquals(1, results.size(), "Hanya 1 baris match name=Alice AND gpa=3.5");
+        assertEquals(10, results.get(0).data().get("id"));
+
+        // Query: name=Bob AND gpa=2.9
+        query = new DataRetrieval("students", List.of("*"), "name=Bob AND gpa=2.9", false);
+        results = storageManager.readBlock(query);
+
+        assertEquals(1, results.size(), "Hanya 1 baris match name=Bob AND gpa=2.9");
+        assertEquals(40, results.get(0).data().get("id"));
+
+        // Query: id=99 AND name=Alice (tidak ada match)
+        query = new DataRetrieval("students", List.of("*"), "id=99 AND name=Alice", false);
+        results = storageManager.readBlock(query);
+
+        assertEquals(0, results.size(), "Tidak boleh ada match untuk kondisi yang tidak terpenuhi");
+    }
+
+    @Test
+    @DisplayName("Test: Project Columns dengan Filter")
+    void testProjectionWithFilter() {
+        System.out.println("--- testProjectionWithFilter ---");
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 1, "name", "Alice", "gpa", 3.5f)), null));
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 2, "name", "Bob", "gpa", 2.9f)), null));
+
+        // Query: id, name ONLY, dengan filter name=Alice
+        DataRetrieval query = new DataRetrieval("students", List.of("id", "name"), "name=Alice", false);
+        List<Row> results = storageManager.readBlock(query);
+
+        assertEquals(1, results.size());
+        Row result = results.get(0);
+        assertEquals(2, result.data().size(), "Hanya 2 kolom yang diproyeksikan");
+        assertTrue(result.data().containsKey("id"));
+        assertTrue(result.data().containsKey("name"));
+        assertFalse(result.data().containsKey("gpa"), "gpa tidak boleh ada (terproyeksi keluar)");
+    }
+
+    @Test
+    @DisplayName("Test: Large Dataset (300+ rows)")
+    void testLargeDataset() throws IOException {
+        System.out.println("--- testLargeDataset ---");
+
+        // Tulis 300 baris (untuk memastikan > 1 blok dengan data yang lebih besar)
+        for (int i = 0; i < 300; i++) {
+            String name = (i % 3 == 0) ? "AliceMediumName" : (i % 3 == 1) ? "BobMediumName" : "CharlieMediumName";
+            float gpa = 2.0f + (i % 20) * 0.1f;
+            Row row = new Row(Map.of("id", i, "name", name, "gpa", gpa));
+            storageManager.writeBlock(new DataWrite("students", row, null));
+        }
+
+        // Verifikasi jumlah blok (300 rows dengan nama panjang harus > 1 blok)
+        long blockCount = storageManager.getBlockManager().getBlockCount("students.dat");
+        assertTrue(blockCount > 1, "300 baris harus lebih dari 1 blok");
+
+        // Full scan
+        List<Row> allRows = storageManager.readBlock(new DataRetrieval("students", List.of("*"), null, false));
+        assertEquals(300, allRows.size(), "Full scan harus mengembalikan 300 baris");
+
+        // Filter
+        List<Row> aliceRows = storageManager.readBlock(new DataRetrieval("students", List.of("*"), "name=AliceMediumName", false));
+        assertEquals(100, aliceRows.size(), "Ada 100 baris dengan name=AliceMediumName (300/3)");
+
+        // Filter 2
+        List<Row> gpaBetween = storageManager
+                .readBlock(new DataRetrieval("students", List.of("id", "gpa"), "name=BobMediumName", false));
+        assertEquals(100, gpaBetween.size(), "Ada 100 baris dengan name=BobMediumName");
+    }
+
+    @Test
+    @DisplayName("Test: GetSchema untuk tabel yang ada")
+    void testGetSchema() {
+        Schema schema = storageManager.getSchema("students");
+        assertNotNull(schema, "Schema untuk 'students' harus ada");
+        assertEquals("students", schema.tableName());
+        assertEquals("students.dat", schema.dataFile());
+        assertEquals(3, schema.columns().size(), "students punya 3 kolom");
+
+        Schema notFound = storageManager.getSchema("nonexistent");
+        assertNull(notFound, "Schema untuk tabel non-eksisten harus null");
+    }
+
+    @Test
+    @DisplayName("Test: Concurrent Read & Write (Basic)")
+    void testConcurrentReadWrite() throws InterruptedException {
+        System.out.println("--- testConcurrentReadWrite ---");
+
+        // Thread 1: Write 50 rows
+        Thread writerThread = new Thread(() -> {
+            for (int i = 0; i < 50; i++) {
+                Row row = new Row(Map.of("id", 1000 + i, "name", "Writer" + i, "gpa", 3.0f + (i % 10) * 0.1f));
+                storageManager.writeBlock(new DataWrite("students", row, null));
+            }
+        });
+
+        // Thread 2: Read rows (after initial write)
+        Thread readerThread = new Thread(() -> {
+            try {
+                Thread.sleep(50); // Wait untuk writer memulai
+                for (int i = 0; i < 5; i++) {
+                    List<Row> rows = storageManager.readBlock(new DataRetrieval("students", List.of("*"), null, false));
+                    assertTrue(rows.size() >= 0, "Read harus selalu berhasil");
+                    Thread.sleep(10);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+
+        writerThread.start();
+        readerThread.start();
+
+        writerThread.join();
+        readerThread.join();
+
+        List<Row> finalRows = storageManager.readBlock(new DataRetrieval("students", List.of("*"), null, false));
+        assertEquals(50, finalRows.size(), "Harus ada 50 baris dari writer thread");
+    }
+
+    @Test
+    @DisplayName("Test: Delete dengan Multiple Matches")
+    void testDeleteMultipleMatches() {
+        System.out.println("--- testDeleteMultipleMatches ---");
+
+        // Insert data dengan duplikat
+        for (int i = 0; i < 10; i++) {
+            Row row = new Row(Map.of("id", i % 3, "name", "Name" + i, "gpa", 3.0f + i * 0.1f));
+            storageManager.writeBlock(new DataWrite("students", row, null));
+        }
+
+        List<Row> allRows = storageManager.readBlock(new DataRetrieval("students", List.of("*"), null, false));
+        assertEquals(10, allRows.size(), "Awalnya ada 10 baris");
+
+        // Delete semua dengan id=0
+        int deleted = storageManager.deleteBlock(new DataDeletion("students", "id=0"));
+        assertEquals(4, deleted, "Harus delete 4 baris dengan id=0 (index 0, 3, 6, 9)");
+
+        // Verifikasi
+        List<Row> remaining = storageManager.readBlock(new DataRetrieval("students", List.of("*"), null, false));
+        assertEquals(6, remaining.size(), "Harus sisa 6 baris");
+        assertFalse(remaining.stream().anyMatch(r -> r.data().get("id").equals(0)), "Tidak boleh ada id=0");
+    }
+
+    @Test
+    @DisplayName("Test: Empty Filter (null/empty string) returns all rows")
+    void testEmptyFilterReturnsAll() {
+        System.out.println("--- testEmptyFilterReturnsAll ---");
+
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 1, "name", "A", "gpa", 3.0f)), null));
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 2, "name", "B", "gpa", 3.1f)), null));
+        storageManager.writeBlock(new DataWrite("students",
+                new Row(Map.of("id", 3, "name", "C", "gpa", 3.2f)), null));
+
+        // null filter
+        List<Row> results = storageManager.readBlock(new DataRetrieval("students", List.of("*"), null, false));
+        assertEquals(3, results.size(), "null filter harus return semua baris");
+
+        // empty string filter
+        results = storageManager.readBlock(new DataRetrieval("students", List.of("*"), "", false));
+        assertEquals(3, results.size(), "empty string filter harus return semua baris");
+    }
+
+    @Test
+    @DisplayName("Test: Statistics after large inserts and deletes")
+    void testStatisticsAfterLargeOperations() {
+        System.out.println("--- testStatisticsAfterLargeOperations ---");
+
+        // Insert 100 rows
+        for (int i = 0; i < 100; i++) {
+            Row row = new Row(Map.of("id", i, "name", "Item" + (i % 10), "gpa", 2.0f + (i % 40) * 0.05f));
+            storageManager.writeBlock(new DataWrite("students", row, null));
+        }
+
+        Map<String, Statistic> stats1 = storageManager.getAllStats();
+        assertEquals(100, stats1.get("students").nr(), "After 100 inserts, nr should be 100");
+        assertEquals(10, stats1.get("students").V().get("name"), "Should have 10 distinct names");
+
+        // Delete 50 rows
+        for (int i = 0; i < 50; i++) {
+            storageManager.deleteBlock(new DataDeletion("students", "id=" + i));
+        }
+
+        // Re-compute stats
+        Map<String, Statistic> stats2 = storageManager.getAllStats();
+        assertEquals(50, stats2.get("students").nr(), "After deleting 50, nr should be 50");
     }
 }
