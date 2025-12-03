@@ -1,8 +1,5 @@
 package com.apacy.queryprocessor.client;
 
-import com.apacy.common.dto.ExecutionResult;
-import com.apacy.common.dto.Row;
-
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -10,6 +7,9 @@ import java.net.ConnectException;
 import java.net.Socket;
 import java.util.List;
 import java.util.Scanner;
+
+import com.apacy.common.dto.ExecutionResult;
+import com.apacy.common.dto.Row;
 
 /**
  * Interactive CLI for mDBMS-Apacy Client - connects to server via socket
@@ -302,7 +302,7 @@ public class ApacyCLI {
         
         // Check if query is complete (ends with semicolon)
         if (input.endsWith(";")) {
-            executeQuery(currentQuery.substring(0, currentQuery.length() - 1).trim());
+            executeQuery(currentQuery.substring(0, currentQuery.length()).trim());
             currentQuery = "";
         } else {
             currentQuery += " ";
