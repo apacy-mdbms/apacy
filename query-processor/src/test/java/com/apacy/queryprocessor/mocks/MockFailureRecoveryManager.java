@@ -2,6 +2,7 @@ package com.apacy.queryprocessor.mocks;
 
 import com.apacy.common.dto.ExecutionResult;
 import com.apacy.common.dto.RecoveryCriteria;
+import com.apacy.common.dto.Row;
 import com.apacy.common.interfaces.IFailureRecoveryManager;
 
 public class MockFailureRecoveryManager implements IFailureRecoveryManager {
@@ -20,6 +21,12 @@ public class MockFailureRecoveryManager implements IFailureRecoveryManager {
     @Override
     public void saveCheckpoint() {
         System.out.println("[MOCK-FRM] saveCheckpoint dipanggil.");
+    }
+
+    @Override
+    public void writeDataLog(String operation, String tableName, String recordId, Row oldData, Row newData) {
+        System.out.println("[MOCK-FRM] writeDataLog: Op: " + operation + " | Table: " + tableName 
+                + " | RecordId: " + recordId + " | OldData: " + oldData + " | NewData: " + newData);
     }
 
     @Override
