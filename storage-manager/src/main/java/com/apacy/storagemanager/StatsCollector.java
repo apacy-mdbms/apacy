@@ -1,12 +1,5 @@
 package com.apacy.storagemanager;
 
-import com.apacy.common.dto.Column;
-import com.apacy.common.dto.IndexSchema;
-import com.apacy.common.dto.Row;
-import com.apacy.common.dto.Schema;
-import com.apacy.common.dto.Statistic;
-import com.apacy.common.enums.IndexType;
-
 import java.io.IOException;
 import java.util.Collection;
 import java.util.HashMap;
@@ -15,6 +8,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import com.apacy.common.dto.Column;
+import com.apacy.common.dto.IndexSchema;
+import com.apacy.common.dto.Row;
+import com.apacy.common.dto.Schema;
+import com.apacy.common.dto.Statistic;
+import com.apacy.common.enums.IndexType;
 
 /**
  * Statistics Collector gathers and maintains database statistics for query optimization.
@@ -64,19 +64,22 @@ public class StatsCollector {
         String dataFile = schema.dataFile();
 
         int nr = 0; // jumlah tuple
-        long br = 0; // jumlah blok
+        // 1. Dapatkan jumlah blok (br)
+        long br = blockManager.getBlockCount(dataFile);
         long totalRowSize = 0; // total ukuran byte semua tuple (untuk menghitung lr)
         
         // Map untuk V(A,r): Map<NamaKolom, Set<NilaiUnik>>
         Map<String, Set<Object>> distinctValues = new HashMap<>();
+        Map<String, Object> minMap = new HashMap<>();
+        Map<String, Object> maxMap = new HashMap<>();
         // Inisialisasi Set untuk setiap kolom di tabel ini
         for (Column col : schema.columns()) {
             distinctValues.put(col.name(), new HashSet<>());
+            minMap.put(col.name(), null);
+            maxMap.put(col.name(), null);
         }
 
-        // 1. Dapatkan jumlah blok (br)
-        br = blockManager.getBlockCount(dataFile);
-
+       
         // 2. Iterasi setiap blok untuk menghitung nr, lr, dan V(A,r)
         for (long blockNumber = 0; blockNumber < br; blockNumber++) {
             byte[] blockData = blockManager.readBlock(dataFile, blockNumber);
@@ -95,13 +98,19 @@ public class StatsCollector {
 
                     // 6. Kumpulkan nilai unik untuk V(A,r)
                     for (Map.Entry<String, Object> entry : row.data().entrySet()) {
-                        String columnName = entry.getKey();
-                        Object value = entry.getValue();
+                        String colName = entry.getKey();
+                        Object val = entry.getValue();
                         
                         // Tambahkan nilai ke Set (duplikat akan diabaikan oleh HashSet)
-                        if (distinctValues.containsKey(columnName)) {
-                            distinctValues.get(columnName).add(value);
+                        if (val == null) continue;
+
+                        // Kumpulkan Distinct Values
+                        if (distinctValues.containsKey(colName)) {
+                            distinctValues.get(colName).add(val);
                         }
+
+                        // [BARU] Update Min/Max
+                        updateMinMax(minMap, maxMap, colName, val);
                     }
                 }
             }
@@ -126,10 +135,43 @@ public class StatsCollector {
             .collect(Collectors.toMap(
                 IndexSchema::columnName, 
                 IndexSchema::indexType,
-                (existingType, newType) -> existingType // Jaga-jaga jika ada duplikat
+                (a, b) -> a // Jaga-jaga jika ada duplikat
             ));
 
         // 10. Kembalikan objek Statistic
-        return new Statistic(nr, (int) br, lr, fr, V, indexedColumn);
+        return new Statistic(nr, (int) br, lr, fr, V, indexedColumn, minMap, maxMap);
+    }
+
+    /**
+     * Helper untuk membandingkan dan update nilai min/max
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void updateMinMax(Map<String, Object> minMap, Map<String, Object> maxMap, String colName, Object val) {
+        // Hanya proses jika tipe data Comparable (Integer, String, Float, dll)
+        if (!(val instanceof Comparable)) return;
+
+        Comparable currentVal = (Comparable) val;
+
+        // Update Min
+        Object currentMin = minMap.get(colName);
+        if (currentMin == null) {
+            minMap.put(colName, val);
+        } else {
+            // Jika currentVal < currentMin
+            if (currentVal.compareTo(currentMin) < 0) {
+                minMap.put(colName, val);
+            }
+        }
+
+        // Update Max
+        Object currentMax = maxMap.get(colName);
+        if (currentMax == null) {
+            maxMap.put(colName, val);
+        } else {
+            // Jika currentVal > currentMax
+            if (currentVal.compareTo(currentMax) > 0) {
+                maxMap.put(colName, val);
+            }
+        }
     }
 }
