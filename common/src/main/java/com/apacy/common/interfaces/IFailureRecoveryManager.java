@@ -8,8 +8,10 @@ import com.apacy.common.dto.RecoveryCriteria;
  * Tugas: Mencatat log dan memulihkan data jika terjadi kegagalan.
  */
 public interface IFailureRecoveryManager {
-    
+
     void writeLog(ExecutionResult info);
+
+    void writeTransactionLog(int transactionId, String lifecycleEvent);
 
     void saveCheckpoint();
 
