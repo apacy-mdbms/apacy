@@ -75,7 +75,8 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
         System.out.println(this.getComponentName() + " is shutting down...");
         this.saveCheckpoint();
         try {
-            if (logWriter != null) logWriter.close();
+            if (logWriter != null)
+                logWriter.close();
         } catch (IOException e) {
             System.err.println("Error closing LogWriter: " + e.getMessage());
         }
@@ -92,13 +93,13 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
         try {
             String transactionId = String.valueOf(info.transactionId());
             String operation = info.operation();
-            String tableName = "UNKNOWN_TABLE"; // Default table name
+            String tableName = "UNKNOWN_TABLE";
 
             Object dataAfter = formatDataFromExecutionResult(info);
 
-            // Create JSON log entry
+            // Buat log entry JSON
             LogEntry entry = new LogEntry(transactionId, operation, tableName, null, dataAfter);
-            logWriter.writeLog(entry); // writeLog accepts LogEntry and converts to JSON
+            logWriter.writeLog(entry); // writeLog nerima LogEntry dan dijadiin JSON
 
         } catch (Exception e) {
             System.err.println("Error writing log: " + e.getMessage());
@@ -115,9 +116,7 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
         }
     }
 
-    /**
-     * Menulis log untuk lifecycle transaksi (BEGIN, COMMIT, ROLLBACK)
-     */
+    // Menulis log untuk lifecycle transaksi (BEGIN, COMMIT, ROLLBACK)
     public void writeTransactionLog(int transactionId, String lifecycleEvent) {
         try {
             LogEntry entry = new LogEntry(String.valueOf(transactionId), lifecycleEvent, "-", null, null);
@@ -146,11 +145,11 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
     public void saveCheckpoint() {
         try {
             System.out.println("Creating a new checkpoint...");
-            String cpId = this.checkpointManager.createCheckpoint();
-            // After checkpointing, rotate/compact WAL to remove old logs up to checkpoint
+            this.checkpointManager.createCheckpoint();
+            // Setelah checkpoint, lakuin rotasi/kompaksi WAL buat ilangin log lama
             if (logWriter != null) {
                 try {
-                    logWriter.rotateLog(); // archive old log
+                    logWriter.rotateLog(); // simpan log lama
                 } catch (IOException e) {
                     System.err.println("[FailureRecoveryManager] Failed to rotate WAL: " + e.getMessage());
                 }
@@ -202,8 +201,16 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
         }
     }
 
-    // Getters 
-    public LogWriter getLogWriter() { return logWriter; }
-    public LogReplayer getLogReplayer() { return logReplayer; }
-    public CheckpointManager getCheckpointManager() { return checkpointManager; }
+    // Getters
+    public LogWriter getLogWriter() {
+        return logWriter;
+    }
+
+    public LogReplayer getLogReplayer() {
+        return logReplayer;
+    }
+
+    public CheckpointManager getCheckpointManager() {
+        return checkpointManager;
+    }
 }
