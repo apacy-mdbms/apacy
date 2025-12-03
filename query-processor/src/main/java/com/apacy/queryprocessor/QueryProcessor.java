@@ -1,8 +1,8 @@
 package com.apacy.queryprocessor;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.function.Function;
 
 import com.apacy.common.DBMSComponent;
 import com.apacy.common.dto.ExecutionResult;
@@ -10,24 +10,17 @@ import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.RecoveryCriteria;
 import com.apacy.common.dto.Response;
 import com.apacy.common.dto.Row;
+import com.apacy.common.dto.ast.expression.ExpressionNode;
+import com.apacy.common.dto.ast.expression.LiteralFactor;
+import com.apacy.common.dto.ast.expression.TermNode;
 import com.apacy.common.dto.ddl.ParsedQueryDDL;
 import com.apacy.common.dto.plan.DDLNode;
-import com.apacy.common.dto.plan.FilterNode;
-import com.apacy.common.dto.plan.JoinNode;
-import com.apacy.common.dto.plan.LimitNode;
-import com.apacy.common.dto.plan.ModifyNode;
-import com.apacy.common.dto.plan.PlanNode;
-import com.apacy.common.dto.plan.ProjectNode;
-import com.apacy.common.dto.plan.ScanNode;
-import com.apacy.common.dto.plan.SortNode;
-import com.apacy.common.dto.plan.TCLNode;
 import com.apacy.common.enums.Action;
 import com.apacy.common.interfaces.IConcurrencyControlManager;
 import com.apacy.common.interfaces.IFailureRecoveryManager;
 import com.apacy.common.interfaces.IQueryOptimizer;
 import com.apacy.common.interfaces.IStorageManager;
-import com.apacy.queryprocessor.execution.JoinStrategy;
-import com.apacy.queryprocessor.execution.SortStrategy;
+import com.apacy.queryprocessor.execution.Operator;
 import com.apacy.queryprocessor.mocks.MockDDLParser;
 
 /**
@@ -40,8 +33,7 @@ public class QueryProcessor extends DBMSComponent {
     private final IFailureRecoveryManager frm;
 
     private final PlanTranslator planTranslator;
-    private final JoinStrategy joinStrategy;
-    private final SortStrategy sortStrategy;
+    private QueryBinder queryBinder;
     
     private boolean initialized = false;
 
@@ -58,13 +50,14 @@ public class QueryProcessor extends DBMSComponent {
         this.frm = frm;
 
         this.planTranslator = new PlanTranslator();
-        this.joinStrategy = new JoinStrategy();
-        this.sortStrategy = new SortStrategy();
     }
     
     @Override
     public void initialize() throws Exception {
         this.initialized = true;
+
+        this.queryBinder = new QueryBinder(this.sm);
+        System.out.println("Query Binder initialized successfully.");
         System.out.println("Query Processor has been initialized.");
     }
     
@@ -78,23 +71,41 @@ public class QueryProcessor extends DBMSComponent {
      * Entry point eksekusi query.
      * Menangani Transaction Lifecycle, Parsing, Optimization, dan Dispatching.
      */
-    public ExecutionResult executeQuery(String sqlQuery) {
+    public ExecutionResult executeQuery(String sqlQuery, int clientTxId) {
         MockDDLParser ddlParser = new MockDDLParser(sqlQuery);
         if (ddlParser.isDDL()) {
             return executeDDL(ddlParser);
         }
 
-        int txId = ccm.beginTransaction();
+        int txId;
+        boolean isAutoCommit = false;
+
+        if (clientTxId != -1) {
+            txId = clientTxId;
+        } else {
+            txId = ccm.beginTransaction();
+            isAutoCommit = true;
+
+            frm.writeTransactionLog(txId, "BEGIN");
+        }
+
         ParsedQuery parsedQuery = null;
         
         try {
             // 1. Parsing & Optimization
-            ParsedQuery initialQuery = qo.parseQuery(sqlQuery);
-            if (initialQuery == null) {
+            parsedQuery = qo.parseQuery(sqlQuery);
+            if (parsedQuery == null) {
                 throw new IllegalArgumentException("Query tidak valid atau tidak dikenali.");
             }
 
-            parsedQuery = qo.optimizeQuery(initialQuery, sm.getAllStats());
+            String type = parsedQuery.queryType().toUpperCase();
+
+            if (type.equals("BEGIN") || type.equals("BEGIN TRANSACTION")) {
+                isAutoCommit = false; 
+            }
+
+            ParsedQuery boundQuery = (queryBinder != null) ? queryBinder.bind(parsedQuery) : parsedQuery;
+            ParsedQuery optimizedQuery = qo.optimizeQuery(boundQuery, sm.getAllStats());
 
             Action action = parsedQuery.queryType().equalsIgnoreCase("SELECT") 
                 ? Action.READ 
@@ -114,67 +125,103 @@ public class QueryProcessor extends DBMSComponent {
                 }
             }
 
-            // 3. Execute Plan Tree (Recursive)
-            List<Row> resultRows = executeNode(parsedQuery.planRoot(), txId);
+            if (optimizedQuery.targetTables() != null) {
+                List<String> tables = optimizedQuery.targetTables().stream().map(t -> "TABLE::"+t).toList();
+                Response res = ccm.validateObjects(tables, txId, action);
+                if (!res.isAllowed()) throw new Exception("Lock denied: " + res.reason());
+            }
 
-            // 4. Commit & Wrap Result
-            ccm.endTransaction(txId, true);
+            // 3. Execute Plan Tree using Volcano Model
+            com.apacy.common.dto.plan.PlanNode planRoot = parsedQuery.planRoot();
+            String qType = parsedQuery.queryType().toUpperCase();
+            boolean isModifyQuery = List.of("INSERT", "UPDATE", "DELETE").contains(qType);
+
+            // Fallback: If Optimizer failed to set planRoot, OR if it returned a non-ModifyNode for a Modify Query
+            if (planRoot == null || (isModifyQuery && !(planRoot instanceof com.apacy.common.dto.plan.ModifyNode))) {
+                
+                if (isModifyQuery) {
+                    // Extract filter predicate if present
+                    com.apacy.common.dto.plan.PlanNode childNode = null;
+                    if (parsedQuery.whereClause() != null) {
+                        if (!"INSERT".equals(qType)) {
+                            // Create a dummy Scan + Filter structure
+                            com.apacy.common.dto.plan.ScanNode dummyScan = new com.apacy.common.dto.plan.ScanNode(parsedQuery.targetTables().get(0), "t");
+                            childNode = new com.apacy.common.dto.plan.FilterNode(dummyScan, parsedQuery.whereClause());
+                        }
+                    }
+
+                    // Sanitize values: Extract raw literals from AST nodes if necessary
+                    List<Object> rawValues = new ArrayList<>();
+                    if (parsedQuery.values() != null) {
+                        for (Object val : parsedQuery.values()) {
+                            rawValues.add(extractValue(val));
+                        }
+                    }
+
+                    planRoot = new com.apacy.common.dto.plan.ModifyNode(
+                        qType, 
+                        childNode, 
+                        parsedQuery.targetTables().get(0), 
+                        parsedQuery.targetColumns(), 
+                        rawValues
+                    );
+                } else {
+                    throw new RuntimeException("Query Optimizer returned null plan for " + qType);
+                }
+            }
+
+            Operator rootOperator = planTranslator.build(planRoot, txId, sm, ccm, frm);
+
+            List<Row> resultRows = new ArrayList<>();
+            
+            if (rootOperator != null) {
+                rootOperator.open();
+                Row row;
+                while ((row = rootOperator.next()) != null) {
+                    resultRows.add(row);
+                }
+                rootOperator.close();
+            }
+
+            boolean isTCL = type.equals("BEGIN") || type.equals("COMMIT") || type.equals("ABORT") || type.equals("ROLLBACK");
+            
+            if (isAutoCommit && !isTCL) {
+                ccm.endTransaction(txId, true);
+
+                frm.writeTransactionLog(txId, "COMMIT");
+            }
             
             return createExecutionResult(parsedQuery, resultRows, txId);
 
         } catch (Exception e) {
             // Error Handling: Rollback & Recover
             ccm.endTransaction(txId, false);
+
+            frm.writeTransactionLog(txId, "ABORT");
+
             frm.recover(new RecoveryCriteria("UNDO_TRANSACTION", String.valueOf(txId), null));
+            e.printStackTrace();
             
             String opType = (parsedQuery != null) ? parsedQuery.queryType() : "UNKNOWN";
             return new ExecutionResult(false, e.getMessage(), txId, opType, 0, Collections.emptyList());
         }
     }
 
-    /**
-     * The Main Dispatcher (Recursive Engine).
-     * Menerima PlanNode dan mendelegasikan eksekusi ke PlanTranslator.
-     */
-    private List<Row> executeNode(PlanNode node, int txId) {
-        // Helper function untuk recursion (agar PlanTranslator bisa panggil anak node)
-        Function<PlanNode, List<Row>> childExecutor = (child) -> executeNode(child, txId);
+    private Object extractValue(Object val) {
+        if (val instanceof ExpressionNode expr) {
+            return extractValue(expr.term());
+        }
+        if (val instanceof TermNode term) {
+            return extractValue(term.factor());
+        }
+        if (val instanceof LiteralFactor lit) {
+            return lit.value();
+        }
+        return val;
+    }
 
-        if (node == null) {
-            return Collections.emptyList();
-        }
-
-        if (node instanceof ScanNode n) {
-            return planTranslator.executeScan(n, txId, sm, ccm);
-        }
-        if (node instanceof FilterNode n) {
-            return planTranslator.executeFilter(n, childExecutor);
-        }
-        if (node instanceof ProjectNode n) {
-            return planTranslator.executeProject(n, childExecutor);
-        }
-        if (node instanceof JoinNode n) {
-            return planTranslator.executeJoin(n, childExecutor, joinStrategy, txId, ccm);
-        }
-        if (node instanceof SortNode n) {
-            return planTranslator.executeSort(n, childExecutor, sortStrategy);
-        }
-        if (node instanceof LimitNode n) {
-            return planTranslator.executeLimit(n, childExecutor);
-        }
-        if (node instanceof ModifyNode n) {
-            return planTranslator.executeModify(n, txId, childExecutor, sm, ccm, frm);
-        }
-        if (node instanceof DDLNode n) {
-            return planTranslator.executeDDL(n, sm);
-        }
-        if (node instanceof TCLNode n) {
-            return planTranslator.executeTCL(n, ccm, txId);
-        }
-
-        throw new UnsupportedOperationException(
-            "PlanNode type not supported: " + node.getClass().getSimpleName()
-        );
+    public ExecutionResult executeQuery(String sqlQuery) {
+        return executeQuery(sqlQuery, -1);
     }
 
     /**
@@ -205,10 +252,12 @@ public class QueryProcessor extends DBMSComponent {
     private ExecutionResult executeDDL(MockDDLParser parser) {
         try {
             ParsedQueryDDL ddlQuery = parser.parseDDL();
-
             DDLNode ddlNode = new DDLNode(ddlQuery);
 
-            planTranslator.executeDDL(ddlNode, sm);
+            // Use PlanTranslator to build Operator
+            Operator op = planTranslator.build(ddlNode, 0, sm, ccm, frm);
+            op.open();
+            op.close();
 
             String opType = ddlQuery.getType().toString();
             String tableName = ddlQuery.getTableName();
@@ -225,5 +274,4 @@ public class QueryProcessor extends DBMSComponent {
             return new ExecutionResult(false, "DDL Execution Failed: " + e.getMessage(), 0, "DDL", 0, null);
         }
     }
-
 }

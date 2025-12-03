@@ -1,5 +1,7 @@
 package com.apacy.failurerecoverymanager;
 
+import java.io.IOException;
+
 import com.apacy.common.DBMSComponent;
 import com.apacy.common.dto.ExecutionResult;
 import com.apacy.common.dto.RecoveryCriteria;
@@ -8,15 +10,11 @@ import com.apacy.common.interfaces.IFailureRecoveryManager;
 import com.apacy.common.interfaces.IStorageManager;
 import com.apacy.storagemanager.StorageManager;
 
-import java.io.IOException;
-
 public class FailureRecoveryManager extends DBMSComponent implements IFailureRecoveryManager {
 
-    // Konstanta untuk path file log
     private static final String DEFAULT_LOG_PATH = "failure-recovery/log/mDBMS.log";
     private static final String DEFAULT_CHECKPOINT_DIR = "failure-recovery/checkpoints";
 
-    // Gunakan helper class internal yang sudah dibuat
     private final LogWriter logWriter;
     private final LogReplayer logReplayer;
     private final CheckpointManager checkpointManager;
@@ -37,10 +35,8 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
         this.storageManager = storageManager;
         this.logFilePath = DEFAULT_LOG_PATH;
 
-        // Inisialisasi helper dengan parameter yang benar
         this.logWriter = new LogWriter(this.logFilePath);
 
-        // LogReplayer membutuhkan StorageManager yang konkret (bukan interface)
         StorageManager concreteStorageManager = (storageManager instanceof StorageManager)
                 ? (StorageManager) storageManager
                 : null;
@@ -55,26 +51,34 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
     @Override
     public void initialize() throws Exception {
         System.out.println(this.getComponentName() + " is initializing...");
-        // Logika untuk melakukan recovery saat startup jika shutdown sebelumnya tidak
-        // normal
+
+        // Buat auto recovery jika ada checkpoint/log yang sudah ada
+        boolean recoveryNeeded = false;
+        if (checkpointManager.hasCheckpoints()) {
+            System.out.println("Checkpoint files detected. Recovery may be needed.");
+            recoveryNeeded = true;
+        } else if (logWriter.hasLogs()) {
+            System.out.println("Log files detected. Recovery may be needed.");
+            recoveryNeeded = true;
+        }
+
+        if (recoveryNeeded) {
+            System.out.println("System did not shut down cleanly. Initiating recovery...");
+            recover(new RecoveryCriteria("POINT_IN_TIME", null, null));
+        }
+
         System.out.println(this.getComponentName() + " initialized successfully.");
     }
 
     @Override
     public void shutdown() {
         System.out.println(this.getComponentName() + " is shutting down...");
-        // Selalu buat checkpoint terakhir untuk memastikan data konsisten.
         this.saveCheckpoint();
-
-        // Tutup LogWriter dengan aman
         try {
-            if (logWriter != null) {
-                logWriter.close();
-            }
+            if (logWriter != null) logWriter.close();
         } catch (IOException e) {
             System.err.println("Error closing LogWriter: " + e.getMessage());
         }
-
         System.out.println(this.getComponentName() + " shut down gracefully.");
     }
 
@@ -86,24 +90,28 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
         }
 
         try {
-            // Konversi int transactionId ke String
             String transactionId = String.valueOf(info.transactionId());
             String operation = info.operation();
+            String tableName = "UNKNOWN_TABLE"; // Default table name
 
-            // ExecutionResult tidak memiliki tableName, gunakan placeholder
-            // TODO: Pertimbangkan untuk menambahkan tableName ke ExecutionResult di masa
-            // depan
-            String tableName = "UNKNOWN_TABLE";
+            Object dataAfter = formatDataFromExecutionResult(info);
 
-            // Format data dari rows
-            Object data = formatDataFromExecutionResult(info);
-
-            // Tulis log
-            logWriter.writeLog(transactionId, operation, tableName, data);
+            // Create JSON log entry
+            LogEntry entry = new LogEntry(transactionId, operation, tableName, null, dataAfter);
+            logWriter.writeLog(entry); // writeLog accepts LogEntry and converts to JSON
 
         } catch (Exception e) {
             System.err.println("Error writing log: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    public void writeDataLog(String transactionId, String operation, String tableName, Row dataBefore, Row dataAfter) {
+        try {
+            LogEntry entry = new LogEntry(transactionId, operation, tableName, dataBefore, dataAfter);
+            logWriter.writeLog(entry);
+        } catch (IOException e) {
+            System.err.println("Error writing data log: " + e.getMessage());
         }
     }
 
@@ -112,26 +120,18 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
      */
     public void writeTransactionLog(int transactionId, String lifecycleEvent) {
         try {
-            logWriter.writeLog(
-                    String.valueOf(transactionId),
-                    lifecycleEvent,
-                    "-",
-                    null);
+            LogEntry entry = new LogEntry(String.valueOf(transactionId), lifecycleEvent, "-", null, null);
+            logWriter.writeLog(entry);
         } catch (IOException e) {
             System.err.println("Error writing transaction log: " + e.getMessage());
         }
     }
 
-    /**
-     * Helper method untuk memformat data dari ExecutionResult
-     */
     private Object formatDataFromExecutionResult(ExecutionResult info) {
         if (info.rows() == null || info.rows().isEmpty()) {
             return "-";
         }
 
-        // Untuk operasi yang mengembalikan rows (SELECT), format sebagai list
-        // Untuk operasi lain, ambil row pertama jika ada
         if ("SELECT".equalsIgnoreCase(info.operation())) {
             return info.rows();
         } else if (!info.rows().isEmpty()) {
@@ -144,10 +144,17 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
 
     @Override
     public void saveCheckpoint() {
-        // Delegasikan tugas ke helper
         try {
             System.out.println("Creating a new checkpoint...");
-            this.checkpointManager.createCheckpoint();
+            String cpId = this.checkpointManager.createCheckpoint();
+            // After checkpointing, rotate/compact WAL to remove old logs up to checkpoint
+            if (logWriter != null) {
+                try {
+                    logWriter.rotateLog(); // archive old log
+                } catch (IOException e) {
+                    System.err.println("[FailureRecoveryManager] Failed to rotate WAL: " + e.getMessage());
+                }
+            }
         } catch (Exception e) {
             System.err.println("Failed to create checkpoint.");
             e.printStackTrace();
@@ -165,22 +172,26 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
             System.out.println("[FailureRecoveryManager] Starting recovery with type: " + criteria.recoveryType());
 
             switch (criteria.recoveryType()) {
-                case "UNDO_TRANSACTION":
+                case "UNDO_TRANSACTION" -> {
                     if (criteria.transactionId() == null) {
                         System.err.println("Transaction ID is required for UNDO_TRANSACTION recovery.");
                         return;
                     }
                     this.logReplayer.undoTransaction(criteria.transactionId());
-                    break;
+                }
 
-                case "POINT_IN_TIME":
-                    this.logReplayer.replayLogs(criteria);
-                    break;
+                case "POINT_IN_TIME" -> {
+                    if (criteria.targetTime() != null) {
+                        this.logReplayer.rollbackToTime(criteria);
+                    } else {
+                        this.logReplayer.replayLogs(criteria);
+                    }
+                }
 
-                default:
+                default -> {
                     System.out.println("[FailureRecoveryManager] Unknown recovery type, using default replay.");
                     this.logReplayer.replayLogs(criteria);
-                    break;
+                }
             }
 
             System.out.println("[FailureRecoveryManager] Recovery completed successfully.");
@@ -191,16 +202,8 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
         }
     }
 
-    // Getter untuk testing
-    public LogWriter getLogWriter() {
-        return logWriter;
-    }
-
-    public LogReplayer getLogReplayer() {
-        return logReplayer;
-    }
-
-    public CheckpointManager getCheckpointManager() {
-        return checkpointManager;
-    }
+    // Getters 
+    public LogWriter getLogWriter() { return logWriter; }
+    public LogReplayer getLogReplayer() { return logReplayer; }
+    public CheckpointManager getCheckpointManager() { return checkpointManager; }
 }

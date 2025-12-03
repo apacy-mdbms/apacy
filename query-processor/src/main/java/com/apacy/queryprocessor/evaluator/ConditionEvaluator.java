@@ -1,15 +1,15 @@
 package com.apacy.queryprocessor.evaluator;
 
 import com.apacy.common.dto.Row;
-import com.apacy.queryoptimizer.ast.expression.ColumnFactor;
-import com.apacy.queryoptimizer.ast.expression.ExpressionNode;
-import com.apacy.queryoptimizer.ast.expression.FactorNode;
-import com.apacy.queryoptimizer.ast.expression.LiteralFactor;
-import com.apacy.queryoptimizer.ast.expression.TermNode;
-import com.apacy.queryoptimizer.ast.where.BinaryConditionNode;
-import com.apacy.queryoptimizer.ast.where.ComparisonConditionNode;
-import com.apacy.queryoptimizer.ast.where.LiteralConditionNode;
-import com.apacy.queryoptimizer.ast.where.UnaryConditionNode;
+import com.apacy.common.dto.ast.expression.ColumnFactor;
+import com.apacy.common.dto.ast.expression.ExpressionNode;
+import com.apacy.common.dto.ast.expression.FactorNode;
+import com.apacy.common.dto.ast.expression.LiteralFactor;
+import com.apacy.common.dto.ast.expression.TermNode;
+import com.apacy.common.dto.ast.where.BinaryConditionNode;
+import com.apacy.common.dto.ast.where.ComparisonConditionNode;
+import com.apacy.common.dto.ast.where.LiteralConditionNode;
+import com.apacy.common.dto.ast.where.UnaryConditionNode;
 
 public class ConditionEvaluator {
 
@@ -57,6 +57,10 @@ public class ConditionEvaluator {
             return lit.value();
         } else if (factor instanceof ColumnFactor col) {
             String colName = col.columnName();
+
+            if (colName.contains(".")) {
+                colName = colName.substring(colName.indexOf('.') + 1);
+            }
             
             // 1. Cek Exact Match
             if (row.data().containsKey(colName)) {

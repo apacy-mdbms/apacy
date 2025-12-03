@@ -11,6 +11,7 @@ import com.apacy.queryoptimizer.rewriter.DistributeProjectRewriter;
 import com.apacy.queryoptimizer.rewriter.FilterPushdownRewriter;
 import com.apacy.queryoptimizer.rewriter.JoinCommutativityRewriter;
 import com.apacy.queryoptimizer.rewriter.PlanRewriter;
+import com.apacy.queryoptimizer.rewriter.SelectionJoinRewriter;
 
 /**
  * Heuristic-based query optimizer that applies optimization rules.
@@ -25,7 +26,8 @@ public class HeuristicOptimizer {
             new FilterPushdownRewriter(costEstimator),
             new JoinCommutativityRewriter(costEstimator),
             new AssociativeJoinRewriter(costEstimator),
-            new DistributeProjectRewriter(costEstimator)
+            new DistributeProjectRewriter(costEstimator),
+            new SelectionJoinRewriter(costEstimator)
         );
     }
 

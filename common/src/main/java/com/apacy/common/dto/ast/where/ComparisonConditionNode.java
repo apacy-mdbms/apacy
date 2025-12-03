@@ -1,6 +1,6 @@
-package com.apacy.queryoptimizer.ast.where;
+package com.apacy.common.dto.ast.where;
 
-import com.apacy.queryoptimizer.ast.expression.ExpressionNode;
+import com.apacy.common.dto.ast.expression.ExpressionNode;
 
 /**
  * ComparisonConditionNode can be used for comparing expression with expression
