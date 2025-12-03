@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.apacy.common.dto.ParsedQuery;
+import com.apacy.common.dto.plan.ModifyNode;
 
 /**
  * Parser for INSERT query
@@ -51,10 +52,12 @@ public class InsertParser extends AbstractParser {
         }
 
         // Buat objek ParsedQuery sesuai DTO yang baru
-        //
+
+        ModifyNode insertNode = new ModifyNode("INSERT", null, tableName, columns, values);
+
         return new ParsedQuery(
             "INSERT",            // queryType
-            null,
+            insertNode,
             List.of(tableName),  // targetTables
             columns,             // targetColumns
             values,              // values
