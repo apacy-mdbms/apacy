@@ -138,6 +138,10 @@ public class SelectParser extends AbstractParser {
 
         PlanNode planRoot = generatePlanNode((JoinOperand)joinAst, where, targetColumns);
 
+        if (orderBy != null) {
+            planRoot = new SortNode(planRoot, orderBy, isDesc);
+        }
+
         // Gunakan konstruktor BARU yang ada limit & offset
         return new ParsedQuery(
                 "SELECT",
