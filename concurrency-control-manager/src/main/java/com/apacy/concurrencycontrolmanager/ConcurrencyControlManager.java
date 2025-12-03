@@ -7,19 +7,28 @@ import com.apacy.common.dto.Response;
 import com.apacy.common.dto.Row;
 import com.apacy.common.enums.Action;
 import com.apacy.common.interfaces.IConcurrencyControlManager;
+import com.apacy.common.interfaces.IFailureRecoveryManager;
 
 public class ConcurrencyControlManager extends DBMSComponent implements IConcurrencyControlManager {
     
     private IConcurrencyControlManagerAlgorithm manager;
+ 
+    private final IFailureRecoveryManager failureRecoveryManager;
 
     public ConcurrencyControlManager() {
-        this("lock");
+        this("lock", null);
     }
+
     public ConcurrencyControlManager(String algorithm) {
+        this(algorithm, null);
+    }
+
+    public ConcurrencyControlManager(String algorithm, IFailureRecoveryManager failureRecoveryManager) {
         super("Concurrency Control Manager");
+        this.failureRecoveryManager = failureRecoveryManager;
         this.manager = switch(algorithm) {
-            case "lock" -> new ConcurrencyControlManagerLockBased();
-            case "timestamp" -> new ConcurrencyControlManagerTimestamp();
+            case "lock" -> new ConcurrencyControlManagerLockBased(failureRecoveryManager);
+            case "timestamp" -> new ConcurrencyControlManagerTimestamp(failureRecoveryManager);
             case "validation" -> new ConcurrencyControlManagerValidation();
             default -> null;
         };
