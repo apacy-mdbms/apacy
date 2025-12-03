@@ -46,17 +46,13 @@ public class CheckpointManager {
         }
     }
 
-    /**
-     * Create checkpoint: flush WAL, flush storage buffers, write metadata.
-     * Returns checkpointId.
-     */
     public String createCheckpoint() throws IOException {
         String checkpointId = "CP_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 8);
         System.out.println("[CheckpointManager] Memulai Checkpoint: " + checkpointId);
 
         long ts = System.currentTimeMillis();
 
-        // Write begin marker
+        // Tulis log checkpoint mulai
         if (logWriter != null) {
             logWriter.writeLog("SYSTEM", "CHECKPOINT_BEGIN", checkpointId, null);
             logWriter.flush();
@@ -64,9 +60,8 @@ public class CheckpointManager {
 
         int appliedEntries = flushWalToStorage();
 
-        // Flush Storage Manager (assume it has blockManager)
-        if (storageManager instanceof StorageManager) {
-            StorageManager sm = (StorageManager) storageManager;
+        // Buat Flush SM jika ada
+        if (storageManager instanceof StorageManager sm) {
             if (sm.getBlockManager() != null) {
                 sm.getBlockManager().flush();
             }
@@ -197,22 +192,24 @@ public class CheckpointManager {
 
         try {
             switch (operation.toUpperCase()) {
-                case "INSERT":
-                case "UPDATE":
+                case "INSERT", "UPDATE" -> {
                     if (afterMap == null || afterMap.isEmpty()) {
                         return false;
                     }
                     storageManager.writeBlock(new DataWrite(tableName, new Row(afterMap), null));
                     return true;
-                case "DELETE":
+                }
+                case "DELETE" -> {
                     Map<String, Object> criteria = (beforeMap != null && !beforeMap.isEmpty()) ? beforeMap : afterMap;
                     if (criteria == null || criteria.isEmpty()) {
                         return false;
                     }
                     storageManager.deleteBlock(new DataDeletion(tableName, criteria));
                     return true;
-                default:
+                }
+                default -> {
                     return false;
+                }
             }
         } catch (Exception e) {
             System.err.println("[CheckpointManager] Error saat apply log entry: " + e.getMessage());
@@ -244,6 +241,17 @@ public class CheckpointManager {
         @Override
         public String toString() {
             return "Checkpoint{" + "id='" + checkpointId + '\'' + ", ts=" + timestamp + '}';
+        }
+    }
+
+    /** Cek apakah direktori checkpoint memiliki file checkpoint */
+    public boolean hasCheckpoints() throws IOException {
+        Path checkpointPath = Paths.get(checkpointDirectory);
+        if (!Files.exists(checkpointPath)) {
+            return false;
+        }
+        try (Stream<Path> paths = Files.list(checkpointPath)) {
+            return paths.anyMatch(path -> path.toString().endsWith(".cp"));
         }
     }
 }
