@@ -32,25 +32,24 @@ public class LogWriter {
 
     public synchronized void writeLog(LogEntry entry) throws IOException {
         if (entry == null) return;
-        writer.write(entry.toString());
+        writer.write(entry.toString()); // JSON format
         writer.write("\n");
         writer.flush();
     }
 
-    /**
-     * Backwards compatible helper (old-style)
-     */
+
+     // Helper buat log kebalik
     public synchronized void writeLog(String transactionId, String operation, String tableName, Object dataAfter) throws IOException {
         LogEntry entry = new LogEntry(transactionId, operation, tableName, null, dataAfter);
         writeLog(entry);
     }
 
-    /** Memaksa flush buffer ke file. */
+    // Memaksa flush buffer ke file.
     public synchronized void flush() throws IOException {
         if (writer != null) writer.flush();
     }
 
-    /** Menutup file writer dengan aman. */
+    // Menutup file writer dengan aman.
     public synchronized void close() throws IOException {
         if (writer != null) {
             writer.flush();
@@ -59,21 +58,32 @@ public class LogWriter {
         }
     }
 
-    /** Mengembalikan lokasi file WAL yang sedang digunakan. */
+    // Mengembalikan lokasi file WAL yang sedang digunakan.
     public String getLogFilePath() {
         return logFilePath;
     }
 
-    /** Melakukan rotasi / archive log: rename current log and initialize a new one. */
+    // Melakukan rotasi / archive log: rename current log and initialize a new one.
     public synchronized void rotateLog() throws IOException {
         close();
         File oldFile = new File(logFilePath);
         if (oldFile.exists()) {
             File rotated = new File(logFilePath + "." + System.currentTimeMillis() + ".bak");
+            // Try to rename, but if it fails, just delete the old file
             if (!oldFile.renameTo(rotated)) {
-                throw new IOException("Gagal merename log file untuk rotation");
+                // If rename fails, try to delete the file
+                if (!oldFile.delete()) {
+                    System.err.println("Gagal merename atau menghapus log file untuk rotation");
+                    // Continue anyway - don't throw exception
+                }
             }
         }
         initialize();
+    }
+
+    // Check if log file exists and contains data
+    public boolean hasLogs() {
+        File logFile = new File(logFilePath);
+        return logFile.exists() && logFile.length() > 0;
     }
 }
