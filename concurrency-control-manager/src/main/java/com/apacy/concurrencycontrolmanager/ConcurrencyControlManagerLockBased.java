@@ -3,6 +3,7 @@ package com.apacy.concurrencycontrolmanager;
 import com.apacy.common.DBMSComponent;
 import com.apacy.common.dto.*;
 import com.apacy.common.enums.Action;
+import com.apacy.common.interfaces.IFailureRecoveryManager;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -13,17 +14,21 @@ public class ConcurrencyControlManagerLockBased extends DBMSComponent implements
     private final LockManager lockManager;
     private final TimestampManager timestampManager;
     private final Map<Integer, Transaction> transactionMap;
-    
+    private final IFailureRecoveryManager failureRecoveryManager;
+
     private int transactionCounter;
 
     public ConcurrencyControlManagerLockBased() {
-        super("Concurrency Control Manager");
+        this(null);
+    }
 
+    public ConcurrencyControlManagerLockBased(IFailureRecoveryManager failureRecoveryManager) {
+        super("Concurrency Control Manager");
         this.lockManager = new LockManager();
         this.timestampManager = new TimestampManager();
-
         this.transactionMap = new HashMap<>();
         this.transactionCounter = 0;
+        this.failureRecoveryManager = failureRecoveryManager;
     }
 
     public ConcurrencyControlManagerLockBased(LockManager lockManager, TimestampManager timestampManager) {
@@ -32,6 +37,7 @@ public class ConcurrencyControlManagerLockBased extends DBMSComponent implements
         this.timestampManager = timestampManager;
         this.transactionMap = new HashMap<>();
         this.transactionCounter = 0;
+        this.failureRecoveryManager = null;
     }
 
     @Override

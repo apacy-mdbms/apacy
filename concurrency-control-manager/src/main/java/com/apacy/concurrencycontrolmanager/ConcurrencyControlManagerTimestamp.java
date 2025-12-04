@@ -4,6 +4,7 @@ import com.apacy.common.DBMSComponent;
 import com.apacy.common.dto.Response;
 import com.apacy.common.dto.Row;
 import com.apacy.common.enums.Action;
+import com.apacy.common.interfaces.IFailureRecoveryManager;
 
 import java.util.HashMap;
 import java.util.List;
@@ -13,13 +14,19 @@ public class ConcurrencyControlManagerTimestamp extends DBMSComponent implements
 
     private final TimestampManager timestampManager;
     private final Map<Integer, Transaction> transactionMap;
+    private final IFailureRecoveryManager failureRecoveryManager;
     private long globalTS;
 
     public ConcurrencyControlManagerTimestamp() {
+        this(null);
+    }
+
+    public ConcurrencyControlManagerTimestamp(IFailureRecoveryManager failureRecoveryManager) {
         super("Concurrency Control Manager Timestamp Ordering");
         this.timestampManager = new TimestampManager();
         this.transactionMap = new HashMap<>();
         this.globalTS = 0;
+        this.failureRecoveryManager = failureRecoveryManager;
     }
 
     @Override
@@ -43,6 +50,15 @@ public class ConcurrencyControlManagerTimestamp extends DBMSComponent implements
         tx.setTimestamp(id);
 
         transactionMap.put(id, tx);
+
+        if (failureRecoveryManager != null) {
+            try {
+                failureRecoveryManager.writeTransactionLog(id, "BEGIN");
+            } catch (Exception e) {
+                System.err.println("[CCM] Failed to log BEGIN for transaction " + id + ": " + e.getMessage());
+            }
+        }
+
         return id;
     }
 
@@ -101,6 +117,22 @@ public class ConcurrencyControlManagerTimestamp extends DBMSComponent implements
     public synchronized void endTransaction(int transactionId, boolean commit) {
         Transaction tx = transactionMap.get(transactionId);
         if (tx == null) return;
+
+        String lifecycleEvent;
+        if (tx.isAborted()) {
+            lifecycleEvent = "ROLLBACK";
+        } else {
+            lifecycleEvent = commit ? "COMMIT" : "ROLLBACK";
+        }
+
+        if (failureRecoveryManager != null) {
+            try {
+                failureRecoveryManager.writeTransactionLog(transactionId, lifecycleEvent);
+            } catch (Exception e) {
+                System.err.println("[CCM] Failed to log " + lifecycleEvent + " for transaction " + transactionId + ": "
+                        + e.getMessage());
+            }
+        }
 
         if (tx.isAborted()) {
             tx.terminate();
