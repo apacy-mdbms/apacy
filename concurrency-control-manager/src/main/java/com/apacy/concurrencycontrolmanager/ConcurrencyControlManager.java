@@ -21,6 +21,15 @@ public class ConcurrencyControlManager extends DBMSComponent implements IConcurr
 
     public ConcurrencyControlManager(String algorithm) {
         this(algorithm, null);
+        this.manager = switch(algorithm) {
+            case "lock" -> new ConcurrencyControlManagerLockBased(failureRecoveryManager);
+            case "timestamp" -> new ConcurrencyControlManagerTimestamp(failureRecoveryManager);
+            case "validation" -> new ConcurrencyControlManagerValidation(failureRecoveryManager);
+            default -> null;
+        };
+        if (this.manager == null) {
+            throw new IllegalArgumentException("Invalid Algorithm: " + algorithm);
+        }
     }
 
     public ConcurrencyControlManager(String algorithm, IFailureRecoveryManager failureRecoveryManager) {
