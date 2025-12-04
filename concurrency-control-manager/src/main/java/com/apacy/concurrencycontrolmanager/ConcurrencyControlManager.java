@@ -79,8 +79,9 @@ public class ConcurrencyControlManager extends DBMSComponent implements IConcurr
     public synchronized Response validateObjects(List<String> objectIds, int transactionId, Action action) {
         Response response = this.manager.validateObjects(objectIds, transactionId, action);
         if (failureRecoveryManager != null) {
-            String objects = String.join(",", objectIds);
-            failureRecoveryManager.writeTransactionLog(transactionId, "VALIDATE:" + objects + ":" + action);
+            for (String objectId : objectIds) {
+                failureRecoveryManager.writeTransactionLog(transactionId, "VALIDATE:" + objectId + ":" + action);
+            }
         }
         return response;
     }
