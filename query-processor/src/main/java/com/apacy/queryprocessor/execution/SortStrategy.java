@@ -93,13 +93,142 @@ public class SortStrategy {
     }
     
     /**
-     * External sort for large datasets that don't fit in memory.
-     * TODO: Implement external merge sort with temporary file management
+     * External Merge Sort implementation.
      */
-    public static List<Row> externalSort(List<Row> rows, String columnName, boolean ascending, 
-                                        int memoryLimit) {
-        // TODO: Implement external sorting algorithm
-        throw new UnsupportedOperationException("externalSort not implemented yet");
+    public static List<Row> externalSort(List<Row> rows, String columnName, boolean ascending, int memoryLimit) {
+        if (rows == null || rows.isEmpty()) return new ArrayList<>();
+        
+        // 1. Jika data muat di memori, gunakan in-memory sort biasa (lebih cepat)
+        if (rows.size() <= memoryLimit) {
+            return sort(rows, columnName, ascending);
+        }
+
+        List<File> tempFiles = new ArrayList<>();
+        Comparator<Row> comparator = createColumnComparator(columnName, ascending);
+
+        try {
+            // 2. PHASE 1: SPLIT, SORT, & SPILL
+            // Pecah data menjadi chunk kecil, sort di RAM, tulis ke disk
+            int chunkCount = (int) Math.ceil((double) rows.size() / memoryLimit);
+            
+            for (int i = 0; i < chunkCount; i++) {
+                int start = i * memoryLimit;
+                int end = Math.min(start + memoryLimit, rows.size());
+                
+                List<Row> chunk = new ArrayList<>(rows.subList(start, end));
+                chunk.sort(comparator); // Sort potongan kecil di memori
+                
+                tempFiles.add(saveChunkToTempFile(chunk));
+            }
+
+            // 3. PHASE 2: K-WAY MERGE
+            // Gabungkan potongan-potongan tersebut secara streaming
+            return mergeSortedFiles(tempFiles, comparator);
+
+        } catch (IOException | ClassNotFoundException e) {
+            throw new RuntimeException("External Sort failed: " + e.getMessage(), e);
+        } finally {
+            // Cleanup: Hapus file temporary setelah selesai
+            for (File f : tempFiles) {
+                if (f.exists()) f.delete();
+            }
+        }
+    }
+
+    // --- Helper Methods untuk External Sort ---
+
+    private static File saveChunkToTempFile(List<Row> chunk) throws IOException {
+        File tempFile = File.createTempFile("apacy_sort_", ".tmp");
+        tempFile.deleteOnExit(); 
+
+        try (java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(
+                new java.io.BufferedOutputStream(new java.io.FileOutputStream(tempFile)))) {
+            // Tulis jumlah baris di header file
+            oos.writeInt(chunk.size());
+            for (Row row : chunk) {
+                oos.writeObject(row);
+            }
+        }
+        return tempFile;
+    }
+
+    private static List<Row> mergeSortedFiles(List<File> files, Comparator<Row> comparator) 
+            throws IOException, ClassNotFoundException {
+        List<Row> result = new ArrayList<>();
+        
+        // Min-Heap untuk mengambil elemen terkecil dari N file secara efisien
+        java.util.PriorityQueue<FileBatch> pq = new java.util.PriorityQueue<>(
+            (fb1, fb2) -> comparator.compare(fb1.peek(), fb2.peek())
+        );
+        
+        List<java.io.ObjectInputStream> openStreams = new ArrayList<>();
+
+        try {
+            // Buka semua file dan masukkan elemen pertamanya ke antrian
+            for (File file : files) {
+                java.io.ObjectInputStream ois = new java.io.ObjectInputStream(
+                    new java.io.BufferedInputStream(new java.io.FileInputStream(file)));
+                openStreams.add(ois);
+                
+                int rowCount = ois.readInt();
+                if (rowCount > 0) {
+                    pq.add(new FileBatch(ois, rowCount));
+                } else {
+                    ois.close();
+                }
+            }
+
+            while (!pq.isEmpty()) {
+                FileBatch batch = pq.poll();
+                result.add(batch.pop());
+
+                if (batch.hasNext()) {
+                    batch.reloadNext();
+                    pq.add(batch);
+                } else {
+                    batch.close();
+                }
+            }
+        } finally {
+            for (java.io.ObjectInputStream ois : openStreams) {
+                try { ois.close(); } catch (IOException ignored) {}
+            }
+        }
+
+        return result;
+    }
+
+    private static class FileBatch {
+        private final java.io.ObjectInputStream ois;
+        private int remaining;
+        private Row currentRow;
+
+        FileBatch(java.io.ObjectInputStream ois, int total) throws IOException, ClassNotFoundException {
+            this.ois = ois;
+            this.remaining = total;
+            reloadNext();
+        }
+
+        void reloadNext() throws IOException, ClassNotFoundException {
+            if (remaining > 0) {
+                this.currentRow = (Row) ois.readObject();
+                remaining--;
+            } else {
+                this.currentRow = null;
+            }
+        }
+
+        Row peek() { return currentRow; }
+
+        Row pop() {
+            Row r = currentRow;
+            currentRow = null;
+            return r;
+        }
+
+        boolean hasNext() { return currentRow != null || remaining > 0; }
+        
+        void close() throws IOException { ois.close(); }
     }
 
     private static Comparator<Row> createColumnComparator(String columnName, boolean ascending) {
