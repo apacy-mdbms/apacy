@@ -42,9 +42,9 @@ public class InsertParser extends AbstractParser {
         consume(TokenType.RPARENTHESIS);
 
         // (Opsional) Cek semicolon di akhir
-        if (match(TokenType.SEMICOLON)) {
-            // Semicolon ada, bagus
-        }
+        consume(TokenType.SEMICOLON);
+        consume(TokenType.EOF);
+
 
         // Validasi
         if (columns != null && columns.size() != values.size()) {

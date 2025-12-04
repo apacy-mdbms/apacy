@@ -51,6 +51,9 @@ public class UpdateParser extends AbstractParser {
             where = parseWhereExpression();
         }
 
+        consume(TokenType.SEMICOLON);
+        consume(TokenType.EOF);
+
         Object whereClause = where;
 
         TableNode sourceTable = new TableNode(targetTable.getValue());

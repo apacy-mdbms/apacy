@@ -45,6 +45,6 @@ public class QueryOptimizer extends DBMSComponent implements IQueryOptimizer {
 
     @Override
     public double getCost(ParsedQuery query, Map<String, Statistic> allStats) {
-        return this.estimator.estimate(query, allStats);
+        return this.estimator.estimatePlanCost(query.planRoot(), allStats);
     }
 }
