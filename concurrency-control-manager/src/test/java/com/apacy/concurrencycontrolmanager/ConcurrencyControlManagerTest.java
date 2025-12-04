@@ -96,8 +96,9 @@ class ConcurrencyControlManagerTest {
 
     @Test
     void testFRM_beginTransaction_logsStart() throws Exception {
-        ConcurrencyControlManager ccm = new ConcurrencyControlManager("lock");
-        injectFRM(ccm, frm);
+        ConcurrencyControlManager ccm = new ConcurrencyControlManager("lock", frm);
+
+        int tx = ccm.beginTransaction();
 
         assertEquals(1, frm.getTransactionLogs().size());
         assertEquals("START", frm.getTransactionLogs().get(0).getLifecycleEvent());
