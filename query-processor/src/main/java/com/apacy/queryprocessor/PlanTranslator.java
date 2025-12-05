@@ -26,6 +26,7 @@ import com.apacy.queryprocessor.execution.NestedLoopJoinOperator;
 import com.apacy.queryprocessor.execution.Operator;
 import com.apacy.queryprocessor.execution.ProjectOperator;
 import com.apacy.queryprocessor.execution.ScanOperator;
+import com.apacy.queryprocessor.execution.SortMergeJoinOperator;
 import com.apacy.queryprocessor.execution.SortOperator;
 import com.apacy.queryprocessor.execution.TCLOperator;
 
@@ -90,15 +91,82 @@ public class PlanTranslator {
         Operator left = build(node.left(), txId, sm, ccm, frm);
         Operator right = build(node.right(), txId, sm, ccm, frm);
         
-        // Extract join column for Hash Join optimization (Simple Equi-Join)
+        // Extract join column for optimization (Simple Equi-Join)
         String joinColumn = extractJoinColumn(node.joinCondition());
         
         if (joinColumn != null) {
-            return new HashJoinOperator(left, right, Collections.singletonList(joinColumn));
+            // Choose join strategy based on heuristics
+            JoinStrategy strategy = selectJoinStrategy(node, joinColumn);
+            
+            switch (strategy) {
+                case SORT_MERGE:
+                    System.out.println("[PlanTranslator] Selected SortMergeJoin strategy for column: " + joinColumn);
+                    return new SortMergeJoinOperator(left, right, joinColumn);
+                    
+                case HASH:
+                    System.out.println("[PlanTranslator] Selected HashJoin strategy for column: " + joinColumn);
+                    return new HashJoinOperator(left, right, Collections.singletonList(joinColumn));
+                    
+                case NESTED_LOOP:
+                default:
+                    System.out.println("[PlanTranslator] Selected NestedLoopJoin strategy (fallback)");
+                    return new NestedLoopJoinOperator(left, right, node.joinCondition());
+            }
         } else {
-            // Fallback to Nested Loop Join
+            // Complex join condition - fallback to Nested Loop Join
+            System.out.println("[PlanTranslator] Complex join condition detected, using NestedLoopJoin");
             return new NestedLoopJoinOperator(left, right, node.joinCondition());
         }
+    }
+    
+    /**
+     * Enum untuk strategi join yang tersedia
+     */
+    private enum JoinStrategy {
+        HASH,           // Hash Join - efisien untuk ukuran sedang
+        SORT_MERGE,     // Sort-Merge Join - efisien jika data sudah terurut
+        NESTED_LOOP     // Nested Loop Join - fallback untuk kasus umum
+    }
+    
+    /**
+     * Memilih strategi join terbaik berdasarkan karakteristik input.
+     * 
+     * Heuristik:
+     * 1. Jika salah satu child adalah SortNode pada join column yang sama -> SortMergeJoin
+     *    (data sudah terurut, manfaatkan untuk efisiensi)
+     * 2. Jika estimasi ukuran data kecil-menengah -> HashJoin
+     *    (efisien untuk ukuran sedang, memory overhead acceptable)
+     * 3. Untuk kasus lain -> NestedLoopJoin
+     *    (safe fallback, tidak butuh preprocessing)
+     */
+    private JoinStrategy selectJoinStrategy(JoinNode node, String joinColumn) {
+        // Strategy 1: Check if inputs are already sorted on the join column
+        boolean leftSorted = isNodeSortedBy(node.left(), joinColumn);
+        boolean rightSorted = isNodeSortedBy(node.right(), joinColumn);
+        
+        if (leftSorted || rightSorted) {
+            // At least one side is sorted - SortMergeJoin is efficient
+            return JoinStrategy.SORT_MERGE;
+        }
+        
+        // Strategy 2: Estimate data size
+        // For medium-sized datasets, HashJoin is usually most efficient
+        // (This is a simple heuristic; could be enhanced with statistics)
+        int estimatedSize = estimateNodeSize(node.left()) + estimateNodeSize(node.right());
+        
+        if (estimatedSize > 0 && estimatedSize < 50000) {
+            // Small to medium dataset - HashJoin is efficient
+            return JoinStrategy.HASH;
+        }
+        
+        // Strategy 3: For very large datasets or when unsure, use SortMergeJoin
+        // It's more memory-efficient than HashJoin for large data
+        if (estimatedSize >= 50000) {
+            return JoinStrategy.SORT_MERGE;
+        }
+        
+        // Default: HashJoin (balanced performance)
+        return JoinStrategy.HASH;
     }
     
     // ==================================================================================
@@ -185,5 +253,46 @@ public class PlanTranslator {
             }
         }
         return null;
+    }
+    
+    /**
+     * Check if a PlanNode produces output sorted by the given column.
+     * Currently checks if the node is directly a SortNode on that column.
+     */
+    private boolean isNodeSortedBy(PlanNode node, String column) {
+        if (node instanceof SortNode sortNode) {
+            return sortNode.sortColumn().equals(column);
+        }
+        // Could be extended to check for indexed scans, etc.
+        return false;
+    }
+    
+    /**
+     * Estimate the number of rows that will be produced by a PlanNode.
+     * This is a simple heuristic - in a real system, this would use statistics.
+     */
+    private int estimateNodeSize(PlanNode node) {
+        if (node instanceof ScanNode) {
+            // Rough estimate: assume tables are medium-sized
+            return 10000;
+        }
+        if (node instanceof FilterNode filterNode) {
+            // Assume filter reduces size by ~50%
+            return estimateNodeSize(filterNode.child()) / 2;
+        }
+        if (node instanceof ProjectNode projectNode) {
+            // Projection doesn't change row count
+            return estimateNodeSize(projectNode.child());
+        }
+        if (node instanceof SortNode sortNode) {
+            // Sort doesn't change row count
+            return estimateNodeSize(sortNode.child());
+        }
+        if (node instanceof LimitNode limitNode) {
+            // Limit reduces to specified count
+            return limitNode.limit();
+        }
+        // Default: unknown size, be conservative
+        return -1; // Unknown
     }
 }
