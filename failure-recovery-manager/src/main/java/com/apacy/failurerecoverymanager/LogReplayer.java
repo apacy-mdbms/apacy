@@ -172,21 +172,27 @@ public class LogReplayer {
                     return;
                 }
 
-                // Extract primary key untuk deletion criteria yang spesifik
-                Map<String, Object> pkCriteria = extractPrimaryKeyCriteria(afterMap, tableName);
-
-                if (pkCriteria == null || pkCriteria.isEmpty()) {
-                    System.err.println("[LogReplayer] Cannot determine PK for INSERT undo -> using full row match");
-                    pkCriteria = afterMap; // Fallback: use all columns as criteria
+                Map<String, Object> criteriaMap = extractPrimaryKeyCriteria(afterMap, tableName);
+                if (criteriaMap == null || criteriaMap.isEmpty()) {
+                    System.err.println("[LogReplayer] Cannot determine PK -> using full row match");
+                    criteriaMap = afterMap;
                 }
 
-                System.out.println("   -> [UNDO] Menghapus data yang di-INSERT di tabel " + tableName
-                        + " with criteria: " + pkCriteria);
+                StringBuilder predicateBuilder = new StringBuilder();
+                boolean first = true;
+                for (Map.Entry<String, Object> e : criteriaMap.entrySet()) {
+                    if (!first) predicateBuilder.append(" AND ");
+                    predicateBuilder.append(e.getKey()).append("='").append(e.getValue()).append("'");
+                    first = false;
+                }
+                String predicate = predicateBuilder.toString();
+
+                System.out.println("   -> [UNDO] Deleting inserted row in " + tableName + " where " + predicate);
+
                 try {
-                    storageManager.deleteBlock(new DataDeletion(tableName, pkCriteria));
+                    storageManager.deleteBlock(new DataDeletion(tableName, predicate));
                 } catch (Exception e) {
-                    System.err.println(
-                            "      [LogReplayer] StorageManager gagal delete for UNDO INSERT: " + e.getMessage());
+                    System.err.println("      [LogReplayer] StorageManager delete failed: " + e.getMessage());
                 }
             }
 
