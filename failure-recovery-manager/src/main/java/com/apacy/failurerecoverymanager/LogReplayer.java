@@ -200,9 +200,9 @@ public class LogReplayer {
 
                 // Remove null values to prevent NPE in Row/StorageManager
                 Map<String, Object> cleanedMap = new HashMap<>();
-                for (Map.Entry<String, Object> entry : beforeMap.entrySet()) {
-                    if (entry.getValue() != null) {
-                        cleanedMap.put(entry.getKey(), entry.getValue());
+                for (Map.Entry<String, Object> mapEntry : beforeMap.entrySet()) {
+                    if (mapEntry.getValue() != null) {
+                        cleanedMap.put(mapEntry.getKey(), mapEntry.getValue());
                     }
                 }
 
