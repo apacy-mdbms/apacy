@@ -8,6 +8,7 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,12 +42,15 @@ public class LogReplayer {
         List<LogEntry> logs = readLogBackwards();
 
         for (LogEntry entry : logs) {
-            if (entry.getTransactionId() == null) continue;
-            if (!entry.getTransactionId().equals(transactionId)) continue;
+            if (entry.getTransactionId() == null)
+                continue;
+            if (!entry.getTransactionId().equals(transactionId))
+                continue;
 
             // stop when hit BEGIN for this tx
             if ("BEGIN".equalsIgnoreCase(entry.getOperation())) {
-                System.out.println("[LogReplayer] Transaksi " + transactionId + " berhasil di-rollback (undo selesai).");
+                System.out
+                        .println("[LogReplayer] Transaksi " + transactionId + " berhasil di-rollback (undo selesai).");
                 return;
             }
 
@@ -108,7 +112,8 @@ public class LogReplayer {
                 txEntries.computeIfAbsent(tx, k -> new ArrayList<>()).add(e);
             }
             if ("COMMIT".equalsIgnoreCase(op)) {
-                if (tx != null) committedTx.add(tx);
+                if (tx != null)
+                    committedTx.add(tx);
             }
         }
 
@@ -124,8 +129,10 @@ public class LogReplayer {
         for (LogEntry entry : logs) {
             String tx = entry.getTransactionId();
             String op = entry.getOperation();
-            if (!isDataOperation(op)) continue;
-            if (tx == null || !committedTx.contains(tx)) continue;
+            if (!isDataOperation(op))
+                continue;
+            if (tx == null || !committedTx.contains(tx))
+                continue;
 
             if (cutoffMillis != null && entry.getTimestamp() > cutoffMillis) {
                 // lewati entri yang melewati target waktu
@@ -146,14 +153,16 @@ public class LogReplayer {
     // operasi reverse berdasarkan jenis operasinya
     private void reverseOperation(LogEntry entry) throws Exception {
         String operation = entry.getOperation();
-        if (operation == null) return;
+        if (operation == null)
+            return;
         String op = operation.toUpperCase();
         String tableName = entry.getTableName();
 
-        if (tableName == null || tableName.equals("-")) return;
+        if (tableName == null || tableName.equals("-"))
+            return;
 
         Map<String, Object> beforeMap = LogDataParser.toMap(entry.getDataBefore());
-        Map<String, Object> afterMap  = LogDataParser.toMap(entry.getDataAfter());
+        Map<String, Object> afterMap = LogDataParser.toMap(entry.getDataAfter());
 
         switch (op) {
             case "INSERT" -> {
@@ -162,11 +171,22 @@ public class LogReplayer {
                     System.err.println("[LogReplayer] No dataAfter for INSERT undo -> skipping.");
                     return;
                 }
-                System.out.println("   -> [UNDO] Menghapus data yang di-INSERT di tabel " + tableName);
+
+                // Extract primary key untuk deletion criteria yang spesifik
+                Map<String, Object> pkCriteria = extractPrimaryKeyCriteria(afterMap, tableName);
+
+                if (pkCriteria == null || pkCriteria.isEmpty()) {
+                    System.err.println("[LogReplayer] Cannot determine PK for INSERT undo -> using full row match");
+                    pkCriteria = afterMap; // Fallback: use all columns as criteria
+                }
+
+                System.out.println("   -> [UNDO] Menghapus data yang di-INSERT di tabel " + tableName
+                        + " with criteria: " + pkCriteria);
                 try {
-                    storageManager.deleteBlock(new DataDeletion(tableName, afterMap));
+                    storageManager.deleteBlock(new DataDeletion(tableName, pkCriteria));
                 } catch (Exception e) {
-                    System.err.println("      [LogReplayer] StorageManager gagal delete for UNDO INSERT: " + e.getMessage());
+                    System.err.println(
+                            "      [LogReplayer] StorageManager gagal delete for UNDO INSERT: " + e.getMessage());
                 }
             }
 
@@ -177,7 +197,21 @@ public class LogReplayer {
                     return;
                 }
                 System.out.println("   -> [UNDO] Mengembalikan data DELETE di tabel " + tableName);
-                Row rowToRestore = new Row(beforeMap);
+
+                // Remove null values to prevent NPE in Row/StorageManager
+                Map<String, Object> cleanedMap = new HashMap<>();
+                for (Map.Entry<String, Object> entry : beforeMap.entrySet()) {
+                    if (entry.getValue() != null) {
+                        cleanedMap.put(entry.getKey(), entry.getValue());
+                    }
+                }
+
+                if (cleanedMap.isEmpty()) {
+                    System.err.println("[LogReplayer] All values in dataBefore are null -> skipping.");
+                    return;
+                }
+
+                Row rowToRestore = new Row(cleanedMap);
                 storageManager.writeBlock(new DataWrite(tableName, rowToRestore, null));
             }
 
@@ -195,11 +229,12 @@ public class LogReplayer {
             default -> {
             }
         }
-            }
+    }
 
     private void reapplyOperation(LogEntry entry) throws Exception {
         String operation = entry.getOperation();
-        if (operation == null) return;
+        if (operation == null)
+            return;
         String op = operation.toUpperCase();
         String tableName = entry.getTableName();
 
@@ -208,20 +243,23 @@ public class LogReplayer {
 
         switch (op) {
             case "INSERT" -> {
-                if (afterMap == null || afterMap.isEmpty()) return;
+                if (afterMap == null || afterMap.isEmpty())
+                    return;
                 storageManager.writeBlock(new DataWrite(tableName, new Row(afterMap), null));
             }
             case "UPDATE" -> {
                 Map<String, Object> effectiveAfter = (afterMap != null && !afterMap.isEmpty())
                         ? afterMap
                         : beforeMap;
-                if (effectiveAfter == null || effectiveAfter.isEmpty()) return;
+                if (effectiveAfter == null || effectiveAfter.isEmpty())
+                    return;
                 storageManager.writeBlock(new DataWrite(tableName, new Row(effectiveAfter), null));
             }
             case "DELETE" -> {
                 if (beforeMap == null || beforeMap.isEmpty()) {
                     // if no beforeMap, try delete by afterMap (maybe contains PK)
-                    if (afterMap == null || afterMap.isEmpty()) return;
+                    if (afterMap == null || afterMap.isEmpty())
+                        return;
                     storageManager.deleteBlock(new DataDeletion(tableName, afterMap));
                 } else {
                     storageManager.deleteBlock(new DataDeletion(tableName, beforeMap));
@@ -233,18 +271,49 @@ public class LogReplayer {
     }
 
     private boolean isDataOperation(String operation) {
-        return operation != null && (operation.equalsIgnoreCase("INSERT") || operation.equalsIgnoreCase("UPDATE") || operation.equalsIgnoreCase("DELETE"));
+        return operation != null && (operation.equalsIgnoreCase("INSERT") || operation.equalsIgnoreCase("UPDATE")
+                || operation.equalsIgnoreCase("DELETE"));
+    }
+
+    /**
+     * Extract primary key criteria from row data for precise deletion.
+     * Assumes common PK column names: id, <tableName>_id, <tableName>Id
+     */
+    private Map<String, Object> extractPrimaryKeyCriteria(Map<String, Object> rowData, String tableName) {
+        if (rowData == null || rowData.isEmpty())
+            return null;
+
+        Map<String, Object> pkCriteria = new HashMap<>();
+
+        // Try common PK patterns
+        String[] possiblePKNames = {
+                "id",
+                tableName.toLowerCase() + "_id",
+                tableName.toLowerCase() + "Id",
+                tableName + "_id",
+                tableName + "Id"
+        };
+
+        for (String pkName : possiblePKNames) {
+            if (rowData.containsKey(pkName) && rowData.get(pkName) != null) {
+                pkCriteria.put(pkName, rowData.get(pkName));
+                return pkCriteria;
+            }
+        }
+
+        // If no standard PK found, return null (caller will use full row)
+        return null;
     }
 
     // read kebalik
     private List<LogEntry> readLogBackwards() throws IOException {
         List<LogEntry> entries = new ArrayList<>();
-        
+
         // Cek apakah file ada terlebih dahulu
         if (!Files.exists(Paths.get(logFilePath))) {
             return entries; // Kembalikan list kosong jika file tidak ada
         }
-        
+
         try (RandomAccessFile raf = new RandomAccessFile(logFilePath, "r")) {
             long fileLength = raf.length();
             long pointer = fileLength - 1;
@@ -256,7 +325,8 @@ public class LogReplayer {
                 if (c == '\n') {
                     String line = lineBuffer.reverse().toString();
                     LogEntry entry = LogEntry.fromLogLine(line);
-                    if (entry != null) entries.add(entry);
+                    if (entry != null)
+                        entries.add(entry);
                     lineBuffer.setLength(0);
                 } else {
                     lineBuffer.append(c);
@@ -267,7 +337,8 @@ public class LogReplayer {
             if (lineBuffer.length() > 0) {
                 String line = lineBuffer.reverse().toString();
                 LogEntry entry = LogEntry.fromLogLine(line);
-                if (entry != null) entries.add(entry);
+                if (entry != null)
+                    entries.add(entry);
             }
         }
         return entries;
@@ -276,13 +347,15 @@ public class LogReplayer {
     private List<LogEntry> readLogForward() throws IOException {
         List<LogEntry> entries = new ArrayList<>();
         File file = new File(logFilePath);
-        if (!file.exists()) return entries;
+        if (!file.exists())
+            return entries;
 
         try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
             String line;
             while ((line = raf.readLine()) != null) {
                 LogEntry entry = LogEntry.fromLogLine(line);
-                if (entry != null) entries.add(entry);
+                if (entry != null)
+                    entries.add(entry);
             }
         }
         return entries;
