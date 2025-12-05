@@ -27,9 +27,9 @@ final class LogDataParser {
         if (data instanceof String raw) {
             Map<String, Object> parsed = new HashMap<>();
             String cleaned = raw
-                .replace("Row{data=", "")
-                .replaceAll("[\\{\\}\\[\\]]", "")
-                .trim();
+                    .replace("Row{data=", "")
+                    .replaceAll("[\\{\\}\\[\\]]", "")
+                    .trim();
 
             if (cleaned.isEmpty()) {
                 return parsed;
@@ -39,7 +39,12 @@ final class LogDataParser {
             for (String keyValue : keyValues) {
                 String[] parts = keyValue.split("=");
                 if (parts.length >= 2) {
-                    parsed.put(parts[0].trim(), parts[1].trim());
+                    String key = parts[0].trim();
+                    String value = parts[1].trim();
+                    // Don't add null or "null" string values
+                    if (value != null && !value.equalsIgnoreCase("null") && !value.isEmpty()) {
+                        parsed.put(key, value);
+                    }
                 }
             }
             return parsed;
@@ -48,4 +53,3 @@ final class LogDataParser {
         return null;
     }
 }
-
