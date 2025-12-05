@@ -21,9 +21,14 @@ import com.apacy.common.interfaces.IStorageManager;
 
 public class MockStorageManager implements IStorageManager {
     
+    private Map<String, Statistic> overrideStats = new HashMap<>();
+
+    public void setOverrideStats(String table, Statistic stats) {
+        overrideStats.put(table, stats);
+    }
+
     @Override
     public List<Row> readBlock(DataRetrieval dataRetrieval) {
-        // Handle null case for backward compatibility
         if (dataRetrieval == null) {
             return getEmployeeDataLegacy();
         }
@@ -33,7 +38,7 @@ public class MockStorageManager implements IStorageManager {
         switch (tableName) {
             case "employees": return getEmployeeData();
             case "departments": return getDepartmentData();
-            case "users": return getEmployeeDataLegacy(); // Mapping users -> legacy data
+            case "users": return getEmployeeDataLegacy(); 
             default: return new ArrayList<>();
         }
     }
@@ -71,13 +76,13 @@ public class MockStorageManager implements IStorageManager {
     public int writeBlock(DataWrite dataWrite) {
         System.out.println("[MOCK-SM] writeBlock dipanggil untuk tabel: " + dataWrite.tableName());
         System.out.println("[MOCK-SM] Data baru: " + dataWrite.newData());
-        return 1; // Simulasi 1 row inserted/updated
+        return 1; 
     }
 
     @Override
     public int deleteBlock(DataDeletion dataDeletion) {
         System.out.println("[MOCK-SM] deleteBlock dipanggil untuk tabel: " + dataDeletion.tableName());
-        return 1; // Simulasi 1 row deleted
+        return 1; 
     }
 
     @Override
@@ -97,18 +102,26 @@ public class MockStorageManager implements IStorageManager {
     public Map<String, Statistic> getAllStats() {
         System.out.println("[MOCK-SM] getAllStats() dipanggil.");
         Map<String, Statistic> mockStats = new HashMap<>();
+        
+        if (!overrideStats.isEmpty()) {
+            mockStats.putAll(overrideStats);
+        }
 
-        mockStats.put("employees", new Statistic(
-            5, 1, 120, 34,
-            Map.of("id", 5, "dept_id", 3),
-            Map.of("id", IndexType.Hash)
-        ));
+        if (!mockStats.containsKey("employees")) {
+            mockStats.put("employees", new Statistic(
+                5, 1, 120, 34,
+                Map.of("id", 5, "dept_id", 3),
+                Map.of("id", IndexType.Hash)
+            ));
+        }
 
-        mockStats.put("users", new Statistic(
-            5, 1, 100, 40,
-            Map.of("id", 5),
-            Map.of()
-        ));
+        if (!mockStats.containsKey("users")) {
+            mockStats.put("users", new Statistic(
+                5, 1, 100, 40,
+                Map.of("id", 5),
+                Map.of()
+            ));
+        }
 
         return mockStats;
     }

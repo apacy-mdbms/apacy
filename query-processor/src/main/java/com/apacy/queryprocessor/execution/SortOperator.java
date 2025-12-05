@@ -12,6 +12,7 @@ public class SortOperator implements Operator {
     private final SortNode node;
     private Iterator<Row> iterator;
     private List<Row> buffer;
+    private static final int MEMORY_LIMIT_ROWS = 10000;
 
     public SortOperator(Operator child, SortNode node) {
         this.child = child;
@@ -30,7 +31,12 @@ public class SortOperator implements Operator {
 
         // Perform Sort using existing Strategy logic
         // SortStrategy.sort returns a new list, so we assign it
-        buffer = SortStrategy.sort(buffer, node.sortColumn(), node.ascending());
+        buffer = SortStrategy.externalSort(
+            buffer, 
+            node.sortColumn(), 
+            node.ascending(), 
+            MEMORY_LIMIT_ROWS
+        );
         iterator = buffer.iterator();
     }
 

@@ -8,8 +8,18 @@ import java.util.Map;
 
 public class MockQueryOptimizer implements IQueryOptimizer {
 
+    private ParsedQuery overridePlan;
+
+    public void setOverridePlan(ParsedQuery plan) {
+        this.overridePlan = plan;
+    }
+
     @Override
     public ParsedQuery parseQuery(String query) {
+        if (overridePlan != null) {
+            return overridePlan;
+        }
+
         String lowerQuery = query.toLowerCase();
 
         if (lowerQuery.contains("select")) {
@@ -21,8 +31,9 @@ public class MockQueryOptimizer implements IQueryOptimizer {
             );
 
         } else if (lowerQuery.contains("insert")) {
-            List<String> cols = List.of("name", "email", "salary");
-            List<Object> vals = List.of("John Doe", "john@example.com", 50000);
+            // Fixed: Removed 'email' to match MockStorageManager schema for 'users' (employees)
+            List<String> cols = List.of("name", "salary");
+            List<Object> vals = List.of("John Doe", 50000);
             ModifyNode insertNode = new ModifyNode("INSERT", null, "users", cols, vals);
 
             return new ParsedQuery(
@@ -39,7 +50,7 @@ public class MockQueryOptimizer implements IQueryOptimizer {
             return new ParsedQuery(
                 "UPDATE", updateNode, List.of("users"), cols, vals,
                 null, 
-                "id = 1", // Dummy Where Clause agar lolos validasi PlanTranslator
+                "id = 1", 
                 null, false, false
             );
 
@@ -50,7 +61,7 @@ public class MockQueryOptimizer implements IQueryOptimizer {
             return new ParsedQuery(
                 "DELETE", deleteNode, List.of("users"), null, null,
                 null, 
-                "id = 5", // Dummy Where Clause (PENTING: Jangan null!)
+                "id = 5", 
                 null, false, false
             );
         }
@@ -60,7 +71,9 @@ public class MockQueryOptimizer implements IQueryOptimizer {
 
     @Override
     public ParsedQuery optimizeQuery(ParsedQuery query, Map<String, Statistic> allStats) {
-        // Return copy
+        if (overridePlan != null) {
+            return overridePlan;
+        }
         return new ParsedQuery(
             query.queryType(), query.planRoot(), query.targetTables(),
             query.targetColumns(), query.values(), query.joinConditions(),

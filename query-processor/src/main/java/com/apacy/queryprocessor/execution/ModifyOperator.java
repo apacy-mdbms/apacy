@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.apacy.common.dto.DataDeletion;
+import com.apacy.common.dto.DataUpdate;
 import com.apacy.common.dto.DataWrite;
 import com.apacy.common.dto.Row;
 import com.apacy.common.dto.plan.ModifyNode;
@@ -162,12 +163,10 @@ public class ModifyOperator implements Operator {
 
             frm.writeDataLog(String.valueOf(txId), "UPDATE", node.targetTable(), oldRow, newRow);
 
-            Object deletePredicate = buildPredicateFromRow(oldRow);
-            sm.deleteBlock(new DataDeletion(node.targetTable(), deletePredicate));
-
-            DataWrite dw = new DataWrite(node.targetTable(), newRow, null);
-            int written = sm.writeBlock(dw);
-            affectedRows += written;
+            Object updatePredicate = buildPredicateFromRow(oldRow);
+            DataUpdate du = new DataUpdate(node.targetTable(), newRow, updatePredicate);
+            int updated = sm.updateBlock(du);
+            affectedRows += updated;
         }
     }
 
