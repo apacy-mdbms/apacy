@@ -30,7 +30,7 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
         this(tableName,
                 columnName,
                 order,
-                tableName + "_" + columnName + "_bplusindex", // default index file name
+                tableName + "_" + columnName + "_bplusindex", 
                 null,
                 null);
     }
@@ -458,18 +458,47 @@ public class BPlusIndex<K extends Comparable<K>, V> implements IIndex<K, V> {
             return Collections.emptyList();
 
         if (key instanceof CompositeKey<?, ?> ck) {
-            return tree.findRange(key, key);
+            return tree.findRange(key, true, key, true);
         }
 
         Comparable attr = (Comparable) key;
 
-        Comparable minPk = Integer.MIN_VALUE;
-        Comparable maxPk = Integer.MAX_VALUE;
+        Comparable minPk = minValueFor((Comparable)0);
+        Comparable maxPk = maxValueFor((Comparable)0);
 
-        CompositeKey lb = new CompositeKey(attr, minPk);
-        CompositeKey ub = new CompositeKey(attr, maxPk);
+        @SuppressWarnings("unchecked")
+        K lb = (K) new CompositeKey(attr, minPk);
+        @SuppressWarnings("unchecked")
+        K ub = (K) new CompositeKey(attr, maxPk);
 
-        return tree.findRange((K) lb, (K) ub);
+        return tree.findRange(lb, true, ub, true);
+    }
+
+    @Override
+    public List<V> getAddresses(K minKey, boolean minInclusive, K maxKey, boolean maxInclusive) {
+        if (tree == null) {
+            return Collections.emptyList();
+        }
+
+        K start = minKey;
+        if (start != null && !(start instanceof CompositeKey<?, ?>)) {
+            Comparable val = (Comparable) start;
+            Comparable pkBound = minInclusive ? minValueFor((Comparable)0) : maxValueFor((Comparable)0);
+            @SuppressWarnings("unchecked")
+            K lower = (K) new CompositeKey(val, pkBound); 
+            start = lower;
+        }
+
+        K end = maxKey;
+        if (end != null && !(end instanceof CompositeKey<?, ?>)) {
+            Comparable val = (Comparable) end;
+            Comparable pkBound = maxInclusive ? maxValueFor((Comparable)0) : minValueFor((Comparable)0);
+            @SuppressWarnings("unchecked")
+            K upper = (K) new CompositeKey(val, pkBound);
+            end = upper;
+        }
+
+        return tree.findRange(start, minInclusive, end, maxInclusive);
     }
 
     @Override

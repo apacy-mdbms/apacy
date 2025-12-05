@@ -12,6 +12,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.apacy.storagemanager.index.IIndex;
+import com.apacy.storagemanager.index.HashIndex;
+
 /**
  * Unit test komprehensif untuk StorageManager.
  * Menguji integrasi CatalogManager, BlockManager, Serializer, dan
@@ -232,6 +235,236 @@ class StorageManagerTest {
                                 "Persistent B+Tree must return the same 2 rows after reload");
 
                 System.out.println("B+Tree index lookup PASSED.");
+        }
+
+        @Test
+        @DisplayName("Test: B+Tree Range Search (GPA < 3.0f)")
+        void testBPlusIndexRangeSearch_LessThan() {
+            System.out.println("--- testBPlusIndexRangeSearch_LessThan ---");
+
+            // Data: (2.7), 2.9, 3.2, 3.5, 3.8
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 1, "name", "A", "gpa", 3.2f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 2, "name", "B", "gpa", 2.9f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 3, "name", "C", "gpa", 3.5f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 4, "name", "D", "gpa", 3.8f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 5, "name", "E", "gpa", 2.7f)), null));
+
+            // Query: gpa < 3.0 (Seharusnya mendapatkan 2.9 dan 2.7)
+            DataRetrieval indexLookup = new DataRetrieval(
+                    "students",
+                    List.of("*"),
+                    "gpa<3.0", // Filter string baru
+                    true);
+
+            List<Row> results = storageManager.readBlock(indexLookup);
+            results.forEach(r -> System.out.println(" -> " + r.data()));
+
+            assertEquals(2, results.size(), "Range search gpa<3.0 harus menemukan 2 baris (2.9, 2.7)");
+            assertTrue(results.stream().noneMatch(r -> (float) r.data().get("gpa") >= 3.0f), "Nilai harus < 3.0f");
+
+            System.out.println("Range search gpa<3.0 PASSED.");
+        }
+
+        @Test
+        @DisplayName("Test: B+Tree Range Search (GPA >= 3.5f) - Inclusive")
+        void testBPlusIndexRangeSearch_GreaterThanOrEqual() {
+            System.out.println("--- testBPlusIndexRangeSearch_GreaterThanOrEqual ---");
+
+            // Data: 3.2, (3.5, 3.5), 3.8, 4.0
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 10, "name", "X", "gpa", 3.2f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 11, "name", "Y", "gpa", 3.5f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 12, "name", "Z", "gpa", 3.8f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 13, "name", "W", "gpa", 4.0f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 14, "name", "V", "gpa", 3.5f)), null)); // Duplikat
+
+            // Query: gpa >= 3.5 (Seharusnya mendapatkan 3.5 (x2), 3.8, 4.0)
+            DataRetrieval indexLookup = new DataRetrieval(
+                    "students",
+                    List.of("*"),
+                    "gpa>=3.5",
+                    true);
+
+            List<Row> results = storageManager.readBlock(indexLookup);
+            results.forEach(r -> System.out.println(" -> " + r.data()));
+
+            assertEquals(4, results.size(), "Range search gpa>=3.5 harus menemukan 4 baris");
+            assertTrue(results.stream().allMatch(r -> (float) r.data().get("gpa") >= 3.5f), "Semua nilai harus >= 3.5f");
+
+            System.out.println("Range search gpa>=3.5 PASSED.");
+        }
+
+        @Test
+        @DisplayName("Test: B+Tree Range Search (Range Tertutup: 3.2f < gpa <= 3.8f)")
+        void testBPlusIndexRangeSearch_BetweenExclusiveAndInclusive() {
+            System.out.println("--- testBPlusIndexRangeSearch_BetweenExclusiveAndInclusive ---");
+
+            // Data: 3.1, 3.2, 3.3, 3.6, 3.8, 3.9
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 20, "name", "A", "gpa", 3.1f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 21, "name", "B", "gpa", 3.2f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 22, "name", "C", "gpa", 3.3f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 23, "name", "D", "gpa", 3.6f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 24, "name", "E", "gpa", 3.8f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 25, "name", "F", "gpa", 3.9f)), null));
+
+            // Query: gpa>3.2 AND gpa<=3.8 (Seharusnya mendapatkan 3.3, 3.6, 3.8)
+            DataRetrieval indexLookup = new DataRetrieval(
+                    "students",
+                    List.of("*"),
+                    "gpa>3.2 AND gpa<=3.8",
+                    true);
+
+            List<Row> results = storageManager.readBlock(indexLookup);
+            results.forEach(r -> System.out.println(" -> " + r.data()));
+
+            assertEquals(3, results.size(), "Range search harus menemukan 3 baris (3.3, 3.6, 3.8)");
+            
+            // Cek boundary
+            assertTrue(results.stream().noneMatch(r -> r.data().get("gpa").equals(3.2f)), "3.2f harus excluded (gpa>3.2)");
+            assertTrue(results.stream().anyMatch(r -> r.data().get("gpa").equals(3.8f)), "3.8f harus included (gpa<=3.8)");
+            assertTrue(results.stream().noneMatch(r -> r.data().get("gpa").equals(3.1f)), "3.1f harus excluded");
+            assertTrue(results.stream().noneMatch(r -> r.data().get("gpa").equals(3.9f)), "3.9f harus excluded");
+
+            System.out.println("Range search gpa>3.2 AND gpa<=3.8 PASSED.");
+        }
+
+        @Test
+        @DisplayName("Test: B+Tree Range Search (String Range: name >= 'Budi')")
+        void testBPlusIndexRangeSearch_StringRange() {
+            System.out.println("--- testBPlusIndexRangeSearch_StringRange ---");
+
+            // Data: Alice, Budi, Charlie, Dora
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 30, "name", "Charlie", "gpa", 3.0f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 31, "name", "Alice", "gpa", 3.0f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 32, "name", "Budi", "gpa", 3.0f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 33, "name", "Dora", "gpa", 3.0f)), null));
+
+            // Query: name>='Budi' (Seharusnya mendapatkan Budi, Charlie, Dora)
+            DataRetrieval indexLookup = new DataRetrieval(
+                    "students",
+                    List.of("*"),
+                    "name>='Budi'",
+                    true);
+
+            List<Row> results = storageManager.readBlock(indexLookup);
+            results.forEach(r -> System.out.println(" -> " + r.data()));
+
+            assertEquals(3, results.size(), "Range search name>='Budi' harus menemukan 3 baris");
+            assertTrue(results.stream().anyMatch(r -> r.data().get("name").equals("Budi")));
+            assertTrue(results.stream().noneMatch(r -> r.data().get("name").equals("Alice")));
+
+            System.out.println("String range search PASSED.");
+        }
+
+        @Test
+        @DisplayName("Test: Delete Rows using B+Tree Range Scan (gpa < 3.0f)")
+        void testDeleteWithRangeIndex() {
+            System.out.println("--- testDeleteWithRangeIndex ---");
+
+            // Data: 2.5, 2.8, 3.0, 3.5, 4.0
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 10, "name", "X", "gpa", 3.5f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 20, "name", "Y", "gpa", 2.8f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 30, "name", "Z", "gpa", 4.0f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 40, "name", "W", "gpa", 2.5f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 50, "name", "V", "gpa", 3.0f)), null));
+
+            // 1. Delete: gpa < 3.0 (Seharusnya menghapus ID 20, 40)
+            DataDeletion deleteReq = new DataDeletion("students", "gpa<3.0");
+            int deleted = storageManager.deleteBlock(deleteReq);
+            assertEquals(2, deleted, "Harus menghapus 2 baris (2.8, 2.5)");
+
+            // 2. Verifikasi Full Scan (Cek data file)
+            DataRetrieval fullScan = new DataRetrieval("students", List.of("*"), null, false);
+            List<Row> remainingRows = storageManager.readBlock(fullScan);
+            assertEquals(3, remainingRows.size(), "Harus sisa 3 baris");
+            assertTrue(remainingRows.stream().noneMatch(r -> (int) r.data().get("id") == 20), "ID 20 harus terhapus");
+
+            // 3. Verifikasi Index Scan (Cek B+Tree)
+            // Cari lagi gpa < 3.0, hasilnya harus 0
+            DataRetrieval checkIndex = new DataRetrieval("students", List.of("*"), "gpa<3.0", true);
+            List<Row> indexResults = storageManager.readBlock(checkIndex);
+            assertEquals(0, indexResults.size(), "Index lookup gpa<3.0 harus kosong setelah delete");
+
+            // 4. Cek boundary gpa=3.0 (boundary tidak terpengaruh delete)
+            DataRetrieval checkBoundary = new DataRetrieval("students", List.of("*"), "gpa=3.0", true);
+            List<Row> boundaryResults = storageManager.readBlock(checkBoundary);
+            assertEquals(1, boundaryResults.size(), "gpa=3.0f (ID 50) harus tetap ada");
+            
+            System.out.println("Delete with Range Index PASSED.");
+        }
+
+        @Test
+        @DisplayName("Test: Update Kolom Terindeks (gpa) dengan Range (Index harus Diperbarui)")
+        void testUpdateIndexedColumnWithRange() {
+            System.out.println("--- testUpdateIndexedColumnWithRange ---");
+
+            // Data: 3.1, 3.2, 3.8
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 1, "name", "A", "gpa", 3.1f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 2, "name", "B", "gpa", 3.2f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 3, "name", "C", "gpa", 3.8f)), null));
+
+            // 1. Cek Awal (Range Index)
+            DataRetrieval rangeCheckAwal = new DataRetrieval("students", List.of("id"), "gpa<3.5", true);
+            List<Row> awalResults = storageManager.readBlock(rangeCheckAwal);
+            assertEquals(2, awalResults.size(), "Awalnya, gpa<3.5 harus ada 2 rows (3.1, 3.2)");
+
+            // 2. Update: Ubah gpa=3.1f (ID 1) menjadi 3.6f (Keluar dari range < 3.5)
+            DataUpdate updateReq = new DataUpdate(
+                "students", 
+                new Row(Map.of("gpa", 3.6f)), 
+                "id=1"
+            );
+            int updated = storageManager.updateBlock(updateReq);
+            assertEquals(1, updated, "Harus mengupdate 1 baris");
+
+            // 3. Verifikasi Index (Range Scan Check 1: ID 1 harus hilang)
+            DataRetrieval rangeCheckAkhir1 = new DataRetrieval("students", List.of("id"), "gpa<3.5", true);
+            List<Row> akhirResults1 = storageManager.readBlock(rangeCheckAkhir1);
+            assertEquals(1, akhirResults1.size(), "Setelah update, gpa<3.5 hanya harus sisa 1 row (ID 2)");
+            assertTrue(akhirResults1.stream().anyMatch(r -> (int) r.data().get("id") == 2));
+
+            // 4. Verifikasi Index (Range Scan Check 2: ID 1 harus pindah ke range > 3.5)
+            DataRetrieval rangeCheckAkhir2 = new DataRetrieval("students", List.of("id"), "gpa>=3.5", true);
+            List<Row> akhirResults2 = storageManager.readBlock(rangeCheckAkhir2);
+            // ID 1 (3.6f) + ID 3 (3.8f) = 2
+            assertEquals(2, akhirResults2.size(), "Range search gpa>=3.5 harus menemukan 2 baris (ID 1, ID 3)");
+            
+            System.out.println("Update Indexed Column with Range PASSED.");
+        }
+
+        @Test
+        @DisplayName("Test: Hash Index harus menolak Range Search (> / <)")
+        void testHashIndexRejectsRangeSearch() {
+            System.out.println("--- testHashIndexRejectsRangeSearch ---");
+
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 10, "name", "A", "gpa", 3.0f)), null));
+            storageManager.writeBlock(new DataWrite("students", new Row(Map.of("id", 20, "name", "B", "gpa", 3.0f)), null));
+
+            DataRetrieval rangeLookup = new DataRetrieval(
+                    "students",
+                    List.of("*"),
+                    "id>15", 
+                    true);
+
+            List<Row> results = storageManager.readBlock(rangeLookup);
+            
+            assertEquals(1, results.size(), "Range search id>15 (ID 20) harus menemukan 1 baris via Full Scan.");
+            assertEquals(20, results.get(0).data().get("id"));
+            
+            System.out.println("Hash Index range lookup correctly fell back to Full Scan and PASSED.");
+
+            assertThrows(UnsupportedOperationException.class, () -> {
+                Schema schema = storageManager.getCatalogManager().getSchema("students"); // Menggunakan getCatalogManager()
+                IndexSchema hashIdx = schema.indexes().stream()
+                    .filter(i -> i.columnName().equals("id"))
+                    .findFirst().orElseThrow();
+                    
+                IIndex<?, ?> index = storageManager.getIndexManager().get( 
+                    "students", hashIdx.columnName(), hashIdx.indexType().toString());
+                    
+                ((HashIndex) index).getAddresses(10, true, 30, true);
+            }, "HashIndex harus melempar UnsupportedOperationException untuk Range Scan.");
+            
+            System.out.println("Direct HashIndex Range Exception Test PASSED.");
         }
 
         @Test
