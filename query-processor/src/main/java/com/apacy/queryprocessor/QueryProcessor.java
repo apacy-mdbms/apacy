@@ -15,6 +15,7 @@ import com.apacy.common.dto.ast.expression.LiteralFactor;
 import com.apacy.common.dto.ast.expression.TermNode;
 import com.apacy.common.dto.ddl.ParsedQueryDDL;
 import com.apacy.common.dto.plan.DDLNode;
+import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.common.enums.Action;
 import com.apacy.common.interfaces.IConcurrencyControlManager;
 import com.apacy.common.interfaces.IFailureRecoveryManager;
@@ -99,9 +100,11 @@ public class QueryProcessor extends DBMSComponent {
                 isAutoCommit = false; 
             }
 
+            System.out.println(parsedQuery.aliasMap());
             ParsedQuery boundQuery = (queryBinder != null) ? queryBinder.bind(parsedQuery) : parsedQuery;
             System.out.println(boundQuery.planRoot());
             ParsedQuery optimizedQuery = qo.optimizeQuery(boundQuery, sm.getAllStats());
+            System.out.println("OPTIMIZED PLAN: " + optimizedQuery.planRoot());
 
             Action action = parsedQuery.queryType().equalsIgnoreCase("SELECT") 
                 ? Action.READ 
@@ -128,7 +131,7 @@ public class QueryProcessor extends DBMSComponent {
             }
 
             // 3. Execute Plan Tree using Volcano Model
-            com.apacy.common.dto.plan.PlanNode planRoot = parsedQuery.planRoot();
+            PlanNode planRoot = optimizedQuery.planRoot();
             String qType = parsedQuery.queryType().toUpperCase();
             boolean isModifyQuery = List.of("INSERT", "UPDATE", "DELETE").contains(qType);
 

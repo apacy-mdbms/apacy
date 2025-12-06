@@ -25,8 +25,8 @@ import com.apacy.common.dto.plan.LimitNode;
 import com.apacy.common.dto.plan.ModifyNode;
 import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.common.dto.plan.ProjectNode;
-import com.apacy.common.dto.plan.SortNode;
 import com.apacy.common.dto.plan.ScanNode;
+import com.apacy.common.dto.plan.SortNode;
 import com.apacy.common.interfaces.IStorageManager;
 
 /**
@@ -135,16 +135,18 @@ public class QueryBinder {
         throw new IllegalArgumentException("Unknown WhereNode type: " + node.getClass());
     }
 
-    // Recursive Expressiong Binding
+    // Recursive Expression Binding
     private ExpressionNode bindExpression(ExpressionNode expr, List<String> tables, Map<String, String> aliasMap) {
         TermNode newTerm = bindTerm(expr.term(), tables, aliasMap);
 
         List<ExpressionNode.TermPair> newRemainder = new ArrayList<>();
-        for (ExpressionNode.TermPair pair : expr.remainderTerms()) {
-            newRemainder.add(new ExpressionNode.TermPair(
-                pair.additiveOperator(), 
-                bindTerm(pair.term(), tables, aliasMap)
-            ));
+        if (expr.remainderTerms() != null) {
+            for (ExpressionNode.TermPair pair : expr.remainderTerms()) {
+                newRemainder.add(new ExpressionNode.TermPair(
+                    pair.additiveOperator(), 
+                    bindTerm(pair.term(), tables, aliasMap)
+                ));
+            }
         }
 
         return new ExpressionNode(newTerm, newRemainder);
@@ -299,7 +301,17 @@ public class QueryBinder {
 
         // 8. SCAN NODE
         else if (node instanceof ScanNode scan) {
-            // Jika ScanNode punya kondisi (hasil pushdown optimizer), bind kondisinya juga
+            String tableAlias = scan.alias();
+            
+            if ((tableAlias == null || tableAlias.isEmpty()) && aliasMap != null) {
+                for (Map.Entry<String, String> entry : aliasMap.entrySet()) {
+                    if (entry.getValue().equals(scan.tableName())) {
+                        tableAlias = entry.getKey();
+                        break;
+                    }
+                }
+            }
+
             Object boundCondition = null;
             if (scan.condition() instanceof WhereConditionNode ast) {
                 boundCondition = bindWhereCondition(ast, tables, aliasMap);
@@ -307,10 +319,9 @@ public class QueryBinder {
                 boundCondition = scan.condition();
             }
             
-            // Return ScanNode baru dengan kondisi yang sudah di-bind (resolved column names)
             return new ScanNode(
                 scan.tableName(), 
-                scan.alias(), 
+                tableAlias,
                 scan.indexName(), 
                 boundCondition
             );
@@ -331,12 +342,22 @@ public class QueryBinder {
             String colName = parts[1];
 
             String realTable = null;
+            String resolvedPrefix = prefix;
 
             if (aliasMap != null && aliasMap.containsKey(prefix)) {
                 realTable = aliasMap.get(prefix);
-            }
+                resolvedPrefix = prefix;
+            } 
             else if (tables.contains(prefix)) {
                 realTable = prefix;
+                if (aliasMap != null) {
+                    for (Map.Entry<String, String> entry : aliasMap.entrySet()) {
+                        if (entry.getValue().equals(realTable)) {
+                            resolvedPrefix = entry.getKey();
+                            break;
+                        }
+                    }
+                }
             }
             
             if (realTable == null) {
@@ -344,23 +365,35 @@ public class QueryBinder {
             }
 
             validateColumnInCatalog(realTable, colName);
-            return realTable + "." + colName;
+            return resolvedPrefix + "." + colName;
         }
 
         String foundInTable = null;
+        String resolvedPrefix = null;
+
         for (String table : tables) {
             if (hasColumn(table, rawCol)) {
                 if (foundInTable != null) {
                     throw new IllegalArgumentException("Ambiguous column: '" + rawCol + "' exists in " + foundInTable + " and " + table);
                 }
                 foundInTable = table;
+                
+                resolvedPrefix = table;
+                if (aliasMap != null) {
+                    for (Map.Entry<String, String> entry : aliasMap.entrySet()) {
+                        if (entry.getValue().equals(table)) {
+                            resolvedPrefix = entry.getKey();
+                            break;
+                        }
+                    }
+                }
             }
         }
 
         if (foundInTable == null) {
             throw new IllegalArgumentException("Column '" + rawCol + "' not found in any target tables.");
         }
-        return foundInTable + "." + rawCol;
+        return resolvedPrefix + "." + rawCol;
     }
 
     private boolean hasColumn(String table, String col) {

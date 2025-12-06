@@ -18,7 +18,7 @@ public class ProjectOperator implements Operator {
     @Override
     public void open() {
         if (child == null) {
-            throw new RuntimeException("ProjectOperator: child operator is null. PlanNode might be missing a child.");
+            throw new RuntimeException("ProjectOperator: child operator is null.");
         }
         child.open();
     }
@@ -28,23 +28,38 @@ public class ProjectOperator implements Operator {
         Row row = child.next();
         if (row == null) return null;
 
-        // Handle SELECT *
         if (targetColumns.size() == 1 && "*".equals(targetColumns.get(0))) {
             return row; 
         }
 
         Map<String, Object> newMap = new HashMap<>();
+        
         for (String target : targetColumns) {
+            if ("*".equals(target)) {
+                newMap.putAll(row.data());
+                continue;
+            }
+
             if (row.data().containsKey(target)) {
                 newMap.put(target, row.get(target));
+                continue;
             } 
-            else {
-                for (String key : row.data().keySet()) {
-                    if (key.endsWith("." + target)) {
-                        newMap.put(target, row.get(key));
-                        break;
+            
+            String foundKey = null;
+            for (String key : row.data().keySet()) {
+                if (key.endsWith("." + target)) {
+                    if (foundKey != null) {
+                        throw new RuntimeException("Ambiguous column in projection: '" + target + 
+                            "' matches both '" + foundKey + "' and '" + key + "'");
                     }
+                    foundKey = key;
                 }
+            }
+
+            if (foundKey != null) {
+                newMap.put(target, row.get(foundKey));
+            } else {
+                throw new RuntimeException("Execution Error: Column '" + target + "' not found in result set. Available columns: " + row.data().keySet());
             }
         }
         return new Row(newMap);

@@ -44,6 +44,8 @@ public class ScanOperator implements Operator {
     public Row next() {
         if (iterator != null && iterator.hasNext()) {
             Row rawRow = iterator.next();
+
+            System.out.println("ScanOperator DEBUG: Table=" + node.tableName() + ", Alias='" + node.alias() + "'");
             
             Map<String, Object> prefixedData = new HashMap<>();
             String prefix = (node.alias() != null && !node.alias().isEmpty()) 
