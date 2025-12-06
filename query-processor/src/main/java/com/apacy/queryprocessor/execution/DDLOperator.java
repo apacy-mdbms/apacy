@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.apacy.common.dto.Column;
+import com.apacy.common.dto.ForeignKeySchema;
 import com.apacy.common.dto.IndexSchema;
 import com.apacy.common.dto.Row;
 import com.apacy.common.dto.Schema;
@@ -35,6 +36,11 @@ public class DDLOperator implements Operator {
         try {
             // CREATE TABLE
             if (ddlQuery instanceof ParsedQueryCreate createCmd) {
+                for (ForeignKeySchema fk : createCmd.getForeignKeys()) {
+                    if (sm.getSchema(fk.referenceTable()) == null) {
+                        throw new RuntimeException("Cannot create table. Referenced table '" + fk.referenceTable() + "' does not exist.");
+                    }
+                }
                 Schema schema = translateToSchema(createCmd);
                 sm.createTable(schema);
             }

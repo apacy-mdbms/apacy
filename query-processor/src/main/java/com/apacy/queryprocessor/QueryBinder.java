@@ -18,6 +18,14 @@ import com.apacy.common.dto.ast.where.ComparisonConditionNode;
 import com.apacy.common.dto.ast.where.LiteralConditionNode;
 import com.apacy.common.dto.ast.where.UnaryConditionNode;
 import com.apacy.common.dto.ast.where.WhereConditionNode;
+import com.apacy.common.dto.plan.CartesianNode;
+import com.apacy.common.dto.plan.FilterNode;
+import com.apacy.common.dto.plan.JoinNode;
+import com.apacy.common.dto.plan.LimitNode;
+import com.apacy.common.dto.plan.ModifyNode;
+import com.apacy.common.dto.plan.PlanNode;
+import com.apacy.common.dto.plan.ProjectNode;
+import com.apacy.common.dto.plan.SortNode;
 import com.apacy.common.interfaces.IStorageManager;
 
 /**
@@ -78,7 +86,7 @@ public class QueryBinder {
 
         return new ParsedQuery(
             query.queryType(),
-            query.planRoot(),
+            bindPlanTree(query.planRoot(), tables, aliasMap),
             query.targetTables(),
             resolvedColumns,
             query.values(),
@@ -189,6 +197,109 @@ public class QueryBinder {
             );
         }
         throw new IllegalArgumentException("Unknown JoinOperand type");
+    }
+
+    private PlanNode bindPlanTree(PlanNode node, List<String> tables, Map<String, String> aliasMap) {
+        if (node == null) return null;
+
+        // 1. FILTER NODE
+        if (node instanceof FilterNode n) {
+            PlanNode boundChild = bindPlanTree(n.child(), tables, aliasMap);
+            
+            Object boundPred = null;
+            if (n.predicate() instanceof WhereConditionNode ast) {
+                boundPred = bindWhereCondition(ast, tables, aliasMap);
+            } else {
+                boundPred = n.predicate(); 
+            }
+
+            return new FilterNode(boundChild, boundPred);
+        }
+
+        // 2. PROJECT NODE
+        else if (node instanceof ProjectNode n) {
+            PlanNode boundChild = bindPlanTree(n.child(), tables, aliasMap);
+            
+            List<String> boundCols = new ArrayList<>();
+            if (n.columns() != null) {
+                for (String col : n.columns()) {
+                    if (col.equals("*")) {
+                        boundCols.add("*");
+                    } else {
+                        boundCols.add(resolveColumnName(col, tables, aliasMap));
+                    }
+                }
+            }
+            return new ProjectNode(boundChild, boundCols);
+        }
+
+        // 3. JOIN NODE
+        else if (node instanceof JoinNode n) {
+            PlanNode boundLeft = bindPlanTree(n.left(), tables, aliasMap);
+            PlanNode boundRight = bindPlanTree(n.right(), tables, aliasMap);
+
+            Object boundCond = null;
+            if (n.joinCondition() instanceof com.apacy.common.dto.ast.where.WhereConditionNode ast) {
+                boundCond = bindWhereCondition(ast, tables, aliasMap);
+            }
+
+            return new JoinNode(boundLeft, boundRight, boundCond, n.joinType());
+        }
+
+        // 4. CARTESIAN NODE
+        else if (node instanceof CartesianNode n) {
+            PlanNode boundLeft = bindPlanTree(n.left(), tables, aliasMap);
+            PlanNode boundRight = bindPlanTree(n.right(), tables, aliasMap);
+            
+            return new CartesianNode(boundLeft, boundRight);
+        }
+
+        // 5. SORT NODE
+        else if (node instanceof SortNode n) {
+            PlanNode boundChild = bindPlanTree(n.child(), tables, aliasMap);
+            
+            String boundCol = resolveColumnName(n.sortColumn(), tables, aliasMap);
+            
+            return new SortNode(boundChild, boundCol, n.ascending());
+        }
+
+        // 6. LIMIT NODE
+        else if (node instanceof LimitNode n) {
+            PlanNode boundChild = bindPlanTree(n.child(), tables, aliasMap);
+            return new LimitNode(boundChild, n.limit(), n.offset());
+        }
+
+        // 7. MODIFY NODE
+        else if (node instanceof ModifyNode n) {
+            PlanNode boundChild = (n.child() != null) 
+                ? bindPlanTree(n.child(), tables, aliasMap) 
+                : null;
+            
+            List<Object> boundValues = null;
+            if (n.values() != null) {
+                boundValues = new ArrayList<>();
+                for (Object val : n.values()) {
+                    if (val instanceof com.apacy.common.dto.ast.expression.ExpressionNode expr) {
+                        boundValues.add(bindExpression(expr, tables, aliasMap));
+                    } else {
+                        boundValues.add(val);
+                    }
+                }
+            }
+
+            return new ModifyNode(
+                n.operation(),
+                boundChild,
+                n.targetTable(),
+                n.targetColumns(),
+                boundValues
+            );
+        }
+
+        // 8. SCAN NODE / DDL NODE / TCL NODE
+        else {
+            return node;
+        }
     }
 
     
