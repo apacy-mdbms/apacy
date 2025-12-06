@@ -9,7 +9,7 @@ final class LogDataParser {
     private LogDataParser() {}
 
     @SuppressWarnings("unchecked")
-    static Map<String, Object> toMap(Object data) {
+    public static Map<String, Object> toMap(Object data) {
         if (data == null || "-".equals(data)) return null;
         if (data instanceof Row row) return row.data();
         if (data instanceof Map<?, ?> map) return (Map<String, Object>) map;

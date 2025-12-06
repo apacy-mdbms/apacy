@@ -52,7 +52,6 @@ public class CheckpointManager {
 
         long ts = System.currentTimeMillis();
 
-        // Tulis log checkpoint mulai
         if (logWriter != null) {
             logWriter.writeLog("SYSTEM", "CHECKPOINT_BEGIN", checkpointId, null);
             logWriter.flush();
@@ -60,14 +59,12 @@ public class CheckpointManager {
 
         int appliedEntries = flushWalToStorage();
 
-        // Buat Flush SM jika ada
         if (storageManager instanceof StorageManager sm) {
             if (sm.getBlockManager() != null) {
                 sm.getBlockManager().flush();
             }
         }
 
-        // Save metadata including checkpoint timestamp
         CheckpointInfo info = new CheckpointInfo(
             checkpointId,
             ts,
@@ -115,7 +112,6 @@ public class CheckpointManager {
         }
     }
 
-    // bantu parsing 
     private CheckpointInfo parseCheckpointFile(Path path) {
         String filename = path.getFileName().toString().replace(".meta", "");
         return new CheckpointInfo(filename, 0, 0, "Loaded from file");
@@ -123,7 +119,6 @@ public class CheckpointManager {
     
     public void cleanupOldCheckpoints(int keepCount) throws IOException {
         List<CheckpointInfo> checkpoints = listCheckpoints();
-        // Urutkan dari yang terbaru
         checkpoints.sort((a, b) -> b.checkpointId.compareTo(a.checkpointId));
 
         if (checkpoints.size() > keepCount) {
@@ -244,7 +239,6 @@ public class CheckpointManager {
         }
     }
 
-    /** Cek apakah direktori checkpoint memiliki file checkpoint */
     public boolean hasCheckpoints() throws IOException {
         Path checkpointPath = Paths.get(checkpointDirectory);
         if (!Files.exists(checkpointPath)) {
