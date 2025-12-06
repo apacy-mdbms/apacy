@@ -1,6 +1,7 @@
 package com.apacy.queryoptimizer.rewriter;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -65,10 +66,13 @@ public class DistributeProjectRewriter extends PlanRewriter {
                         continue;
                     }
                     String tableName = columns.substring(0, idx);
+                    // System.out.println(tableName);
 
-                    if (tableName.equalsIgnoreCase(left.tableName())) {
+                    if (tableName.equalsIgnoreCase(left.tableName()) || tableName.equalsIgnoreCase(left.alias())) {
+                        // System.out.println("awaw");
                         L1.add(columns);
-                    }  else if (tableName.equalsIgnoreCase(right.tableName())) {
+                    }  else if (tableName.equalsIgnoreCase(right.tableName()) || tableName.equalsIgnoreCase(right.alias())) {
+                        // System.out.println("wawa");
                         L2.add(columns);
                     }
                 }
@@ -79,14 +83,18 @@ public class DistributeProjectRewriter extends PlanRewriter {
                 // 4. Buat Join baru dengan children yang sudah diproyeksi
                 JoinNode newJoin = new JoinNode(newLeft, newRight, joinNode.joinCondition(), joinNode.joinType());
 
-                List<String> finalColumns = new ArrayList<>(projectColumns);
-                finalColumns.removeAll(L1);
-                finalColumns.removeAll(L2);
-                if (finalColumns.isEmpty()) {
+                // System.out.println(L1);
+                // System.out.println(L2);
+                // System.out.println("halo");
+                // System.out.println(projectColumns);
+                // System.out.println(allNeededColumns);
+                if (areListsEqualIgnoringOrder(projectColumns, new ArrayList<>(allNeededColumns))) {
+                    // System.out.println("1");
                     return newJoin;
                 } else {
-                    // 5. Kembalikan Project asli di atas Join baru (untuk memastikan urutan/filter akhir benar)
-                    return new ProjectNode(newJoin, finalColumns);
+                    // return Project asli di atas Join baru (untuk memastikan urutan/filter akhir benar)
+                    // System.out.println("2");
+                    return new ProjectNode(newJoin, projectColumns);
                 }
 
             }
@@ -96,6 +104,22 @@ public class DistributeProjectRewriter extends PlanRewriter {
         return new ProjectNode(child, node.columns());
     }
 
+    private boolean areListsEqualIgnoringOrder(List<String> list1, List<String> list2) {
+        if (list1 == null && list2 == null) {
+            return true;
+        }
+        if (list1 == null || list2 == null || list1.size() != list2.size()) {
+            return false;
+        }
+
+        List<String> sortedList1 = new ArrayList<>(list1);
+        List<String> sortedList2 = new ArrayList<>(list2);
+
+        Collections.sort(sortedList1);
+        Collections.sort(sortedList2);
+
+        return sortedList1.equals(sortedList2);
+    }
 
     /**
      * Helper untuk mengambil nama kolom dari AST WhereConditionNode
