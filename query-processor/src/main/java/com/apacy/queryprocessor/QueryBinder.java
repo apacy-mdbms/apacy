@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import com.apacy.common.dto.Column;
 import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.Schema;
 import com.apacy.common.dto.ast.expression.ColumnFactor;
@@ -50,8 +51,15 @@ public class QueryBinder {
         List<String> tables = query.targetTables();
 
         for (String tableName : tables) {
-            if (storageManager.getSchema(tableName) == null) {
-                throw new IllegalArgumentException("Semantic Error: Table '" + tableName + "' does not exist.");
+            // Jika tableName ada di aliasMap sebagai key (alias), ambil real table-nya.
+            // Jika tidak, asumsikan itu nama tabel asli.
+            String realTable = tableName;
+            if (aliasMap != null && aliasMap.containsKey(tableName)) {
+                realTable = aliasMap.get(tableName);
+            }
+            
+            if (storageManager.getSchema(realTable) == null) {
+                throw new IllegalArgumentException("Semantic Error: Table '" + realTable + "' does not exist.");
             }
         }
 
@@ -60,7 +68,21 @@ public class QueryBinder {
         if (query.targetColumns() != null) {
             for (String colRaw : query.targetColumns()) {
                 if (colRaw.equals("*")) {
-                    resolvedColumns.add("*");
+                    // FIX: Expand '*' to all columns from all target tables
+                    for (String tableRef : tables) {
+                        String realTable = tableRef;
+                        if (aliasMap != null && aliasMap.containsKey(tableRef)) {
+                            realTable = aliasMap.get(tableRef);
+                        }
+
+                        Schema schema = storageManager.getSchema(realTable);
+                        if (schema != null) {
+                            for (Column c : schema.columns()) {
+                                // Add as fully qualified name: tableRef.columnName
+                                resolvedColumns.add(tableRef + "." + c.name());
+                            }
+                        }
+                    }
                     continue;
                 }
                 resolvedColumns.add(resolveColumnName(colRaw, tables, aliasMap));
@@ -386,11 +408,17 @@ public class QueryBinder {
 
         String foundInTable = null;
         for (String table : tables) {
-            if (hasColumn(table, rawCol)) {
+            // Check if 'table' is an alias
+            String realTable = table;
+            if (aliasMap != null && aliasMap.containsKey(table)) {
+                realTable = aliasMap.get(table);
+            }
+
+            if (hasColumn(realTable, rawCol)) {
                 if (foundInTable != null) {
                     throw new IllegalArgumentException("Ambiguous column: '" + rawCol + "' exists in " + foundInTable + " and " + table);
                 }
-                foundInTable = table;
+                foundInTable = table; // Use the reference name (alias or table)
             }
         }
 
