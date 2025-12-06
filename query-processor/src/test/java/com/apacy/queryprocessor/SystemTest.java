@@ -1,22 +1,21 @@
 package com.apacy.queryprocessor;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Comparator;
-import java.util.UUID;
 import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 import com.apacy.common.dto.ExecutionResult;
 import com.apacy.common.dto.Row;
@@ -113,8 +112,8 @@ class SystemTest {
         assertEquals(2, rows.size(), "Harus ada 2 baris data");
         
         // Verifikasi konten data (urutan tidak dijamin tanpa ORDER BY, jadi kita cari match)
-        boolean foundAlice = rows.stream().anyMatch(r -> r.get("name").equals("Alice") && r.get("id").equals(1));
-        boolean foundBob = rows.stream().anyMatch(r -> r.get("name").equals("Bob") && r.get("id").equals(2));
+        boolean foundAlice = rows.stream().anyMatch(r -> r.get("users.name").equals("Alice") && r.get("users.id").equals(1));
+        boolean foundBob = rows.stream().anyMatch(r -> r.get("users.name").equals("Bob") && r.get("users.id").equals(2));
         
         assertTrue(foundAlice, "Data Alice harus ditemukan");
         assertTrue(foundBob, "Data Bob harus ditemukan");
@@ -160,7 +159,7 @@ class SystemTest {
         // Verifikasi dengan SELECT
         ExecutionResult selectRes = queryProcessor.executeQuery("SELECT balance FROM accounts WHERE acc_id = 1;");
         assertEquals(1, selectRes.rows().size());
-        assertEquals(1500, selectRes.rows().get(0).get("balance"));
+        assertEquals(1500, selectRes.rows().get(0).get("accounts.balance"));
     }
 
     @Test
@@ -180,7 +179,7 @@ class SystemTest {
         // Verifikasi sisa data
         ExecutionResult selectRes = queryProcessor.executeQuery("SELECT * FROM todo;");
         assertEquals(1, selectRes.rows().size());
-        assertEquals("Task B", selectRes.rows().get(0).get("task"));
+        assertEquals("Task B", selectRes.rows().get(0).get("todo.task"));
     }
 
     @Test
@@ -212,7 +211,7 @@ class SystemTest {
             assertEquals(2, result.rows().size());
             // Cek baris pertama (Ani, 90)
             boolean foundAni = result.rows().stream()
-                .anyMatch(r -> r.get("name").equals("Ani") && r.get("score").equals(90));
+                .anyMatch(r -> r.get("students.name").equals("Ani") && r.get("grades.score").equals(90));
             assertTrue(foundAni);
         } else {
             System.out.println("JOIN Skipped / Not supported yet: " + result.message());
