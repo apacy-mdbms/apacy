@@ -7,12 +7,17 @@ import com.apacy.common.enums.DDLType;
  * 'ParsedQuery' khusus untuk DDL.
  */
 public abstract class ParsedQueryDDL {
-    
+
     private final String tableName;
     private final DDLType type;
 
     public ParsedQueryDDL(String tableName, DDLType type) {
         this.tableName = tableName;
+        this.type = type;
+    }
+
+    public ParsedQueryDDL(DDLType type) {
+        this.tableName = "";
         this.type = type;
     }
 
