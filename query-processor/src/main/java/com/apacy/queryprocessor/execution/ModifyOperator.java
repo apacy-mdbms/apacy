@@ -156,7 +156,7 @@ public class ModifyOperator implements Operator {
         throw new RuntimeException("Primary Key Violation: Column '" + pkColumnName + "' cannot be NULL.");
     }
 
-    String filter = pkColumnName + "='" + pkValue + "'";
+    WhereConditionNode filter = createEqualityCondition(pkColumnName, pkValue);
     
     DataRetrieval checkPK = new DataRetrieval(
         tableName,
@@ -185,7 +185,7 @@ public class ModifyOperator implements Operator {
 
         if (childValue == null) continue;
 
-        String filter = fk.referenceColumn() + "='" + childValue + "'";
+        WhereConditionNode filter = createEqualityCondition(fk.referenceColumn(), childValue);
         
         DataRetrieval checkParent = new DataRetrieval(
             fk.referenceTable(),
@@ -215,7 +215,7 @@ public class ModifyOperator implements Operator {
 
             frm.writeDataLog(String.valueOf(txId), "DELETE", node.targetTable(), childRow, null);
 
-            Object predicate = buildIdentityAstFromRow(childRow);
+            WhereConditionNode predicate = buildIdentityAstFromRow(childRow);
 
             DataDeletion dd = new DataDeletion(node.targetTable(), predicate);
             int deleted = sm.deleteBlock(dd);
@@ -256,7 +256,7 @@ public class ModifyOperator implements Operator {
 
             frm.writeDataLog(String.valueOf(txId), "UPDATE", node.targetTable(), oldRow, newRow);
 
-            Object updatePredicate = buildIdentityAstFromRow(oldRow);
+            WhereConditionNode updatePredicate = buildIdentityAstFromRow(oldRow);
             DataUpdate du = new DataUpdate(node.targetTable(), newRow, updatePredicate);
             int updated = sm.updateBlock(du);
             affectedRows += updated;
@@ -290,7 +290,7 @@ public class ModifyOperator implements Operator {
             throw new RuntimeException("Primary Key Constraint Violation: Column '" + pkColumnName + "' cannot be NULL.");
         }
 
-        Object filter = createEqualityCondition(pkColumnName, newValue);
+        WhereConditionNode filter = createEqualityCondition(pkColumnName, newValue);
         
         DataRetrieval checkPK = new DataRetrieval(
             tableName,
@@ -315,7 +315,7 @@ public class ModifyOperator implements Operator {
             Object newValue = getColumnValue(newRow, fk.columnName());
 
             if (newValue != null && !newValue.equals(oldValue)) {
-                Object filter = createEqualityCondition(fk.referenceColumn(), newValue);
+                WhereConditionNode filter = createEqualityCondition(fk.referenceColumn(), newValue);
                 
                 DataRetrieval checkParent = new DataRetrieval(
                     fk.referenceTable(),
@@ -347,7 +347,7 @@ public class ModifyOperator implements Operator {
                 Object newKey = getColumnValue(newRow, fk.referenceColumn());
 
                 if (oldKey != null && !oldKey.equals(newKey)) {
-                    Object filter = createEqualityCondition(fk.columnName(), oldKey);
+                    WhereConditionNode filter = createEqualityCondition(fk.columnName(), oldKey);
                     
                     DataRetrieval checkChildren = new DataRetrieval(
                         childTable,
@@ -381,7 +381,7 @@ public class ModifyOperator implements Operator {
                 Object parentValue = getColumnValue(parentRow, fk.referenceColumn());
                 if (parentValue == null) continue; 
 
-                Object filter = createEqualityCondition(fk.columnName(), parentValue);
+                WhereConditionNode filter = createEqualityCondition(fk.columnName(), parentValue);
 
                 DataRetrieval checkChild = new DataRetrieval(
                     childTableName,
@@ -423,8 +423,8 @@ public class ModifyOperator implements Operator {
         return null;
     }
 
-    private Object buildIdentityAstFromRow(Row row) {
-        Object currentCondition = null;
+    private WhereConditionNode buildIdentityAstFromRow(Row row) {
+        WhereConditionNode currentCondition = null;
 
         for (Map.Entry<String, Object> e : row.data().entrySet()) {
             String colName = e.getKey();
@@ -434,15 +434,15 @@ public class ModifyOperator implements Operator {
                 colName = colName.substring(colName.lastIndexOf('.') + 1);
             }
 
-            Object comparison = createEqualityCondition(colName, val);
+            WhereConditionNode comparison = createEqualityCondition(colName, val);
 
             if (currentCondition == null) {
                 currentCondition = comparison;
             } else {
                 currentCondition = new BinaryConditionNode(
-                    (WhereConditionNode) currentCondition, 
+                    currentCondition, 
                     "AND", 
-                    (WhereConditionNode) comparison
+                    comparison
                 );
             }
         }
