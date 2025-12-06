@@ -13,6 +13,7 @@ import com.apacy.common.dto.plan.ProjectNode;
 import com.apacy.common.dto.plan.ScanNode;
 import com.apacy.common.dto.plan.SortNode;
 import com.apacy.common.dto.plan.TCLNode;
+import com.apacy.common.enums.JoinAlgorithm;
 import com.apacy.common.interfaces.IConcurrencyControlManager;
 import com.apacy.common.interfaces.IFailureRecoveryManager;
 import com.apacy.common.interfaces.IStorageManager;
@@ -87,86 +88,41 @@ public class PlanTranslator {
         throw new UnsupportedOperationException("PlanNode type not supported: " + node.getClass().getSimpleName());
     }
 
+    /**
+     * Memilih strategi join terbaik berdasarkan karakteristik input.
+     */
     private Operator buildJoin(JoinNode node, int txId, IStorageManager sm, IConcurrencyControlManager ccm, IFailureRecoveryManager frm) {
         Operator left = build(node.left(), txId, sm, ccm, frm);
         Operator right = build(node.right(), txId, sm, ccm, frm);
         
-        // Extract join column for optimization (Simple Equi-Join)
+        JoinAlgorithm algo = (node.algorithm() != null) ? node.algorithm() : JoinAlgorithm.NESTED_LOOP;
+
+        // Ekstrak kolom join (jika ada equality join) untuk Hash/SortMerge
         String joinColumn = extractJoinColumn(node.joinCondition());
-        
-        if (joinColumn != null) {
-            // Choose join strategy based on heuristics
-            JoinStrategy strategy = selectJoinStrategy(node, joinColumn);
-            
-            switch (strategy) {
-                case SORT_MERGE:
-                    System.out.println("[PlanTranslator] Selected SortMergeJoin strategy for column: " + joinColumn);
-                    return new SortMergeJoinOperator(left, right, joinColumn);
-                    
-                case HASH:
-                    System.out.println("[PlanTranslator] Selected HashJoin strategy for column: " + joinColumn);
-                    return new HashJoinOperator(left, right, Collections.singletonList(joinColumn));
-                    
-                case NESTED_LOOP:
-                default:
-                    System.out.println("[PlanTranslator] Selected NestedLoopJoin strategy (fallback)");
+
+        // Dispatch
+        switch (algo) {
+            case SORT_MERGE:
+                if (joinColumn == null) {
+                    System.err.println("[PlanTranslator] Warning: SortMerge requested but no equality condition found. Falling back to NestedLoop.");
                     return new NestedLoopJoinOperator(left, right, node.joinCondition());
-            }
-        } else {
-            // Complex join condition - fallback to Nested Loop Join
-            System.out.println("[PlanTranslator] Complex join condition detected, using NestedLoopJoin");
-            return new NestedLoopJoinOperator(left, right, node.joinCondition());
+                }
+                return new SortMergeJoinOperator(left, right, joinColumn);
+
+            case HASH:
+                if (joinColumn == null) {
+                    System.err.println("[PlanTranslator] Warning: HashJoin requested but no equality condition found. Falling back to NestedLoop.");
+                    return new NestedLoopJoinOperator(left, right, node.joinCondition());
+                }
+                return new HashJoinOperator(left, right, Collections.singletonList(joinColumn));
+
+            case CARTESIAN:
+                return new CartesianOperator(left, right);
+
+            case NESTED_LOOP:
+            default:
+                return new NestedLoopJoinOperator(left, right, node.joinCondition());
         }
-    }
-    
-    /**
-     * Enum untuk strategi join yang tersedia
-     */
-    private enum JoinStrategy {
-        HASH,           // Hash Join - efisien untuk ukuran sedang
-        SORT_MERGE,     // Sort-Merge Join - efisien jika data sudah terurut
-        NESTED_LOOP     // Nested Loop Join - fallback untuk kasus umum
-    }
-    
-    /**
-     * Memilih strategi join terbaik berdasarkan karakteristik input.
-     * 
-     * Heuristik:
-     * 1. Jika salah satu child adalah SortNode pada join column yang sama -> SortMergeJoin
-     *    (data sudah terurut, manfaatkan untuk efisiensi)
-     * 2. Jika estimasi ukuran data kecil-menengah -> HashJoin
-     *    (efisien untuk ukuran sedang, memory overhead acceptable)
-     * 3. Untuk kasus lain -> NestedLoopJoin
-     *    (safe fallback, tidak butuh preprocessing)
-     */
-    private JoinStrategy selectJoinStrategy(JoinNode node, String joinColumn) {
-        // Strategy 1: Check if inputs are already sorted on the join column
-        boolean leftSorted = isNodeSortedBy(node.left(), joinColumn);
-        boolean rightSorted = isNodeSortedBy(node.right(), joinColumn);
-        
-        if (leftSorted || rightSorted) {
-            // At least one side is sorted - SortMergeJoin is efficient
-            return JoinStrategy.SORT_MERGE;
-        }
-        
-        // Strategy 2: Estimate data size
-        // For medium-sized datasets, HashJoin is usually most efficient
-        // (This is a simple heuristic; could be enhanced with statistics)
-        int estimatedSize = estimateNodeSize(node.left()) + estimateNodeSize(node.right());
-        
-        if (estimatedSize > 0 && estimatedSize < 50000) {
-            // Small to medium dataset - HashJoin is efficient
-            return JoinStrategy.HASH;
-        }
-        
-        // Strategy 3: For very large datasets or when unsure, use SortMergeJoin
-        // It's more memory-efficient than HashJoin for large data
-        if (estimatedSize >= 50000) {
-            return JoinStrategy.SORT_MERGE;
-        }
-        
-        // Default: HashJoin (balanced performance)
-        return JoinStrategy.HASH;
     }
     
     // ==================================================================================

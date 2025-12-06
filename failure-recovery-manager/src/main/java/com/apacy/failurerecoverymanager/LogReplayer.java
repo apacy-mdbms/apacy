@@ -17,6 +17,14 @@ import com.apacy.common.dto.DataDeletion;
 import com.apacy.common.dto.DataWrite;
 import com.apacy.common.dto.RecoveryCriteria;
 import com.apacy.common.dto.Row;
+import com.apacy.common.dto.ast.expression.ExpressionNode;
+import com.apacy.common.dto.ast.expression.FactorNode;
+import com.apacy.common.dto.ast.expression.TermNode;
+import com.apacy.common.dto.ast.expression.ColumnFactor;
+import com.apacy.common.dto.ast.expression.LiteralFactor;
+import com.apacy.common.dto.ast.where.BinaryConditionNode;
+import com.apacy.common.dto.ast.where.ComparisonConditionNode;
+import com.apacy.common.dto.ast.where.WhereConditionNode;
 import com.apacy.storagemanager.StorageManager;
 
 public class LogReplayer {
@@ -130,8 +138,8 @@ public class LogReplayer {
         switch (op) {
             case "INSERT" -> {
                 if (afterMap == null || afterMap.isEmpty()) return;
-                String predicate = buildFullMatchPredicate(afterMap);
-                if (!predicate.isEmpty()) {
+                WhereConditionNode predicate = buildFullMatchPredicate(afterMap);
+                if (predicate != null) {
                     System.out.println("   -> [UNDO INSERT] Deleting inserted row in " + tableName);
                     storageManager.deleteBlock(new DataDeletion(tableName, predicate));
                 }
@@ -152,8 +160,8 @@ public class LogReplayer {
 
                 System.out.println("   -> [UNDO UPDATE] Reverting update in " + tableName);
 
-                String predicate = buildFullMatchPredicate(afterMap);
-                if (!predicate.isEmpty()) {
+                WhereConditionNode predicate = buildFullMatchPredicate(afterMap);
+                if (predicate != null) {
                     try {
                         storageManager.deleteBlock(new DataDeletion(tableName, predicate));
                     } catch (Exception e) {
@@ -198,14 +206,18 @@ public class LogReplayer {
             case "DELETE" -> {
                 Map<String, Object> target = (beforeMap != null && !beforeMap.isEmpty()) ? beforeMap : afterMap;
                 if (target != null && !target.isEmpty()) {
-                    String predicate = buildFullMatchPredicate(target);
-                    storageManager.deleteBlock(new DataDeletion(tableName, predicate));
+                    WhereConditionNode predicate = buildFullMatchPredicate(target);
+                    if (predicate != null) {
+                        storageManager.deleteBlock(new DataDeletion(tableName, predicate));
+                    }
                 }
             }
             case "UPDATE" -> {
                 if (beforeMap != null && !beforeMap.isEmpty()) {
-                    String predicate = buildFullMatchPredicate(beforeMap);
-                    storageManager.deleteBlock(new DataDeletion(tableName, predicate));
+                    WhereConditionNode predicate = buildFullMatchPredicate(beforeMap);
+                    if (predicate != null) {
+                        storageManager.deleteBlock(new DataDeletion(tableName, predicate));
+                    }
                 }
                 if (afterMap != null && !afterMap.isEmpty()) {
                     storageManager.writeBlock(new DataWrite(tableName, new Row(afterMap), null));
@@ -232,17 +244,32 @@ public class LogReplayer {
         return normalized;
     }
 
-    private String buildFullMatchPredicate(Map<String, Object> dataMap) {
-        StringBuilder sb = new StringBuilder();
-        boolean first = true;
+    private WhereConditionNode buildFullMatchPredicate(Map<String, Object> dataMap) {
+        if (dataMap == null || dataMap.isEmpty()) return null;
+        
+        List<WhereConditionNode> conditions = new ArrayList<>();
         for (Map.Entry<String, Object> e : dataMap.entrySet()) {
             if (e.getValue() != null && !String.valueOf(e.getValue()).equalsIgnoreCase("null")) {
-                if (!first) sb.append(" AND ");
-                sb.append(e.getKey()).append("='").append(e.getValue()).append("'");
-                first = false;
+                conditions.add(buildComparison(e.getKey(), "=", e.getValue()));
             }
         }
-        return sb.toString();
+        
+        if (conditions.isEmpty()) return null;
+        if (conditions.size() == 1) return conditions.get(0);
+        
+        WhereConditionNode result = conditions.get(0);
+        for (int i = 1; i < conditions.size(); i++) {
+            result = new BinaryConditionNode(result, "AND", conditions.get(i));
+        }
+        return result;
+    }
+    
+    private WhereConditionNode buildComparison(String columnName, String operator, Object value) {
+        TermNode colTerm = new TermNode(new ColumnFactor(columnName), List.of());
+        ExpressionNode leftExpr = new ExpressionNode(colTerm, List.of());
+        TermNode valTerm = new TermNode(new LiteralFactor(value), List.of());
+        ExpressionNode rightExpr = new ExpressionNode(valTerm, List.of());
+        return new ComparisonConditionNode(leftExpr, operator, rightExpr);
     }
 
     private Map<String, Object> removeNullValues(Map<String, Object> map) {

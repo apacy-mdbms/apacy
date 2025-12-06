@@ -1,46 +1,53 @@
 package com.apacy.storagemanager;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import com.apacy.common.DBMSComponent;
 import com.apacy.common.dto.Column;
 import com.apacy.common.dto.DataDeletion;
 import com.apacy.common.dto.DataRetrieval;
+import com.apacy.common.dto.DataUpdate;
 import com.apacy.common.dto.DataWrite;
 import com.apacy.common.dto.ForeignKeySchema;
 import com.apacy.common.dto.IndexSchema;
 import com.apacy.common.dto.Row;
 import com.apacy.common.dto.Schema;
 import com.apacy.common.dto.Statistic;
-import com.apacy.common.dto.ast.where.*;
-import com.apacy.common.dto.ast.expression.*;
-import com.apacy.common.dto.DataUpdate;
+import com.apacy.common.dto.ast.expression.ColumnFactor;
+import com.apacy.common.dto.ast.expression.ExpressionNode;
+import com.apacy.common.dto.ast.expression.FactorNode;
+import com.apacy.common.dto.ast.expression.LiteralFactor;
+import com.apacy.common.dto.ast.where.BinaryConditionNode;
+import com.apacy.common.dto.ast.where.ComparisonConditionNode;
+import com.apacy.common.dto.ast.where.UnaryConditionNode;
 import com.apacy.common.enums.DataType;
 import com.apacy.common.enums.IndexType;
 import com.apacy.common.interfaces.IStorageManager;
-import com.apacy.storagemanager.index.*;
-import java.util.List;
-import java.util.Map;
-import java.util.Collections;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.util.stream.Collectors;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
+import com.apacy.storagemanager.index.BPlusIndex;
+import com.apacy.storagemanager.index.HashIndex;
+import com.apacy.storagemanager.index.IIndex;
+import com.apacy.storagemanager.index.IndexManager;
 
 public class StorageManager extends DBMSComponent implements IStorageManager {
 
-  private static class ParsedFilter {
-    String columnName;
-    String operator;
-    Object value;
-
-    ParsedFilter(String columnName, String operator, Object value) {
-      this.columnName = columnName;
-      this.operator = operator;
-      this.value = value;
+  // Helper class sederhana untuk menyimpan hasil ekstraksi dari AST
+    private static class IndexLookupRequest {
+        String columnName;
+        String operator;
+        Object value;
+        
+        IndexLookupRequest(String col, String op, Object val) {
+            this.columnName = col;
+            this.operator = op;
+            this.value = val;
+        }
     }
-  }
 
   private final BlockManager blockManager;
   private final Serializer serializer;
@@ -100,131 +107,139 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
     return this.catalogManager.getSchema(tableName);
   }
 
-  @Override
-  public List<Row> readBlock(DataRetrieval dataRetrieval) {
-    try {
-      Schema schema = catalogManager.getSchema(dataRetrieval.tableName());
-      if (schema == null) {
-        throw new IOException("Tabel tidak ditemukan di katalog: " + dataRetrieval.tableName());
-      }
-      String fileName = schema.dataFile();
-      List<Row> allRows = new ArrayList<>();
-      Object filterRoot = dataRetrieval.filterCondition();
+  private List<Row> fetchRowsFromRids(List<Integer> rids, Schema schema, Object filterRoot, List<String> columns) throws IOException {
+    List<Row> results = new ArrayList<>();
+    String fileName = schema.dataFile();
 
-      List<ParsedFilter> parsedFilters = parseFilterCondition(filterRoot, schema);
-      boolean isStringFilter = !(filterRoot instanceof WhereConditionNode) && filterRoot != null;
+    for (int encodedRid : rids) {
+        // dapetin rid: Block Number (High 16 bits) & Slot ID (Low 16 bits)
+        long blockNo = (encodedRid >>> 16);
+        int slotNo = encodedRid & 0xFFFF;
 
-      if (dataRetrieval.useIndex() && !parsedFilters.isEmpty()) {
-        for (IndexSchema idxSchema : schema.indexes()) {
-          IIndex index = indexManager.get(
-              schema.tableName(),
-              idxSchema.columnName(),
-              idxSchema.indexType().toString());
+        byte[] blockData = blockManager.readBlock(fileName, blockNo);
+        
+        Row row = serializer.readRowAtSlot(blockData, schema, slotNo);
 
-          if (index == null)
-            continue;
-
-          List<Integer> ridList = Collections.emptyList();
-          boolean indexUsed = false;
-
-          Object eqValue = null;
-          for (ParsedFilter pf : parsedFilters) {
-            if (pf.columnName.equals(idxSchema.columnName()) && "=".equals(pf.operator)) {
-              eqValue = pf.value;
-              break;
+        if (row != null) {
+            // reevaluate buat
+            // 1. Hash Index collisions
+            // 2. Compound predicates (misal index di 'id', tapi querynya 'id=1 AND name="A"')
+            if (evaluateCondition(row, filterRoot)) {
+                results.add(projectColumns(row, columns));
             }
-          }
-
-          if (eqValue != null) {
-            // Equality Lookup
-            ridList = index.getAddress(eqValue);
-            indexUsed = true;
-          }
-          // B. Jika tidak ada Equality, coba Range Scan (Hanya BTree)
-          else if (idxSchema.indexType() == IndexType.BPlusTree) {
-            // Cari batas bawah (>=, >) dan batas atas (<=, <)
-            Object minVal = null;
-            boolean minInclusive = true;
-            Object maxVal = null;
-            boolean maxInclusive = true;
-
-            for (ParsedFilter pf : parsedFilters) {
-              if (!pf.columnName.equals(idxSchema.columnName()))
-                continue;
-
-              if (">=".equals(pf.operator)) {
-                minVal = pf.value;
-                minInclusive = true;
-              } else if (">".equals(pf.operator)) {
-                minVal = pf.value;
-                minInclusive = false;
-              } else if ("<=".equals(pf.operator)) {
-                maxVal = pf.value;
-                maxInclusive = true;
-              } else if ("<".equals(pf.operator)) {
-                maxVal = pf.value;
-                maxInclusive = false;
-              }
-            }
-
-            // Jika ada salah satu bound (min/max), lakukan range scan
-            if (minVal != null || maxVal != null) {
-              // Asumsi method di interface IIndex / BPlusTree: getAddresses(min, minIncl,
-              // max, maxIncl)
-              // Jika index generik, perlu cast ke BPlusIndex atau interface yang support
-              // range
-              if (index instanceof BPlusIndex) {
-                ridList = ((BPlusIndex) index).getAddresses((Comparable) minVal, minInclusive, (Comparable) maxVal,
-                    maxInclusive);
-                indexUsed = true;
-              }
-            }
-          }
-
-          // Jika index berhasil digunakan (Equality atau Range), ambil datanya
-          if (indexUsed) {
-            List<Row> resultRows = new ArrayList<>();
-            for (int encodedRid : ridList) {
-              long blockNo = (encodedRid >>> 16);
-              int slotNo = encodedRid & 0xFFFF;
-
-              byte[] block = blockManager.readBlock(schema.dataFile(), blockNo);
-              Row r = serializer.readRowAtSlot(block, schema, slotNo);
-
-              if (r != null) {
-                // Validasi ulang row dengan semua filter
-                boolean matches = isStringFilter ? rowMatchesFilters(r, parsedFilters)
-                    : evaluateCondition(r, filterRoot);
-
-                if (matches) {
-                  resultRows.add(projectColumns(r, dataRetrieval.columns()));
-                }
-              }
-            }
-            return resultRows;
-          }
         }
-      }
-
-      long blockCount = blockManager.getBlockCount(fileName);
-
-      for (long blockNumber = 0; blockNumber < blockCount; blockNumber++) {
-        byte[] blockData = blockManager.readBlock(fileName, blockNumber);
-        List<Row> rowsOfBlock = serializer.deserializeBlock(blockData, schema);
-        allRows.addAll(rowsOfBlock);
-      }
-
-      return allRows.stream()
-          .filter(
-              (Row row) -> isStringFilter ? rowMatchesFilters(row, parsedFilters) : evaluateCondition(row, filterRoot))
-          .map((Row row) -> projectColumns(row, dataRetrieval.columns()))
-          .collect(Collectors.toList());
-
-    } catch (IOException e) {
-      System.err.println("Error reading block: " + e.getMessage());
-      return Collections.emptyList();
     }
-  }
+    return results;
+}
+
+  @Override
+    public List<Row> readBlock(DataRetrieval dataRetrieval) {
+        try {
+            // 1. Validasi Skema
+            Schema schema = catalogManager.getSchema(dataRetrieval.tableName());
+            if (schema == null) {
+                throw new IOException("Tabel tidak ditemukan di katalog: " + dataRetrieval.tableName());
+            }
+            
+            // 2. Ambil Filter (AST)
+            Object filterRoot = dataRetrieval.filterCondition(); 
+            
+            // 3. Analisis AST untuk potensi penggunaan indeks
+            List<IndexLookupRequest> indexPredicates = extractIndexPredicates(filterRoot, schema);
+            
+            // Index Scan
+            if (dataRetrieval.useIndex() && !indexPredicates.isEmpty()) {
+                for (IndexSchema idxSchema : schema.indexes()) {
+                    IIndex<?,?> index = indexManager.get(
+                        schema.tableName(), 
+                        idxSchema.columnName(), 
+                        idxSchema.indexType().toString()
+                    );
+                    
+                    if (index == null) continue;
+
+                    // A. Cek Equality Lookup (=)
+                    Object eqValue = null;
+                    for (IndexLookupRequest req : indexPredicates) {
+                        if (req.columnName.equals(idxSchema.columnName()) && 
+                           ("=".equals(req.operator) || "==".equals(req.operator))) {
+                            eqValue = req.value;
+                            break;
+                        }
+                    }
+
+                    if (eqValue != null) {
+                        // Cast ke raw type atau unchecked untuk menghindar masalah generic
+                        @SuppressWarnings({"unchecked", "rawtypes"})
+                        List<Integer> rids = ((IIndex)index).getAddress(eqValue);
+                        
+                        return fetchRowsFromRids(rids, schema, filterRoot, dataRetrieval.columns());
+                    }
+                    
+                    // B. Cek Range Scan (Hanya BPlusTree)
+                    if (idxSchema.indexType() == IndexType.BPlusTree && index instanceof BPlusIndex) {
+                        Comparable<?> minVal = null;
+                        boolean minInclusive = true;
+                        Comparable<?> maxVal = null;
+                        boolean maxInclusive = true;
+                        boolean rangeFound = false;
+
+                        for (IndexLookupRequest req : indexPredicates) {
+                            if (!req.columnName.equals(idxSchema.columnName())) continue;
+                            
+                            if (!(req.value instanceof Comparable)) continue;
+                            Comparable<?> val = (Comparable<?>) req.value;
+
+                            if (">=".equals(req.operator)) {
+                                minVal = val; minInclusive = true; rangeFound = true;
+                            } else if (">".equals(req.operator)) {
+                                minVal = val; minInclusive = false; rangeFound = true;
+                            } else if ("<=".equals(req.operator)) {
+                                maxVal = val; maxInclusive = true; rangeFound = true;
+                            } else if ("<".equals(req.operator)) {
+                                maxVal = val; maxInclusive = false; rangeFound = true;
+                            }
+                        }
+
+                        if (rangeFound) {
+                            @SuppressWarnings({"unchecked", "rawtypes"})
+                            BPlusIndex btree = (BPlusIndex) index;
+                            
+                            List<Integer> rids = btree.getAddresses(minVal, minInclusive, maxVal, maxInclusive);
+                            
+                            return fetchRowsFromRids(rids, schema, filterRoot, dataRetrieval.columns());
+                        }
+                    }
+                }
+            }
+
+            // --- STRATEGI 2: FULL TABLE SCAN (Fallback) ---
+            String fileName = schema.dataFile();
+            List<Row> allRows = new ArrayList<>();
+            long blockCount = blockManager.getBlockCount(fileName);
+
+            for (long i = 0; i < blockCount; i++) {
+                byte[] block = blockManager.readBlock(fileName, i);
+                List<Row> rows = serializer.deserializeBlock(block, schema);
+                
+                for (Row row : rows) {
+                    if (evaluateCondition(row, filterRoot)) { 
+                        allRows.add(projectColumns(row, dataRetrieval.columns()));
+                    }
+                }
+            }
+            return allRows;
+
+        } catch (IOException e) {
+            System.err.println("[StorageManager] Error reading block: " + e.getMessage());
+            e.printStackTrace();
+            return Collections.emptyList();
+        } catch (Exception e) {
+            System.err.println("[StorageManager] Unexpected error: " + e.getMessage());
+            e.printStackTrace();
+            return Collections.emptyList();
+        }
+    }
 
   // ==================================================================================
   // [AST EVALUATOR] LOGIKA UTAMA FILTERING
@@ -279,10 +294,22 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
     FactorNode factor = expr.term().factor();
 
     if (factor instanceof ColumnFactor col) {
-      // Ambil value dari map data Row berdasarkan nama kolom
-      return row.get(col.columnName());
+      String colName = col.columnName();
+      // Coba ambil langsung (siapa tahu key di Row sudah lengkap)
+      Object val = row.get(colName);
+      if (val != null) return val;
+
+      // Jika null, coba buang prefix tabelnya
+      if (colName.contains(".")) {
+          String shortName = colName.substring(colName.lastIndexOf(".") + 1);
+          return row.get(shortName);
+      }
+      return null;
     } else if (factor instanceof LiteralFactor lit) {
-      // FIX: Tidak menggunakan lit.type(), kirim null sebagai type
+      Object val = lit.value();
+      if (val instanceof Number || val instanceof Boolean) {
+          return val;
+      }
       String valStr = (lit.value() != null) ? lit.value().toString() : null;
       return parseLiteral(valStr, null);
     }
@@ -386,15 +413,25 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
 
   private String getColumnNameSafe(ExpressionNode expr) {
     if (expr != null && expr.term() != null && expr.term().factor() instanceof ColumnFactor col) {
-      return col.columnName();
+        String name = col.columnName();
+        // Ambil nama kolomnya saja jika ada titik (misal: "students.nim" -> "nim")
+        if (name.contains(".")) {
+            return name.substring(name.lastIndexOf(".") + 1);
+        }
+        return name;
     }
     return null;
   }
 
   private Object getLiteralValueSafe(ExpressionNode expr) {
     if (expr != null && expr.term() != null && expr.term().factor() instanceof LiteralFactor lit) {
-      // FIX: Tidak menggunakan lit.type()
-      String valStr = (lit.value() != null) ? lit.value().toString() : null;
+      Object val = lit.value();
+      
+      if (val instanceof Number || val instanceof Boolean) {
+          return val;
+      }
+
+      String valStr = (val != null) ? val.toString() : null;
       return parseLiteral(valStr, null);
     }
     return null;
@@ -514,71 +551,76 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
       }
 
       String fileName = schema.dataFile();
-      Object filterRoot = dataDeletion.filterCondition();
+      Object filterRoot = dataDeletion.filterCondition(); // Ini sekarang AST (WhereConditionNode)
 
-      List<ParsedFilter> parsedFilters = parseFilterCondition(filterRoot, schema);
-      boolean isStringFilter = !(filterRoot instanceof WhereConditionNode) && filterRoot != null;
+      // 1. Ekstrak kondisi indeks dari AST (pengganti parseFilterCondition)
+      List<IndexLookupRequest> indexPredicates = extractIndexPredicates(filterRoot, schema);
 
       int deletedRows = 0;
       List<Integer> ridsToDelete = Collections.emptyList();
       boolean useIndexScan = false;
 
-      if (!parsedFilters.isEmpty()) {
+      // 2. Logika Pemilihan Indeks
+      if (!indexPredicates.isEmpty()) {
         for (IndexSchema idxSchema : schema.indexes()) {
-          IIndex index = indexManager.get(
+          IIndex<?, ?> index = indexManager.get(
               schema.tableName(),
               idxSchema.columnName(),
               idxSchema.indexType().toString());
 
-          if (index == null)
-            continue;
+          if (index == null) continue;
 
+          // A. Equality Check (=)
           Object eqValue = null;
-          for (ParsedFilter pf : parsedFilters) {
-            if (pf.columnName.equals(idxSchema.columnName()) && "=".equals(pf.operator)) {
-              eqValue = pf.value;
+          for (IndexLookupRequest req : indexPredicates) {
+            if (req.columnName.equals(idxSchema.columnName()) && 
+               ("=".equals(req.operator) || "==".equals(req.operator))) {
+              eqValue = req.value;
               break;
             }
           }
 
           if (eqValue != null) {
-            ridsToDelete = index.getAddress(eqValue);
+            // Cast ke raw type untuk menghindari error generic
+            @SuppressWarnings({"unchecked", "rawtypes"})
+            List<Integer> rids = ((IIndex) index).getAddress(eqValue);
+            ridsToDelete = rids;
             useIndexScan = true;
-          } else if (idxSchema.indexType() == IndexType.BPlusTree) {
-            Object minVal = null;
+          } 
+          // B. Range Check (BPlusTree Only)
+          else if (idxSchema.indexType() == IndexType.BPlusTree && index instanceof BPlusIndex) {
+            Comparable<?> minVal = null;
             boolean minInclusive = true;
-            Object maxVal = null;
+            Comparable<?> maxVal = null;
             boolean maxInclusive = true;
+            boolean rangeFound = false;
 
-            for (ParsedFilter pf : parsedFilters) {
-              if (!pf.columnName.equals(idxSchema.columnName()))
-                continue;
-              if (">=".equals(pf.operator)) {
-                minVal = pf.value;
-                minInclusive = true;
-              } else if (">".equals(pf.operator)) {
-                minVal = pf.value;
-                minInclusive = false;
-              } else if ("<=".equals(pf.operator)) {
-                maxVal = pf.value;
-                maxInclusive = true;
-              } else if ("<".equals(pf.operator)) {
-                maxVal = pf.value;
-                maxInclusive = false;
+            for (IndexLookupRequest req : indexPredicates) {
+              if (!req.columnName.equals(idxSchema.columnName())) continue;
+              if (!(req.value instanceof Comparable)) continue;
+              
+              Comparable<?> val = (Comparable<?>) req.value;
+
+              if (">=".equals(req.operator)) {
+                minVal = val; minInclusive = true; rangeFound = true;
+              } else if (">".equals(req.operator)) {
+                minVal = val; minInclusive = false; rangeFound = true;
+              } else if ("<=".equals(req.operator)) {
+                maxVal = val; maxInclusive = true; rangeFound = true;
+              } else if ("<".equals(req.operator)) {
+                maxVal = val; maxInclusive = false; rangeFound = true;
               }
             }
 
-            if (minVal != null || maxVal != null) {
-              if (index instanceof BPlusIndex) {
-                ridsToDelete = ((BPlusIndex) index).getAddresses((Comparable) minVal, minInclusive, (Comparable) maxVal,
-                    maxInclusive);
-                useIndexScan = true;
-              }
+            if (rangeFound) {
+              @SuppressWarnings({"unchecked", "rawtypes"})
+              BPlusIndex btree = (BPlusIndex) index;
+              ridsToDelete = btree.getAddresses(minVal, minInclusive, maxVal, maxInclusive);
+              useIndexScan = true;
             }
           }
 
-          if (useIndexScan)
-            break; // Cukup pakai satu index
+          if (useIndexScan) break;
         }
       }
 
@@ -593,12 +635,10 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
           Row row = serializer.readRowAtSlot(blockData, schema, slotNo);
 
           if (row != null) {
-            boolean matches = isStringFilter ? rowMatchesFilters(row, parsedFilters)
-                : evaluateCondition(row, filterRoot);
-
-            if (matches) {
+            // Evaluasi ulang kondisi menggunakan AST Evaluator
+            if (evaluateCondition(row, filterRoot)) {
               if (serializer.deleteSlot(blockData, slotNo)) {
-                blockManager.writeBlock(fileName, blockNo, blockData); // Write back immediately
+                blockManager.writeBlock(fileName, blockNo, blockData); // Tulis balik segera
                 removeRowFromIndexes(schema, blockNo, slotNo, row);
                 deletedRows++;
               }
@@ -618,14 +658,10 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
           for (int slotId = 0; slotId < slotCount; slotId++) {
             Row row = serializer.readRowAtSlot(blockData, schema, slotId);
 
-            if (row == null)
-              continue;
+            if (row == null) continue;
 
-            boolean matches = isStringFilter ? rowMatchesFilters(row, parsedFilters)
-                : evaluateCondition(row, filterRoot);
-
-            if (!matches)
-              continue;
+            // Evaluasi kondisi menggunakan AST Evaluator
+            if (!evaluateCondition(row, filterRoot)) continue;
 
             if (serializer.deleteSlot(blockData, slotId)) {
               deletedRows++;
@@ -766,93 +802,112 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
     }
   }
 
-  private List<ParsedFilter> parseFilterCondition(Object filterCondition, Schema schema) {
-    if (filterCondition == null || schema == null) {
-      return Collections.emptyList();
-    }
+//   private List<ParsedFilter> parseFilterCondition(Object filterCondition, Schema schema) {
+//     if (filterCondition == null || schema == null) {
+//       return Collections.emptyList();
+//     }
 
-    if (!(filterCondition instanceof String)) {
-      return Collections.emptyList();
-    }
+//     if (!(filterCondition instanceof String)) {
+//       return Collections.emptyList();
+//     }
 
-    String raw = filterCondition.toString().trim();
-    if (raw.isEmpty()) {
-      return Collections.emptyList();
-    }
+//     String raw = filterCondition.toString().trim();
+//     if (raw.isEmpty()) {
+//       return Collections.emptyList();
+//     }
 
-    List<ParsedFilter> results = new ArrayList<>();
-    String[] expressions = raw.split("(?i)\\s+AND\\s+");
+//     List<ParsedFilter> results = new ArrayList<>();
+//     String[] expressions = raw.split("(?i)\\s+AND\\s+");
 
-    String[] operators = { ">=", "<=", "!=", "<>", "=", ">", "<" };
+//     String[] operators = { ">=", "<=", "!=", "<>", "=", ">", "<" };
 
-    for (String expression : expressions) {
-      expression = expression.trim();
-      String matchedOp = null;
+//     for (String expression : expressions) {
+//       expression = expression.trim();
+//       String matchedOp = null;
 
-      for (String op : operators) {
-        if (expression.contains(op)) {
-          matchedOp = op;
-          break;
+//       for (String op : operators) {
+//         if (expression.contains(op)) {
+//           matchedOp = op;
+//           break;
+//         }
+//       }
+
+//       if (matchedOp == null)
+//         continue;
+
+//       int opIndex = expression.indexOf(matchedOp);
+//       String columnName = expression.substring(0, opIndex).trim();
+//       String literalRaw = expression.substring(opIndex + matchedOp.length()).trim();
+
+//       Column column = schema.getColumnByName(columnName);
+//       if (column == null)
+//         continue;
+
+//       String literal = stripQuotes(literalRaw);
+//       Object typedValue = convertLiteral(column, literal);
+
+//       if (typedValue != null) {
+//         results.add(new ParsedFilter(column.name(), matchedOp, typedValue));
+//       }
+//     }
+//     return results;
+//   }
+
+//   private Object convertLiteral(Column column, String literal) {
+//     try {
+//       return switch (column.type()) {
+//         case INTEGER -> Integer.parseInt(literal);
+//         case FLOAT -> Float.parseFloat(literal);
+//         case CHAR -> literal.charAt(0);
+//         case VARCHAR -> literal;
+//       };
+//     } catch (Exception e) {
+//       return null;
+//     }
+//   }
+
+//   private String stripQuotes(String literal) {
+//     if (literal.length() >= 2) {
+//       if ((literal.startsWith("\"") && literal.endsWith("\"")) ||
+//           (literal.startsWith("'") && literal.endsWith("'"))) {
+//         return literal.substring(1, literal.length() - 1);
+//       }
+//     }
+//     return literal;
+//   }
+
+  
+
+    /**
+     * Menelusuri AST untuk mencari kondisi yang bisa menggunakan indeks.
+     * Saat ini support sederhana: ComparisonConditionNode (col op val)
+     * dan BinaryConditionNode (AND).
+     */
+    private List<IndexLookupRequest> extractIndexPredicates(Object conditionNode, Schema schema) {
+        List<IndexLookupRequest> results = new ArrayList<>();
+        if (conditionNode == null) return results;
+
+        // 1. Handle Comparison (Leaf): col = val
+        if (conditionNode instanceof ComparisonConditionNode comp) {
+            // Cek apakah kiri adalah Kolom dan kanan adalah Literal (atau sebaliknya)
+            String colName = getColumnNameSafe(comp.leftOperand());
+            Object val = getLiteralValueSafe(comp.rightOperand());
+            
+            if (colName != null && val != null) {
+                results.add(new IndexLookupRequest(colName, comp.operator(), val));
+            }
         }
-      }
-
-      if (matchedOp == null)
-        continue;
-
-      int opIndex = expression.indexOf(matchedOp);
-      String columnName = expression.substring(0, opIndex).trim();
-      String literalRaw = expression.substring(opIndex + matchedOp.length()).trim();
-
-      Column column = schema.getColumnByName(columnName);
-      if (column == null)
-        continue;
-
-      String literal = stripQuotes(literalRaw);
-      Object typedValue = convertLiteral(column, literal);
-
-      if (typedValue != null) {
-        results.add(new ParsedFilter(column.name(), matchedOp, typedValue));
-      }
+        // 2. Handle Binary (AND): recursion
+        else if (conditionNode instanceof BinaryConditionNode bin) {
+            if ("AND".equalsIgnoreCase(bin.operator())) {
+                results.addAll(extractIndexPredicates(bin.left(), schema));
+                results.addAll(extractIndexPredicates(bin.right(), schema));
+            }
+            // Catatan: OR biasanya tidak bisa langsung pakai single index scan sederhana
+        }
+        
+        return results;
     }
-    return results;
-  }
-
-  private Object convertLiteral(Column column, String literal) {
-    try {
-      return switch (column.type()) {
-        case INTEGER -> Integer.parseInt(literal);
-        case FLOAT -> Float.parseFloat(literal);
-        case CHAR -> literal.charAt(0);
-        case VARCHAR -> literal;
-      };
-    } catch (Exception e) {
-      return null;
-    }
-  }
-
-  private String stripQuotes(String literal) {
-    if (literal.length() >= 2) {
-      if ((literal.startsWith("\"") && literal.endsWith("\"")) ||
-          (literal.startsWith("'") && literal.endsWith("'"))) {
-        return literal.substring(1, literal.length() - 1);
-      }
-    }
-    return literal;
-  }
-
-  private boolean rowMatchesFilters(Row row, List<ParsedFilter> filters) {
-    if (filters == null || filters.isEmpty()) {
-      return true;
-    }
-    for (ParsedFilter filter : filters) {
-      Object rowValue = row.data().get(filter.columnName);
-
-      if (!compareValues(rowValue, filter.value, filter.operator)) {
-        return false;
-      }
-    }
-    return true;
-  }
 
   private IndexType findIndexType(String indexType) {
     return Arrays.stream(IndexType.values())
@@ -985,76 +1040,75 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
       }
 
       String fileName = schema.dataFile();
-      Object filterRoot = dataUpdate.filterCondition();
+      Object filterRoot = dataUpdate.filterCondition(); // Ini AST (WhereConditionNode)
 
-      // 1. Parsing Filter
-      List<ParsedFilter> parsedFilters = parseFilterCondition(filterRoot, schema);
-      boolean isStringFilter = !(filterRoot instanceof WhereConditionNode) && filterRoot != null;
+      // 1. Ekstrak kondisi indeks dari AST
+      List<IndexLookupRequest> indexPredicates = extractIndexPredicates(filterRoot, schema);
 
       int updatedRows = 0;
       List<Integer> ridsToUpdate = Collections.emptyList();
       boolean useIndexScan = false;
 
-      // --- 2. OPTIMASI INDEX SCAN (Equality & Range) ---
-      if (!parsedFilters.isEmpty()) {
+      // 2. Logika Pemilihan Indeks
+      if (!indexPredicates.isEmpty()) {
         for (IndexSchema idxSchema : schema.indexes()) {
-          IIndex index = indexManager.get(
+          IIndex<?, ?> index = indexManager.get(
               schema.tableName(),
               idxSchema.columnName(),
               idxSchema.indexType().toString());
 
-          if (index == null)
-            continue;
+          if (index == null) continue;
 
-          // A. Equality Scan (Hash & BTree)
+          // A. Equality Scan
           Object eqValue = null;
-          for (ParsedFilter pf : parsedFilters) {
-            if (pf.columnName.equals(idxSchema.columnName()) && "=".equals(pf.operator)) {
-              eqValue = pf.value;
+          for (IndexLookupRequest req : indexPredicates) {
+            if (req.columnName.equals(idxSchema.columnName()) && 
+               ("=".equals(req.operator) || "==".equals(req.operator))) {
+              eqValue = req.value;
               break;
             }
           }
 
           if (eqValue != null) {
-            ridsToUpdate = index.getAddress(eqValue);
+            @SuppressWarnings({"unchecked", "rawtypes"})
+            List<Integer> rids = ((IIndex) index).getAddress(eqValue);
+            ridsToUpdate = rids;
             useIndexScan = true;
           }
-          // B. Range Scan (BTree only)
-          else if (idxSchema.indexType() == IndexType.BPlusTree) {
-            Object minVal = null;
+          // B. Range Scan (BPlusTree Only)
+          else if (idxSchema.indexType() == IndexType.BPlusTree && index instanceof BPlusIndex) {
+            Comparable<?> minVal = null;
             boolean minInclusive = true;
-            Object maxVal = null;
+            Comparable<?> maxVal = null;
             boolean maxInclusive = true;
+            boolean rangeFound = false;
 
-            for (ParsedFilter pf : parsedFilters) {
-              if (!pf.columnName.equals(idxSchema.columnName()))
-                continue;
-              if (">=".equals(pf.operator)) {
-                minVal = pf.value;
-                minInclusive = true;
-              } else if (">".equals(pf.operator)) {
-                minVal = pf.value;
-                minInclusive = false;
-              } else if ("<=".equals(pf.operator)) {
-                maxVal = pf.value;
-                maxInclusive = true;
-              } else if ("<".equals(pf.operator)) {
-                maxVal = pf.value;
-                maxInclusive = false;
+            for (IndexLookupRequest req : indexPredicates) {
+              if (!req.columnName.equals(idxSchema.columnName())) continue;
+              if (!(req.value instanceof Comparable)) continue;
+              
+              Comparable<?> val = (Comparable<?>) req.value;
+
+              if (">=".equals(req.operator)) {
+                minVal = val; minInclusive = true; rangeFound = true;
+              } else if (">".equals(req.operator)) {
+                minVal = val; minInclusive = false; rangeFound = true;
+              } else if ("<=".equals(req.operator)) {
+                maxVal = val; maxInclusive = true; rangeFound = true;
+              } else if ("<".equals(req.operator)) {
+                maxVal = val; maxInclusive = false; rangeFound = true;
               }
             }
 
-            if (minVal != null || maxVal != null) {
-              if (index instanceof BPlusIndex) {
-                ridsToUpdate = ((BPlusIndex) index).getAddresses((Comparable) minVal, minInclusive, (Comparable) maxVal,
-                    maxInclusive);
-                useIndexScan = true;
-              }
+            if (rangeFound) {
+              @SuppressWarnings({"unchecked", "rawtypes"})
+              BPlusIndex btree = (BPlusIndex) index;
+              ridsToUpdate = btree.getAddresses(minVal, minInclusive, maxVal, maxInclusive);
+              useIndexScan = true;
             }
           }
 
-          if (useIndexScan)
-            break; // Cukup pakai satu index
+          if (useIndexScan) break;
         }
       }
 
@@ -1069,19 +1123,17 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
           Row row = serializer.readRowAtSlot(blockData, schema, slotNo);
 
           if (row != null) {
-            boolean matches = isStringFilter ? rowMatchesFilters(row, parsedFilters)
-                : evaluateCondition(row, filterRoot);
-
-            if (matches) {
-              // Proses Update (Sama seperti logika Full Scan, tapi per row)
+            // Evaluasi ulang kondisi menggunakan AST Evaluator
+            if (evaluateCondition(row, filterRoot)) {
+              
+              // Proses Update (In-Place atau Delete+Insert)
               try {
                 byte[] updatedBlock = serializer.updateRowInPlace(blockData, schema, slotNo, dataUpdate.updatedData());
-                // Tulis blok segera karena loop ini melompat antar blok
                 blockManager.writeBlock(fileName, blockNo, updatedBlock);
                 updateIndexesForRow(schema, blockNo, slotNo, row, dataUpdate.updatedData());
                 updatedRows++;
               } catch (IOException e) {
-                // Fallback: Delete + Insert (Out-of-place update)
+                // Fallback: Out-of-place update
                 Map<String, Object> mergedData = new HashMap<>(row.data());
                 mergedData.putAll(dataUpdate.updatedData().data());
                 Row newRow = new Row(mergedData);
@@ -1090,7 +1142,6 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
                   blockManager.writeBlock(fileName, blockNo, blockData); // Commit delete
                   removeRowFromIndexes(schema, blockNo, slotNo, row);
 
-                  // Insert new row (bisa di blok lain/akhir file)
                   DataWrite insertOp = new DataWrite(dataUpdate.tableName(), newRow, null);
                   writeBlock(insertOp);
                   updatedRows++;
@@ -1101,7 +1152,7 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
         }
         blockManager.flush();
       } else {
-        // B. STRATEGI FULL TABLE SCAN (Fallback)
+        // B. STRATEGI FULL TABLE SCAN
         long blockCount = blockManager.getBlockCount(fileName);
 
         for (long blockNumber = 0; blockNumber < blockCount; blockNumber++) {
@@ -1111,14 +1162,10 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
 
           for (int slotId = 0; slotId < slotCount; slotId++) {
             Row row = serializer.readRowAtSlot(blockData, schema, slotId);
-            if (row == null)
-              continue;
+            if (row == null) continue;
 
-            boolean matches = isStringFilter ? rowMatchesFilters(row, parsedFilters)
-                : evaluateCondition(row, filterRoot);
-
-            if (!matches)
-              continue;
+            // Evaluasi kondisi menggunakan AST Evaluator
+            if (!evaluateCondition(row, filterRoot)) continue;
 
             try {
               // Coba In-Place Update
@@ -1138,8 +1185,7 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
                 blockDirty = true;
               }
 
-              // Jika blok kotor karena delete, tulis dulu sebelum insert (insert bisa baca
-              // blok ini lagi)
+              // Jika blok kotor karena delete, tulis dulu sebelum insert
               if (blockDirty) {
                 blockManager.writeBlock(fileName, blockNumber, blockData);
                 blockDirty = false;
