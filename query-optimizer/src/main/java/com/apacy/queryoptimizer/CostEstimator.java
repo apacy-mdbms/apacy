@@ -98,6 +98,10 @@ public class CostEstimator {
 
         DerivedCost childCost = estimatePlanCostHelper(child, stats);
         DerivedCost filteredCost = estimateSelectivity((WhereConditionNode)filter.predicate(), stats, childCost);
+        // System.out.print("KOS NTA JADI ");
+        // System.out.print(filteredCost);
+        // System.out.print(" dari ");
+        // System.out.print(childCost);
 
         return filteredCost;
     }
@@ -112,11 +116,11 @@ public class CostEstimator {
                 case "AND":
                     // return use conjunction
                     sel = left.sel() * right.sel();
-                    return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
+                    return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
                 case "OR":
                     // return use Disjunction
                     sel = 1 - (1 - left.sel()) * (1 - right.sel());
-                    return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
+                    return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
                 default:
                     throw new RuntimeException("Illegal binary condition operator");
             }
@@ -127,7 +131,7 @@ public class CostEstimator {
             }
             SelectivityResult operand = estimateSelectivityHelper(unary.operand(), stats, derivedCost);
             double sel = 1 - operand.sel(); // negation
-            return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
+            return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
         }
         else if (conditionNode instanceof ComparisonConditionNode comp) {
             String leftAttr = getExpressionAttribute(comp.leftOperand());
@@ -165,21 +169,21 @@ public class CostEstimator {
                     // return use equality
                     if (V != 0.0)
                         sel = 1.0 / V;
-                    return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
+                    return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
                 case "<":
                 case "<=":
                     if (value instanceof Number num) {
                         max = (Double) (stats.get(tableName).maxVal().get(columnName));
                         min = (Double) (stats.get(tableName).minVal().get(columnName));
                         if (min == null || max == null) {
-                            return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
+                            return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
                         }
                         int v = (int) num;
                         if (v <= min) sel = 0;
                         else if (v >= max) sel = 1;
                         else sel = (double)(v - min) / (double)(max - min);
                     }
-                    return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
+                    return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
                 case ">":
                 case ">=":
                     // return use inequality
@@ -187,14 +191,14 @@ public class CostEstimator {
                         max = (Double) (stats.get(tableName).maxVal().get(columnName));
                         min = (Double) (stats.get(tableName).minVal().get(columnName));
                         if (min == null || max == null) {
-                            return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
+                            return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
                         }
                         int v = (int) num;
                         if (v >= max) sel = 0;
                         else if (v <= min) sel = 1;
                         else sel = (double)(max - v) / (double)(max - min);
                     }
-                    return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
+                    return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
                 default:
                     throw new RuntimeException("Illegal binary condition operator");
             }
