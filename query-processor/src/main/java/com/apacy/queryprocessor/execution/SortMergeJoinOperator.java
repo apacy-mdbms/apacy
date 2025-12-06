@@ -39,6 +39,8 @@ public class SortMergeJoinOperator implements Operator {
     private int rightIndex = 0;
     private List<Row> currentMatches = new ArrayList<>();
     private int matchIndex = 0;
+
+    private static final int MEMORY_LIMIT_ROWS = 10_000;
     
     public SortMergeJoinOperator(Operator leftChild, Operator rightChild, String joinColumn) {
         this.leftChild = leftChild;
@@ -69,8 +71,8 @@ public class SortMergeJoinOperator implements Operator {
         rightChild.close();
         
         // Sort both tables by join column
-        sortedLeftTable = SortStrategy.sort(sortedLeftTable, joinColumn, true);
-        sortedRightTable = SortStrategy.sort(sortedRightTable, joinColumn, true);
+        sortedLeftTable = SortStrategy.externalSort(sortedLeftTable, joinColumn, true, MEMORY_LIMIT_ROWS);
+        sortedRightTable = SortStrategy.externalSort(sortedRightTable, joinColumn, true, MEMORY_LIMIT_ROWS);
         
         System.out.println("[SortMergeJoinOperator] Sort complete. Left: " + sortedLeftTable.size() + 
                          " rows, Right: " + sortedRightTable.size() + " rows");
@@ -126,13 +128,13 @@ public class SortMergeJoinOperator implements Operator {
                 
                 // Find all left rows with the same key
                 while (leftIndex < sortedLeftTable.size() && 
-                       compareValues(sortedLeftTable.get(leftIndex).get(joinColumn), leftValue) == 0) {
+                       compareValues(SortStrategy.getRowValue(sortedLeftTable.get(leftIndex), joinColumn), leftValue) == 0) {
                     leftIndex++;
                 }
                 
                 // Find all right rows with the same key
                 while (rightIndex < sortedRightTable.size() && 
-                       compareValues(sortedRightTable.get(rightIndex).get(joinColumn), rightValue) == 0) {
+                       compareValues(SortStrategy.getRowValue(sortedRightTable.get(rightIndex), joinColumn), rightValue) == 0) {
                     rightIndex++;
                 }
                 

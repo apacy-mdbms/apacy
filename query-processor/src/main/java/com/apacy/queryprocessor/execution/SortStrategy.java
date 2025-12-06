@@ -258,7 +258,7 @@ public class SortStrategy {
         return v1.toString().compareTo(v2.toString());
     }
 
-    private static Object getRowValue(Row row, String columnName) {
+    public static Object getRowValue(Row row, String columnName) {
         if (row.data().containsKey(columnName)) {
             return row.get(columnName);
         }
