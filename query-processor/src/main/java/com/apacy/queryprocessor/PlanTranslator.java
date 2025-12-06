@@ -139,34 +139,38 @@ public class PlanTranslator {
      * 3. Untuk kasus lain -> NestedLoopJoin
      *    (safe fallback, tidak butuh preprocessing)
      */
-    private JoinStrategy selectJoinStrategy(JoinNode node, String joinColumn) {
-        // Strategy 1: Check if inputs are already sorted on the join column
-        boolean leftSorted = isNodeSortedBy(node.left(), joinColumn);
-        boolean rightSorted = isNodeSortedBy(node.right(), joinColumn);
+    private Operator buildJoin(JoinNode node, int txId, IStorageManager sm, IConcurrencyControlManager ccm, IFailureRecoveryManager frm) {
+        Operator left = build(node.left(), txId, sm, ccm, frm);
+        Operator right = build(node.right(), txId, sm, ccm, frm);
         
-        if (leftSorted || rightSorted) {
-            // At least one side is sorted - SortMergeJoin is efficient
-            return JoinStrategy.SORT_MERGE;
+        JoinAlgorithm algo = (node.algorithm() != null) ? node.algorithm() : JoinAlgorithm.NESTED_LOOP;
+
+        // Ekstrak kolom join (jika ada equality join) untuk Hash/SortMerge
+        String joinColumn = extractJoinColumn(node.joinCondition());
+
+        // Dispatch
+        switch (algo) {
+            case SORT_MERGE:
+                if (joinColumn == null) {
+                    System.err.println("[PlanTranslator] Warning: SortMerge requested but no equality condition found. Falling back to NestedLoop.");
+                    return new NestedLoopJoinOperator(left, right, node.joinCondition());
+                }
+                return new SortMergeJoinOperator(left, right, joinColumn);
+
+            case HASH:
+                if (joinColumn == null) {
+                    System.err.println("[PlanTranslator] Warning: HashJoin requested but no equality condition found. Falling back to NestedLoop.");
+                    return new NestedLoopJoinOperator(left, right, node.joinCondition());
+                }
+                return new HashJoinOperator(left, right, Collections.singletonList(joinColumn));
+
+            case CARTESIAN:
+                return new CartesianOperator(left, right);
+
+            case NESTED_LOOP:
+            default:
+                return new NestedLoopJoinOperator(left, right, node.joinCondition());
         }
-        
-        // Strategy 2: Estimate data size
-        // For medium-sized datasets, HashJoin is usually most efficient
-        // (This is a simple heuristic; could be enhanced with statistics)
-        int estimatedSize = estimateNodeSize(node.left()) + estimateNodeSize(node.right());
-        
-        if (estimatedSize > 0 && estimatedSize < 50000) {
-            // Small to medium dataset - HashJoin is efficient
-            return JoinStrategy.HASH;
-        }
-        
-        // Strategy 3: For very large datasets or when unsure, use SortMergeJoin
-        // It's more memory-efficient than HashJoin for large data
-        if (estimatedSize >= 50000) {
-            return JoinStrategy.SORT_MERGE;
-        }
-        
-        // Default: HashJoin (balanced performance)
-        return JoinStrategy.HASH;
     }
     
     // ==================================================================================
