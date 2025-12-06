@@ -113,7 +113,6 @@ public class LogReplayer {
         System.out.println("[LogReplayer] Replay selesai. " + count + " operasi diaplikasikan ulang.");
     }
 
-    // --- CORE LOGIC: REVERSE OPERATION (UNDO) ---
     private void reverseOperation(LogEntry entry) throws Exception {
         String operation = entry.getOperation();
         if (operation == null) return;
@@ -122,12 +121,9 @@ public class LogReplayer {
         String tableName = entry.getTableName();
         if (tableName == null || tableName.equals("-")) return;
 
-        // 1. Parse Data
         Map<String, Object> rawBefore = LogDataParser.toMap(entry.getDataBefore());
         Map<String, Object> rawAfter = LogDataParser.toMap(entry.getDataAfter());
 
-        // 2. NORMALISASI KEY (PENTING! Hapus prefix "tabel." dari nama kolom)
-        // Tanpa ini, StorageManager akan return null saat mencari nama kolom
         Map<String, Object> beforeMap = normalizeRowData(rawBefore);
         Map<String, Object> afterMap = normalizeRowData(rawAfter);
 
@@ -156,7 +152,6 @@ public class LogReplayer {
 
                 System.out.println("   -> [UNDO UPDATE] Reverting update in " + tableName);
 
-                // Step 1: Hapus data yang "salah" (data after)
                 String predicate = buildFullMatchPredicate(afterMap);
                 if (!predicate.isEmpty()) {
                     try {
@@ -166,10 +161,8 @@ public class LogReplayer {
                     }
                 }
 
-                // Step 2: Insert kembali data yang "benar" (data before)
                 Map<String, Object> dataToRestore = removeNullValues(beforeMap);
                 
-                // DEBUGGING BLOCK: Cek apa yang dikirim ke SM
                 if (dataToRestore.isEmpty()) {
                     System.err.println("   [ERROR] Data to restore kosong setelah normalisasi!");
                 } else {
@@ -178,7 +171,6 @@ public class LogReplayer {
                 }
 
                 if (!dataToRestore.isEmpty()) {
-                    // Kita kirim sebagai INSERT baru (param ke-3 null)
                     storageManager.writeBlock(new DataWrite(tableName, new Row(dataToRestore), null));
                 }
             }
@@ -222,12 +214,6 @@ public class LogReplayer {
         }
     }
 
-    // --- HELPER METHODS ---
-
-    /**
-     * PENTING: Membersihkan nama kolom dari nama tabel.
-     * Contoh: "prodi.id_prodi" -> "id_prodi"
-     */
     private Map<String, Object> normalizeRowData(Map<String, Object> originalMap) {
         if (originalMap == null) return null;
         
@@ -236,10 +222,8 @@ public class LogReplayer {
             String key = entry.getKey();
             Object value = entry.getValue();
             
-            // Logika pembersihan: Ambil substring setelah titik terakhir
             if (key != null && key.contains(".")) {
                 String cleanKey = key.substring(key.lastIndexOf(".") + 1);
-                // Hanya masukkan jika belum ada, atau overwrite jika perlu
                 normalized.put(cleanKey, value); 
             } else if (key != null) {
                 normalized.put(key, value);
