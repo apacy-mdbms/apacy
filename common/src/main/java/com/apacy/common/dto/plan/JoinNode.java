@@ -1,7 +1,7 @@
 package com.apacy.common.dto.plan;
 
 import java.util.List;
-import com.apacy.common.enums.JoinAlgorithm
+import com.apacy.common.enums.JoinAlgorithm;
 
 public record JoinNode(
     PlanNode left,
