@@ -16,6 +16,7 @@ import com.apacy.common.dto.ast.where.LiteralConditionNode;
 import com.apacy.common.dto.ast.where.UnaryConditionNode;
 import com.apacy.common.dto.ast.where.WhereConditionNode;
 import com.apacy.common.dto.plan.CartesianNode;
+import com.apacy.common.dto.plan.DDLNode;
 import com.apacy.common.dto.plan.FilterNode;
 import com.apacy.common.dto.plan.JoinNode;
 import com.apacy.common.dto.plan.LimitNode;
@@ -54,6 +55,9 @@ public class CostEstimator {
     }
 
     public double estimatePlanCost(PlanNode plan, Map<String, Statistic> stats) {
+        if (plan instanceof DDLNode) {
+            return 0;
+        }
         DerivedCost derivedCost = estimatePlanCostHelper(plan, stats);
         return derivedCost.cost();
     }
