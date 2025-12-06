@@ -304,73 +304,93 @@ public class BPlusTree<K extends Comparable<K>, V> {
         }
     }
 
-    public List<V> findRange(K lb, K ub) {
+    public List<V> findRange(K lb, boolean lbInclusive, K ub, boolean ubInclusive) {
         List<V> result = new ArrayList<>();
-
         Node<K,V> C = root;
 
-        while (!C.isLeaf()) {
-            InternalNode<K,V> internal = (InternalNode<K,V>) C;
-
-            int i = 0;
-            while (i < internal.keys.size() &&
-                   lb.compareTo(internal.keys.get(i)) > 0) {
-                i++;
+        if (lb == null) {
+            while (!C.isLeaf()) {
+                InternalNode<K,V> internal = (InternalNode<K,V>) C;
+                C = internal.children.get(0);
             }
-
-            if (i == internal.keys.size()) {
-                C = internal.children.get(i);
-            } else {
-                if (lb.compareTo(internal.keys.get(i)) == 0) {
-                    C = internal.children.get(i + 1);
-                } else {
+        } else {
+            while (!C.isLeaf()) {
+                InternalNode<K,V> internal = (InternalNode<K,V>) C;
+                int i = 0;
+                while (i < internal.keys.size() && lb.compareTo(internal.keys.get(i)) > 0) {
+                    i++;
+                }
+                if (i == internal.keys.size()) {
                     C = internal.children.get(i);
+                } else {
+                    if (lb.compareTo(internal.keys.get(i)) == 0) {
+                        C = internal.children.get(i + 1);
+                    } else {
+                        C = internal.children.get(i);
+                    }
                 }
             }
         }
 
         LeafNode<K,V> leaf = (LeafNode<K,V>) C;
+        int i = 0;
 
-        int i = Collections.binarySearch(leaf.keys, lb);
-        if (i < 0) i = -i - 1;
+        if (lb != null) {
+            i = Collections.binarySearch(leaf.keys, lb);
+            if (i < 0) {
+                i = -i - 1;
+            } else {
+                if (!lbInclusive) {
+                    while (i < leaf.keys.size() && leaf.keys.get(i).compareTo(lb) == 0) {
+                        i++;
+                    }
+                }
+            }
+        } else {
+            i = 0;
+        }
 
         if (i >= leaf.keys.size()) {
-            i = leaf.keys.size(); 
+            leaf = leaf.next;
+            i = 0;
         }
 
         boolean done = false;
 
-        while (!done) {
+        while (!done && leaf != null) {
             int n = leaf.keys.size();
-
             while (i < n) {
                 K key = leaf.keys.get(i);
 
-                if (key.compareTo(ub) <= 0) {
-                    result.add(leaf.values.get(i));
-                    i++;
+                if (ub != null) {
+                    int cmp = key.compareTo(ub);
+                    if (cmp > 0) {
+                        done = true;
+                        break;
+                    }
+                    if (cmp == 0) {
+                        if (ubInclusive) {
+                            result.add(leaf.values.get(i));
+                        }
+                        
+                        if (!ubInclusive) {
+                            done = true; 
+                            break;
+                        }
+                    } else {
+                        result.add(leaf.values.get(i));
+                    }
                 } else {
-                    done = true;
-                    break;
+                    result.add(leaf.values.get(i));
                 }
+                i++;
             }
 
             if (done) break;
 
-            if (leaf.next != null) {
-                leaf = leaf.next;
-                i = 0;
-            } else {
-                done = true;
-            }
+            leaf = leaf.next;
+            i = 0;
         }
-
-        System.out.println("[findRange] lb=" + lb + " ub=" + ub);
-        System.out.println("[findRange] Keys in range:");
-        for (V v : result) {
-            System.out.println("  -> " + v);
-        }
-        System.out.println("[findRange] Total = " + result.size());
 
         return result;
     }

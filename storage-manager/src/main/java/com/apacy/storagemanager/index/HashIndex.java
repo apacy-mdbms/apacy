@@ -154,6 +154,14 @@ public class HashIndex<K, V> implements IIndex<K, V> {
     }
 
     @Override
+    public List<V> getAddresses(K minKey, boolean minInclusive, K maxKey, boolean maxInclusive) {
+        if (minKey != null && maxKey != null && minKey.equals(maxKey) && minInclusive && maxInclusive) {
+            return getAddress(minKey);
+        }
+        throw new UnsupportedOperationException("Hash Index tidak mendukung Range Scan.");
+    }
+
+    @Override
     public void remove() {
         // wipe index file
         try {
