@@ -27,9 +27,13 @@ public class JoinCommutativityRewriter extends PlanRewriter {
 
         // Cek kalau komutatif (INNER JOIN atau NATURAL JOIN)
         String type = node.joinType().toUpperCase();
+        // System.out.println("halo " + type);
         if (type.equals("INNER") || type.equals("NATURAL")) {
             double leftCost = estimateCardinality(newLeft, allStats);
             double rightCost = estimateCardinality(newRight, allStats);
+            // System.out.print(leftCost);
+            // System.out.print(" vs ");
+            // System.out.println(rightCost);
 
             // Taruh tabel yang cost nya lbh kecil di kiri
             if (rightCost < leftCost) {
@@ -54,7 +58,7 @@ public class JoinCommutativityRewriter extends PlanRewriter {
         if (node instanceof ScanNode scan) {
             Statistic stat = allStats.get(scan.tableName());
             return stat != null ? stat.nr() : Double.MAX_VALUE;
-        } 
+        }
         // Kalau node hasil join
         else if (node instanceof JoinNode join) {
             // Buat batas atas (Cartesian product), untuk perbandingan kira-kira mana yg lbh besar
@@ -76,8 +80,8 @@ public class JoinCommutativityRewriter extends PlanRewriter {
             // Asumsi cardinality tdk meningkat
             return estimateCardinality(node.getChildren().get(0), allStats);
         }
-        
+
         // Kalau size tidak diketahui, buat jadi MAX_VALUE utk cegah pertukaran.
-        return Double.MAX_VALUE; 
+        return Double.MAX_VALUE;
     }
 }

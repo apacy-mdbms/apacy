@@ -26,8 +26,8 @@ public class PhysicalPlanGenerator {
         for (PlanRewriter rule : rules) {
             PlanNode rewritten = rule.rewrite(curr, allStats);
             if (!rewritten.equals(curr)) {
-                System.out.println(rule.getClass().getName());
-                System.out.println(rewritten);
+                // System.out.println(rule.getClass().getName());
+                // System.out.println(rewritten);
                 curr = rewritten;
             }
         }

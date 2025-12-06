@@ -8,13 +8,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import com.apacy.common.dto.ast.expression.ColumnFactor;
+import com.apacy.common.dto.ast.expression.ExpressionNode;
+import com.apacy.common.dto.ast.expression.TermNode;
+import com.apacy.common.dto.ast.where.ComparisonConditionNode;
 import com.apacy.common.dto.plan.JoinNode;
 import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.common.dto.plan.ProjectNode;
 import com.apacy.common.dto.plan.ScanNode;
 import com.apacy.queryoptimizer.CostEstimator;
 
-@Disabled("temporary")
+// @Disabled("temporary")
 class DistributeProjectTest {
 
     @Test
@@ -25,8 +29,8 @@ class DistributeProjectTest {
         ScanNode tableA = new ScanNode("A", "A");
         ScanNode tableB = new ScanNode("B", "B");
 
-        // Kondisi Join dummy (Object string dulu biar simple)
-        JoinNode joinNode = new JoinNode(tableA, tableB, "A.id = B.id", "INNER");
+        // Kondisi Join dummy
+        JoinNode joinNode = new JoinNode(tableA, tableB, new ComparisonConditionNode(new ExpressionNode(new TermNode(new ColumnFactor("A.id"), List.of()), List.of()), "=", new ExpressionNode(new TermNode(new ColumnFactor("B.id"), List.of()), List.of())), "INNER");
 
         ProjectNode topProject = new ProjectNode(joinNode, List.of("A.name"));
 

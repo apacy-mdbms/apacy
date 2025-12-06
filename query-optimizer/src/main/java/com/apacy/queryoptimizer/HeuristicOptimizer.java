@@ -19,8 +19,10 @@ import com.apacy.queryoptimizer.rewriter.SelectionJoinRewriter;
 public class HeuristicOptimizer {
 
     private List<PlanRewriter> rules = List.of();
+    private CostEstimator a;
 
     public HeuristicOptimizer(CostEstimator costEstimator) {
+        this.a = costEstimator;
         rules = List.of(
             new FilterPushdownRewriter(costEstimator),
             new JoinCommutativityRewriter(costEstimator),
@@ -43,8 +45,13 @@ public class HeuristicOptimizer {
             for (PlanRewriter rule : rules) {
                 PlanNode rewritten = rule.rewrite(curr, allStats);
                 if (!rewritten.equals(curr)) {
-                    changed = true;
-                    curr = rewritten;
+                    // System.out.println("BERUBAH " + rule.getClass().getName() );
+                    double oldCost = a.estimatePlanCost(curr, allStats);
+                    double newCost = a.estimatePlanCost(rewritten, allStats);
+                    if (newCost <= oldCost) {
+                        changed = true;
+                        curr = rewritten;
+                    }
                 }
             }
         } while (changed);
