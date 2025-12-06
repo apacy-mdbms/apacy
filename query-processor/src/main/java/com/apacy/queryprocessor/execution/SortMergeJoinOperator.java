@@ -128,13 +128,13 @@ public class SortMergeJoinOperator implements Operator {
                 
                 // Find all left rows with the same key
                 while (leftIndex < sortedLeftTable.size() && 
-                       compareValues(sortedLeftTable.get(leftIndex).get(joinColumn), leftValue) == 0) {
+                       compareValues(SortStrategy.getRowValue(sortedLeftTable.get(leftIndex), joinColumn), leftValue) == 0) {
                     leftIndex++;
                 }
                 
                 // Find all right rows with the same key
                 while (rightIndex < sortedRightTable.size() && 
-                       compareValues(sortedRightTable.get(rightIndex).get(joinColumn), rightValue) == 0) {
+                       compareValues(SortStrategy.getRowValue(sortedRightTable.get(rightIndex), joinColumn), rightValue) == 0) {
                     rightIndex++;
                 }
                 
