@@ -296,7 +296,26 @@ public class QueryBinder {
             );
         }
 
-        // 8. SCAN NODE / DDL NODE / TCL NODE
+        // 8. SCAN NODE
+        else if (node instanceof ScanNode scan) {
+            // Jika ScanNode punya kondisi (hasil pushdown optimizer), bind kondisinya juga
+            Object boundCondition = null;
+            if (scan.condition() instanceof WhereConditionNode ast) {
+                boundCondition = bindWhereCondition(ast, tables, aliasMap);
+            } else {
+                boundCondition = scan.condition();
+            }
+            
+            // Return ScanNode baru dengan kondisi yang sudah di-bind (resolved column names)
+            return new ScanNode(
+                scan.tableName(), 
+                scan.alias(), 
+                scan.indexName(), 
+                boundCondition
+            );
+        }
+
+        // 9. DDL NODE / TCL NODE
         else {
             return node;
         }
