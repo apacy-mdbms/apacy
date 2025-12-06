@@ -14,7 +14,6 @@ import java.io.IOException;
 
 /**
  * Boilerplate Block Manager for low-level block operations.
- * TODO: Implement reading and writing of fixed-size data blocks to disk.
  */
 public class BlockManager {
 
@@ -33,7 +32,6 @@ public class BlockManager {
     this.dataDirectory = dataDirectory;
     this.blockSize = blockSize;
     this.openFiles = new ConcurrentHashMap<>();
-    // TODO: Initialize file management structures and create directory if needed
 
     try {
       Files.createDirectories(Paths.get(this.dataDirectory));
@@ -65,10 +63,8 @@ public class BlockManager {
 
   /**
    * Read a block from the specified file at the given block number.
-   * TODO: Implement block reading with proper error handling and buffering
    */
   public byte[] readBlock(String fileName, long blockNumber) throws IOException {
-    // TODO: Implement block reading logic
     RandomAccessFile raf = getOpenFile(fileName);
     long position = blockNumber * blockSize;
     byte[] blockData = new byte[blockSize];
@@ -93,10 +89,8 @@ public class BlockManager {
 
   /**
    * Write a block to the specified file at the given block number.
-   * TODO: Implement block writing with proper padding and synchronization
    */
   public void writeBlock(String fileName, long blockNumber, byte[] data) throws IOException {
-    // TODO: Implement block writing logic
     if (data.length > blockSize) {
       throw new IOException("Data ( " + data.length + " bytes) lebih besar dari blockSize (" + blockSize + " bytes)");
     }
@@ -117,10 +111,8 @@ public class BlockManager {
 
   /**
    * Append a new block to the end of the specified file.
-   * TODO: Implement block appending and return new block number
    */
   public long appendBlock(String fileName, byte[] data) throws IOException {
-    // TODO: Implement block appending logic
     long newBlockNumber = getBlockCount(fileName);
     writeBlock(fileName, newBlockNumber, data);
     return newBlockNumber;
@@ -129,10 +121,8 @@ public class BlockManager {
 
   /**
    * Get the number of blocks in the specified file.
-   * TODO: Implement block count calculation
    */
   public long getBlockCount(String fileName) throws IOException {
-    // TODO: Implement block count logic
     Path filePath = getFilePath(fileName);
     if (!Files.exists(filePath)) {
       return 0;
@@ -154,10 +144,8 @@ public class BlockManager {
 
   /**
    * Flush all pending writes to disk.
-   * TODO: Implement flush operation for durability
    */
   public void flush() throws IOException {
-    // TODO: Implement flush logic
     // System.out.println("BlockManager (Stateful): Flushing " + openFiles.size() +
     // " files...");
     for (RandomAccessFile raf : openFiles.values()) {
@@ -169,10 +157,8 @@ public class BlockManager {
 
   /**
    * Close all open files and release resources.
-   * TODO: Implement proper resource cleanup
    */
   public void close() throws IOException {
-    // TODO: Implement resource cleanup
     System.out.println("BlockManager (Stateful): Closing " + openFiles.size() + " files...");
 
     // Flush dulu untuk keamanan data

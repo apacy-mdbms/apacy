@@ -16,24 +16,18 @@ import com.apacy.common.enums.*;
 
 /**
  * Mengelola metadata database (skema tabel, kolom, dan indeks).
- * PERBAIKAN: Disesuaikan untuk HANYA menggunakan satu 'schemaCache'.
  */
 public class CatalogManager {
 
   private final String catalogFilePath;
   private final int MAGIC_NUMBER = 0xACDB0101;
 
-  // PERBAIKAN: Hanya satu cache yang diperlukan
   private Map<String, Schema> schemaCache;
 
-  // ‼️ Cache terpisah DIHAPUS
-  // private Map<String, String> dataFileCache;
-  // private Map<String, List<IndexSchema>> indexCache;
 
   public CatalogManager(String catalogFilePath) {
     this.catalogFilePath = catalogFilePath;
     this.schemaCache = new HashMap<>();
-    // ‼️ Inisialisasi cache lain DIHAPUS
   }
 
   /**
@@ -95,14 +89,12 @@ public class CatalogManager {
             foreignKeys.add(new ForeignKeySchema(constraintName, colName, refTable, refCol, isCascading));
           }
         } catch (EOFException e) {
-          // File versi lama mungkin habis di sini, abaikan (FK list kosong)
           System.out.println("Warning: End of file reached while reading Foreign Keys for table " + tableName);
         }
 
         // Buat record Schema "all-in-one"
         Schema schema = new Schema(tableName, dataFile, columns, indexes, foreignKeys);
 
-        // PERBAIKAN: Simpan ke cache tunggal
         this.schemaCache.put(tableName, schema);
         System.out.println("CatalogManager: Memuat skema untuk tabel '" + tableName + "'.");
       }
@@ -123,7 +115,6 @@ public class CatalogManager {
       dos.writeInt(MAGIC_NUMBER);
       dos.writeInt(schemaCache.size());
 
-      // PERBAIKAN: Loop pada 'schemaCache.values()'
       for (Schema schema : schemaCache.values()) {
 
         // Ambil data HANYA dari objek Schema
@@ -169,9 +160,6 @@ public class CatalogManager {
     return schemaCache.get(tableName);
   }
 
-  // ‼️ 'getDataFile' dan 'getIndexes' DIHAPUS (info sudah ada di Schema)
-  // public String getDataFile(String tableName) { ... }
-  // public List<IndexSchema> getIndexes(String tableName) { ... }
 
   public Collection<Schema> getAllSchemas() {
     return schemaCache.values();
@@ -183,7 +171,6 @@ public class CatalogManager {
     if (schemaCache.containsKey(newSchema.tableName())) {
       throw new IOException("Tabel '" + newSchema.tableName() + "' sudah ada.");
     }
-    // PERBAIKAN: Hanya perlu menambah ke satu cache
     schemaCache.put(newSchema.tableName(), newSchema);
   }
 
@@ -194,7 +181,6 @@ public class CatalogManager {
     System.out.println("Membuat file katalog awal (kosong) di: " + catalogFilePath);
     new File(catalogFilePath).getParentFile().mkdirs();
 
-    // Panggil writeCatalog() saat cache masih kosong (tableCount=0)
     writeCatalog();
   }
 
@@ -215,7 +201,6 @@ public class CatalogManager {
    * Main method untuk membuat file katalog dummy secara manual.
    */
   public static void main(String[] args) throws IOException {
-    // PERBAIKAN: Path harus menunjuk ke file, bukan direktori
     CatalogManager catalogManager = new CatalogManager("storage-manager/data/system_catalog.dat");
     catalogManager.createSystemCatalog();
   }
