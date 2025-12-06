@@ -294,8 +294,17 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
     FactorNode factor = expr.term().factor();
 
     if (factor instanceof ColumnFactor col) {
-      // Ambil value dari map data Row berdasarkan nama kolom
-      return row.get(col.columnName());
+      String colName = col.columnName();
+      // Coba ambil langsung (siapa tahu key di Row sudah lengkap)
+      Object val = row.get(colName);
+      if (val != null) return val;
+
+      // Jika null, coba buang prefix tabelnya
+      if (colName.contains(".")) {
+          String shortName = colName.substring(colName.lastIndexOf(".") + 1);
+          return row.get(shortName);
+      }
+      return null;
     } else if (factor instanceof LiteralFactor lit) {
       Object val = lit.value();
       if (val instanceof Number || val instanceof Boolean) {
@@ -404,7 +413,12 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
 
   private String getColumnNameSafe(ExpressionNode expr) {
     if (expr != null && expr.term() != null && expr.term().factor() instanceof ColumnFactor col) {
-      return col.columnName();
+        String name = col.columnName();
+        // Ambil nama kolomnya saja jika ada titik (misal: "students.nim" -> "nim")
+        if (name.contains(".")) {
+            return name.substring(name.lastIndexOf(".") + 1);
+        }
+        return name;
     }
     return null;
   }
