@@ -338,4 +338,34 @@ public class CostEstimator {
     }
 
 
+    public double costJoinSortMerge(JoinNode node, Map<String, Statistic> stats) {
+        DerivedCost leftCost = estimatePlanCostHelper(node.left(), stats);
+        DerivedCost rightCost = estimatePlanCostHelper(node.right(), stats);
+
+        double blockTransfers = (leftCost.br() + rightCost.br()) * tT;
+        double bb = 1;
+        double seek = (Math.ceil(leftCost.br() / bb) + Math.ceil(rightCost.br() / bb)) * tS;
+        double sort =  2 * leftCost.br() * Math.log(leftCost.br()) + 2 * rightCost.br() * Math.log(rightCost.br());// WE ONLY HAVE SECONDARY INDEX. MUST SORT
+        return blockTransfers + seek + sort;
+    }
+
+    public double costJoinNestedLoop(JoinNode node, Map<String, Statistic> stats) {
+        DerivedCost leftCost = estimatePlanCostHelper(node.left(), stats);
+        DerivedCost rightCost = estimatePlanCostHelper(node.right(), stats);
+
+        double blockTransfers = (leftCost.nr() * rightCost.br() + leftCost.br()) * tT;
+        double seek = (leftCost.nr() + leftCost.br()) * tS;
+        return blockTransfers + seek;
+    }
+
+    public double costJoinHash(JoinNode node, Map<String, Statistic> stats) {
+        DerivedCost leftCost = estimatePlanCostHelper(node.left(), stats);
+        DerivedCost rightCost = estimatePlanCostHelper(node.right(), stats);
+
+        double blockTransfers = (3 * leftCost.br() + rightCost.br()) * tT;
+        double bb = 1;
+        double seek = 2 * (Math.ceil(leftCost.br() / bb) + Math.ceil(rightCost.br() / bb)) * tS;
+        return blockTransfers + seek;
+    }
+
 }
