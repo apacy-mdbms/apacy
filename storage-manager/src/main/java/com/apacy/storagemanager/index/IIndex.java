@@ -17,6 +17,8 @@ public interface IIndex<K, V> {
     
     // dapet addresses berdasarkan key
     List<V> getAddress(K key);
+
+    List<V> getAddresses(K minKey, boolean minInclusive, K maxKey, boolean maxInclusive);
     
     // insert data baru ke memory dulu
     void insertData(K key, V address);
