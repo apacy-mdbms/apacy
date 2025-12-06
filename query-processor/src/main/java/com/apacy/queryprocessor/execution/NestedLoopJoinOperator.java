@@ -1,17 +1,33 @@
 package com.apacy.queryprocessor.execution;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import com.apacy.common.dto.Row;
 import com.apacy.queryprocessor.evaluator.ConditionEvaluator;
 
+/**
+ * Block-Nested Loop Join Operator with Right Table Caching.
+ * 
+ * FIX I/O AMPLIFICATION:
+ * - Caches the entire right table in memory on first open()
+ * - Eliminates repeated rightChild.open() calls for each left row
+ * - Reduces disk I/O from O(n*m) to O(n+m) where n = left rows, m = right rows
+ */
 public class NestedLoopJoinOperator implements Operator {
     private final Operator leftChild;
     private final Operator rightChild;
     private final Object joinCondition;
     
+    // Cached right table to avoid repeated disk reads
+    private List<Row> rightTableCache;
+    private boolean rightTableCached = false;
+    
+    // Iteration state
     private Row currentLeftRow;
+    private int rightIndex;
     
     public NestedLoopJoinOperator(Operator leftChild, Operator rightChild, Object joinCondition) {
         this.leftChild = leftChild;
@@ -21,42 +37,61 @@ public class NestedLoopJoinOperator implements Operator {
 
     @Override
     public void open() {
+        // Open left child
         leftChild.open();
-        // We don't open rightChild here immediately; we open it when we have a left row.
-        // Or we open it and then close/open in the loop.
-        currentLeftRow = leftChild.next();
-        if (currentLeftRow != null) {
-            rightChild.open();
+        
+        // Cache right table in memory (only once!)
+        if (!rightTableCached) {
+            cacheRightTable();
         }
+        
+        // Initialize iteration state
+        currentLeftRow = leftChild.next();
+        rightIndex = 0;
+    }
+    
+    /**
+     * Cache the entire right table in memory to avoid repeated disk reads.
+     * This is called only once during the first open().
+     */
+    private void cacheRightTable() {
+        rightTableCache = new ArrayList<>();
+        rightChild.open();
+        
+        Row rightRow;
+        while ((rightRow = rightChild.next()) != null) {
+            rightTableCache.add(rightRow);
+        }
+        
+        rightChild.close();
+        rightTableCached = true;
+        
+        System.out.println("[NestedLoopJoin] Cached " + rightTableCache.size() + " rows from right table");
     }
 
     @Override
     public Row next() {
         while (currentLeftRow != null) {
-            Row rightRow = rightChild.next();
-            
-            if (rightRow == null) {
-                // Right child exhausted. Reset right child and advance left.
-                rightChild.close();
-                currentLeftRow = leftChild.next();
+            // Iterate through cached right table
+            while (rightIndex < rightTableCache.size()) {
+                Row rightRow = rightTableCache.get(rightIndex);
+                rightIndex++;
                 
-                if (currentLeftRow == null) {
-                    return null; // Both exhausted
+                // Create merged row candidate
+                Row mergedRow = mergeRows(currentLeftRow, rightRow);
+                
+                // Check join condition
+                if (ConditionEvaluator.evaluate(mergedRow, joinCondition)) {
+                    return mergedRow;
                 }
-                
-                rightChild.open();
-                continue; // Restart loop with new left row and fresh right stream
             }
             
-            // Check join condition
-            // Create merged row candidate
-            Row mergedRow = mergeRows(currentLeftRow, rightRow);
-            
-            if (ConditionEvaluator.evaluate(mergedRow, joinCondition)) {
-                return mergedRow;
-            }
+            // Right table exhausted for current left row, advance to next left row
+            currentLeftRow = leftChild.next();
+            rightIndex = 0; // Reset right index for new left row
         }
-        return null;
+        
+        return null; // Both sides exhausted
     }
 
     @Override
