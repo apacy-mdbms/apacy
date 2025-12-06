@@ -1,4 +1,4 @@
-package com.apacy.common.enums
+package com.apacy.common.enums;
 
 public enum JoinAlgorithm {
     NESTED_LOOP,
