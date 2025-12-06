@@ -39,6 +39,8 @@ public class SortMergeJoinOperator implements Operator {
     private int rightIndex = 0;
     private List<Row> currentMatches = new ArrayList<>();
     private int matchIndex = 0;
+
+    private static final int MEMORY_LIMIT_ROWS = 10_000;
     
     public SortMergeJoinOperator(Operator leftChild, Operator rightChild, String joinColumn) {
         this.leftChild = leftChild;
@@ -69,8 +71,8 @@ public class SortMergeJoinOperator implements Operator {
         rightChild.close();
         
         // Sort both tables by join column
-        sortedLeftTable = SortStrategy.sort(sortedLeftTable, joinColumn, true);
-        sortedRightTable = SortStrategy.sort(sortedRightTable, joinColumn, true);
+        sortedLeftTable = SortStrategy.externalSort(sortedLeftTable, joinColumn, true, MEMORY_LIMIT_ROWS);
+        sortedRightTable = SortStrategy.externalSort(sortedRightTable, joinColumn, true, MEMORY_LIMIT_ROWS);
         
         System.out.println("[SortMergeJoinOperator] Sort complete. Left: " + sortedLeftTable.size() + 
                          " rows, Right: " + sortedRightTable.size() + " rows");
