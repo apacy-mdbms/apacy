@@ -26,6 +26,7 @@ import com.apacy.common.dto.plan.ModifyNode;
 import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.common.dto.plan.ProjectNode;
 import com.apacy.common.dto.plan.SortNode;
+import com.apacy.common.dto.plan.ScanNode;
 import com.apacy.common.interfaces.IStorageManager;
 
 /**
