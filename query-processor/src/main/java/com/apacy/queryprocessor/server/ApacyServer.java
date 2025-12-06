@@ -11,6 +11,8 @@ import com.apacy.failurerecoverymanager.FailureRecoveryManager;
 import com.apacy.queryoptimizer.QueryOptimizer;
 import com.apacy.queryprocessor.QueryProcessor;
 import com.apacy.storagemanager.StorageManager;
+import com.apacy.queryprocessor.ServerConfig;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * mDBMS Apacy Server - Mengelola koneksi client dan menjalankan komponen database utama
@@ -68,6 +70,20 @@ public class ApacyServer {
      */
     private void initializeComponents() throws Exception {
         System.out.println("Initializing database components...");
+
+        ServerConfig config = new ServerConfig(); // Default "lock"
+        try {
+            File configFile = new File("config.json");
+            if (configFile.exists()) {
+                ObjectMapper mapper = new ObjectMapper();
+                config = mapper.readValue(configFile, ServerConfig.class);
+                System.out.println("[Config] Loaded Algorithm: " + config.getAlgorithm());
+            } else {
+                System.out.println("[Config] config.json not found. Using default: " + config.getAlgorithm());
+            }
+        } catch (Exception e) {
+            System.err.println("[Config] Failed to read config: " + e.getMessage());
+        }
         
         // Inisialisasi storage manager
         StorageManager storageManager = new StorageManager("../data");
@@ -76,7 +92,10 @@ public class ApacyServer {
         // Inisialisasi komponen lainnya
         QueryOptimizer queryOptimizer = new QueryOptimizer();
         FailureRecoveryManager recoveryManager = new FailureRecoveryManager(storageManager);
-        ConcurrencyControlManager concurrencyManager = new ConcurrencyControlManager("lock", recoveryManager);
+        ConcurrencyControlManager concurrencyManager = new ConcurrencyControlManager(
+            config.getAlgorithm(), 
+            recoveryManager
+        );
         
         // Inisialisasi query processor dengan semua komponen
         queryProcessor = new QueryProcessor(
