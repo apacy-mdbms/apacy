@@ -128,6 +128,11 @@ public class ModifyOperator implements Operator {
                 dataMap.put(cols.get(i), resolvedVals.get(i));
             }
         } else {
+            if (cols != null && resolvedVals.size() != cols.size()) {
+                throw new RuntimeException("Column count doesn't match value count at row 1. Expected " 
+                + cols.size() + " columns, but got " + resolvedVals.size() + " values.");
+            }
+
             for (int i = 0; i < cols.size() && i < resolvedVals.size(); i++) {
                 dataMap.put(cols.get(i), resolvedVals.get(i));
             }
