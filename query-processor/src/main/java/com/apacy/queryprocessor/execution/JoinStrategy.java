@@ -234,12 +234,11 @@ public class JoinStrategy {
      * @return A new merged row
      */
     private static Row mergeRows(Row leftRow, Row rightRow) {
-        Map<String, Object> mergedData = new HashMap<>(leftRow.data());
+        Map<String, Object> mergedData = new HashMap<>();
+
+        mergedData.putAll(leftRow.data());
         
-        // Add right row data, but don't overwrite existing columns
-        for (Map.Entry<String, Object> entry : rightRow.data().entrySet()) {
-            mergedData.putIfAbsent(entry.getKey(), entry.getValue());
-        }
+        mergedData.putAll(rightRow.data());
         
         return new Row(mergedData);
     }
@@ -299,14 +298,12 @@ public class JoinStrategy {
      * @return A new merged row without duplicate join columns from the right row
      */
     private static Row mergeJoinedRows(Row leftRow, Row rightRow, List<String> joinColumns) {
-        Map<String, Object> mergedData = new HashMap<>(leftRow.data());
+        Map<String, Object> mergedData = new HashMap<>();
         
-        for (Map.Entry<String, Object> entry : rightRow.data().entrySet()) {
-            // Hanya masukkan data kanan jika BUKAN kolom join
-            if (!joinColumns.contains(entry.getKey())) {
-                mergedData.put(entry.getKey(), entry.getValue());
-            }
-        }
+        mergedData.putAll(leftRow.data());
+
+        mergedData.putAll(rightRow.data());
+        
         return new Row(mergedData);
     }
 }

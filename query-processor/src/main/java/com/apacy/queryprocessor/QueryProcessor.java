@@ -105,6 +105,7 @@ public class QueryProcessor extends DBMSComponent {
             }
 
             ParsedQuery boundQuery = (queryBinder != null) ? queryBinder.bind(parsedQuery) : parsedQuery;
+            System.out.println(boundQuery.planRoot());
             ParsedQuery optimizedQuery = qo.optimizeQuery(boundQuery, sm.getAllStats());
 
             Action action = parsedQuery.queryType().equalsIgnoreCase("SELECT") 

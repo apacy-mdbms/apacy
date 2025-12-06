@@ -234,7 +234,11 @@ public class SortStrategy {
     }
 
     private static Comparator<Row> createColumnComparator(String columnName, boolean ascending) {
-        Comparator<Row> comp = (r1, r2) -> compareValues(r1.get(columnName), r2.get(columnName));
+        Comparator<Row> comp = (r1, r2) -> compareValues(
+            getRowValue(r1, columnName), 
+            getRowValue(r2, columnName)
+        );
+        
         if (ascending) return comp;
         else return (r1, r2) -> -comp.compare(r1, r2); 
     }
@@ -252,5 +256,23 @@ public class SortStrategy {
             }
         }
         return v1.toString().compareTo(v2.toString());
+    }
+
+    private static Object getRowValue(Row row, String columnName) {
+        if (row.data().containsKey(columnName)) {
+            return row.get(columnName);
+        }
+        
+        String suffix = "." + columnName;
+        if (columnName.contains(".")) {
+            suffix = "." + columnName.substring(columnName.lastIndexOf('.') + 1);
+        }
+        
+        for (String key : row.data().keySet()) {
+            if (key.endsWith(suffix) || key.equalsIgnoreCase(columnName)) {
+                return row.get(key);
+            }
+        }
+        return null;
     }
 }

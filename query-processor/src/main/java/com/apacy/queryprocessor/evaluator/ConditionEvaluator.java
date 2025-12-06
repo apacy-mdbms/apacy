@@ -58,18 +58,19 @@ public class ConditionEvaluator {
         } else if (factor instanceof ColumnFactor col) {
             String colName = col.columnName();
 
-            if (colName.contains(".")) {
-                colName = colName.substring(colName.indexOf('.') + 1);
-            }
-            
             // 1. Cek Exact Match
             if (row.data().containsKey(colName)) {
                 return row.data().get(colName);
             }
+
+            String shortName = colName;
+            if (colName.contains(".")) {
+                shortName = colName.substring(colName.indexOf('.') + 1);
+            }
             
             // 2. Cek Suffix Match (handle 'dosen.nidn' vs 'nidn')
             for (String key : row.data().keySet()) {
-                if (key.endsWith("." + colName) || key.equals(colName)) {
+                if (key.equals(shortName) || key.endsWith("." + shortName)) {
                     return row.data().get(key);
                 }
             }
@@ -117,7 +118,9 @@ public class ConditionEvaluator {
 
     private static boolean checkOp(int cmp, String op) {
         switch (op) {
-            case "=": return cmp == 0;
+            case "=":
+            case "==": 
+                return cmp == 0;
             case ">": return cmp > 0;
             case "<": return cmp < 0;
             case ">=": return cmp >= 0;
