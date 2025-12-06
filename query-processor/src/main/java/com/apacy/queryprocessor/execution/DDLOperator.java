@@ -46,7 +46,11 @@ public class DDLOperator implements Operator {
             }
             // DROP TABLE
             else if (ddlQuery instanceof ParsedQueryDrop dropCmd) {
-                // sm.dropTable(dropCmd.getTableName(), dropCmd.isCascading());
+                if (dropCmd.isCascading()) {
+                    sm.dropTable(dropCmd.getTableName(), "CASCADE");
+                } else {
+                    sm.dropTable(dropCmd.getTableName(), "RESTRICT");
+                }
             }
         } catch (IOException e) {
             throw new RuntimeException("Storage IO Error executing DDL: " + e.getMessage(), e);
