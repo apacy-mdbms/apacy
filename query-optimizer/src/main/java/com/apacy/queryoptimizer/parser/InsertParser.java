@@ -41,7 +41,6 @@ public class InsertParser extends AbstractParser {
         List<Object> values = parseValueList();
         consume(TokenType.RPARENTHESIS);
 
-        // (Opsional) Cek semicolon di akhir
         consume(TokenType.SEMICOLON);
         consume(TokenType.EOF);
 
