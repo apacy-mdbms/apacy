@@ -1,89 +1,136 @@
 package com.apacy.queryprocessor.mocks;
 
-import com.apacy.common.dto.*;
-import com.apacy.common.dto.plan.*; 
+import com.apacy.common.dto.ParsedQuery;
+import com.apacy.common.dto.Statistic;
 import com.apacy.common.interfaces.IQueryOptimizer;
-import java.util.List;
+
+import java.util.Collections;
 import java.util.Map;
 
+/**
+ * Mock implementasi dari IQueryOptimizer untuk keperluan testing Query Processor.
+ */
 public class MockQueryOptimizer implements IQueryOptimizer {
 
-    private ParsedQuery overridePlan;
+    // --- Configuration (Stubbing) ---
+    private ParsedQuery parsedQueryToReturn;
+    private double costToReturn = 10.0;
 
-    public void setOverridePlan(ParsedQuery plan) {
-        this.overridePlan = plan;
+    // --- State (Spying) ---
+    private String lastParsedQueryString;
+    private ParsedQuery lastOptimizedQuery;
+    private int parseQueryCallCount = 0;
+    private int optimizeQueryCallCount = 0;
+    private int getCostCallCount = 0;
+
+    /**
+     * Mengatur ParsedQuery spesifik yang akan dikembalikan oleh parseQuery().
+     * Jika null, parseQuery() akan menghasilkan objek default sederhana.
+     */
+    public void setParsedQueryToReturn(ParsedQuery parsedQueryToReturn) {
+        this.parsedQueryToReturn = parsedQueryToReturn;
+    }
+
+    /**
+     * Mengatur cost yang akan dikembalikan oleh getCost().
+     */
+    public void setCostToReturn(double costToReturn) {
+        this.costToReturn = costToReturn;
     }
 
     @Override
     public ParsedQuery parseQuery(String query) {
-        if (overridePlan != null) {
-            return overridePlan;
+        this.parseQueryCallCount++;
+        this.lastParsedQueryString = query;
+
+        if (this.parsedQueryToReturn != null) {
+            return this.parsedQueryToReturn;
         }
 
-        String lowerQuery = query.toLowerCase();
-
-        if (lowerQuery.contains("select")) {
-            ScanNode scan = new ScanNode("users", "u");
-            ProjectNode project = new ProjectNode(scan, List.of("*"));
-            return new ParsedQuery(
-                "SELECT", project, List.of("users"), List.of("*"),
-                null, null, null, null, false, false
-            );
-
-        } else if (lowerQuery.contains("insert")) {
-            // Fixed: Removed 'email' to match MockStorageManager schema for 'users' (employees)
-            List<String> cols = List.of("name", "salary");
-            List<Object> vals = List.of("John Doe", 50000);
-            ModifyNode insertNode = new ModifyNode("INSERT", null, "users", cols, vals);
-
-            return new ParsedQuery(
-                "INSERT", insertNode, List.of("users"), cols, vals,
-                null, null, null, false, false
-            );
-
-        } else if (lowerQuery.contains("update")) {
-            List<String> cols = List.of("name", "salary");
-            List<Object> vals = List.of("John Smith", 60000);
-            ScanNode scan = new ScanNode("users", "u");
-            ModifyNode updateNode = new ModifyNode("UPDATE", scan, "users", cols, vals);
-
-            return new ParsedQuery(
-                "UPDATE", updateNode, List.of("users"), cols, vals,
-                null, 
-                "id = 1", 
-                null, false, false
-            );
-
-        } else if (lowerQuery.contains("delete")) {
-            ScanNode scan = new ScanNode("users", "u");
-            ModifyNode deleteNode = new ModifyNode("DELETE", scan, "users", null, null);
-
-            return new ParsedQuery(
-                "DELETE", deleteNode, List.of("users"), null, null,
-                null, 
-                "id = 5", 
-                null, false, false
-            );
+        // Fallback: Kembalikan objek ParsedQuery minimal yang valid
+        // Deteksi tipe query sederhana (SELECT, INSERT, dll) dari string
+        String detectedType = "UNKNOWN";
+        if (query != null && !query.trim().isEmpty()) {
+            detectedType = query.trim().split("\\s+")[0].toUpperCase();
         }
 
-        return null;
-    }
-
-    @Override
-    public ParsedQuery optimizeQuery(ParsedQuery query, Map<String, Statistic> allStats) {
-        if (overridePlan != null) {
-            return overridePlan;
-        }
         return new ParsedQuery(
-            query.queryType(), query.planRoot(), query.targetTables(),
-            query.targetColumns(), query.values(), query.joinConditions(),
-            query.whereClause(), query.orderByColumn(), query.isDescending(),
-            true 
+            detectedType,
+            null, // PlanNode root (biasanya null jika tidak diset manual di mock)
+            Collections.emptyList(),
+            Collections.emptyList(),
+            Collections.emptyList(),
+            null,
+            null,
+            null,
+            false, // isDescending
+            false, // isOptimized (belum dioptimasi saat parsing)
+            null,  // limit
+            null,  // offset
+            Collections.emptyMap()
         );
     }
 
     @Override
+    public ParsedQuery optimizeQuery(ParsedQuery query, Map<String, Statistic> allStats) {
+        this.optimizeQueryCallCount++;
+        
+        // Simulasikan optimasi dengan mengembalikan salinan query yang flag isOptimized = true
+        ParsedQuery optimizedQuery = new ParsedQuery(
+            query.queryType(),
+            query.planRoot(),
+            query.targetTables(),
+            query.targetColumns(),
+            query.values(),
+            query.joinConditions(),
+            query.whereClause(),
+            query.orderByColumn(),
+            query.isDescending(),
+            true, // FLAG UPDATED: isOptimized = true
+            query.limit(),
+            query.offset(),
+            query.aliasMap()
+        );
+
+        this.lastOptimizedQuery = optimizedQuery;
+        return optimizedQuery;
+    }
+
+    @Override
     public double getCost(ParsedQuery query, Map<String, Statistic> allStats) {
-        return 10.0;
+        this.getCostCallCount++;
+        return this.costToReturn;
+    }
+
+    // --- Helper Methods untuk Verifikasi Test ---
+
+    public String getLastParsedQueryString() {
+        return lastParsedQueryString;
+    }
+
+    public ParsedQuery getLastOptimizedQuery() {
+        return lastOptimizedQuery;
+    }
+
+    public int getParseQueryCallCount() {
+        return parseQueryCallCount;
+    }
+
+    public int getOptimizeQueryCallCount() {
+        return optimizeQueryCallCount;
+    }
+    
+    public int getGetCostCallCount() {
+        return getCostCallCount;
+    }
+
+    public void reset() {
+        this.lastParsedQueryString = null;
+        this.lastOptimizedQuery = null;
+        this.parseQueryCallCount = 0;
+        this.optimizeQueryCallCount = 0;
+        this.getCostCallCount = 0;
+        this.parsedQueryToReturn = null;
+        this.costToReturn = 10.0;
     }
 }

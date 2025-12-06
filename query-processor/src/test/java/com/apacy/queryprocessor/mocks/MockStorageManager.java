@@ -1,180 +1,206 @@
 package com.apacy.queryprocessor.mocks;
 
+import com.apacy.common.dto.*;
+import com.apacy.common.interfaces.IStorageManager;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Collections;
 
-import com.apacy.common.dto.DataDeletion;
-import com.apacy.common.dto.DataRetrieval;
-import com.apacy.common.dto.DataWrite;
-import com.apacy.common.dto.Row;
-import com.apacy.common.dto.Schema;
-import com.apacy.common.dto.Statistic;
-import com.apacy.common.dto.Column;
-import com.apacy.common.dto.IndexSchema;
-import com.apacy.common.dto.DataUpdate;
-import com.apacy.common.enums.DataType;
-import com.apacy.common.enums.IndexType;
-import com.apacy.common.interfaces.IStorageManager;
-
+/**
+ * Mock implementasi dari IStorageManager untuk keperluan testing Query Processor.
+ *
+ * Fitur:
+ * 1. Stubbing: Mengatur return value untuk method read (readBlock, getSchema, dll).
+ * 2. Spying: Melacak jumlah panggilan dan argumen terakhir untuk method write (writeBlock, deleteBlock, dll).
+ */
 public class MockStorageManager implements IStorageManager {
 
-  private Map<String, Statistic> overrideStats = new HashMap<>();
+    // --- Configuration (Stubbing) ---
+    private List<Row> rowsToReturn = new ArrayList<>();
+    private final Map<String, Schema> schemaMap = new HashMap<>();
+    private Map<String, Statistic> allStatsToReturn = new HashMap<>();
+    private List<String> dependentTablesToReturn = new ArrayList<>();
+    
+    private int writeAffectedRowsToReturn = 1;
+    private int updateAffectedRowsToReturn = 1;
+    private int deleteAffectedRowsToReturn = 1;
 
-  public void setOverrideStats(String table, Statistic stats) {
-    overrideStats.put(table, stats);
-  }
+    // --- State (Spying) ---
+    private int readBlockCallCount = 0;
+    private DataRetrieval lastDataRetrieval;
 
-  @Override
-  public List<Row> readBlock(DataRetrieval dataRetrieval) {
-    if (dataRetrieval == null) {
-      return getEmployeeDataLegacy();
+    private int writeBlockCallCount = 0;
+    private DataWrite lastDataWrite;
+
+    private int updateBlockCallCount = 0;
+    private DataUpdate lastDataUpdate;
+
+    private int deleteBlockCallCount = 0;
+    private DataDeletion lastDataDeletion;
+
+    private int createTableCallCount = 0;
+    private Schema lastCreatedSchema;
+
+    private int dropTableCallCount = 0;
+    private String lastDroppedTable;
+
+    private int setIndexCallCount = 0;
+    private int dropIndexCallCount = 0;
+
+    // --- Configuration Methods ---
+
+    public void setRowsToReturn(List<Row> rows) {
+        this.rowsToReturn = rows;
     }
 
-    String tableName = dataRetrieval.tableName();
-
-    switch (tableName) {
-      case "employees":
-        return getEmployeeData();
-      case "departments":
-        return getDepartmentData();
-      case "users":
-        return getEmployeeDataLegacy();
-      default:
-        return new ArrayList<>();
-    }
-  }
-
-  private List<Row> getEmployeeDataLegacy() {
-    List<Row> employees = new ArrayList<>();
-    employees.add(new Row(Map.of("id", 1, "name", "Naufarrel", "salary", 20000, "dept_id", 1)));
-    employees.add(new Row(Map.of("id", 2, "name", "Weka", "salary", 30000, "dept_id", 2)));
-    employees.add(new Row(Map.of("id", 3, "name", "Kinan", "salary", 40000, "dept_id", 1)));
-    employees.add(new Row(Map.of("id", 4, "name", "Farrel", "salary", 50000, "dept_id", 3)));
-    employees.add(new Row(Map.of("id", 5, "name", "Bayu", "salary", 60000, "dept_id", 2)));
-    return employees;
-  }
-
-  private List<Row> getEmployeeData() {
-    List<Row> employees = new ArrayList<>();
-    employees.add(new Row(Map.of("id", 1, "name", "Naufarrel", "salary", 20000, "dept_id", 1)));
-    employees.add(new Row(Map.of("id", 2, "name", "Weka", "salary", 30000, "dept_id", 2)));
-    employees.add(new Row(Map.of("id", 3, "name", "Kinan", "salary", 40000, "dept_id", 1)));
-    employees.add(new Row(Map.of("id", 4, "name", "Farrel", "salary", 50000, "dept_id", 3)));
-    employees.add(new Row(Map.of("id", 5, "name", "Bayu", "salary", 60000, "dept_id", 2)));
-    return employees;
-  }
-
-  private List<Row> getDepartmentData() {
-    List<Row> departments = new ArrayList<>();
-    departments.add(new Row(Map.of("dept_id", 1, "dept_name", "Engineering", "location", "Building A")));
-    departments.add(new Row(Map.of("dept_id", 2, "dept_name", "Sales", "location", "Building B")));
-    departments.add(new Row(Map.of("dept_id", 3, "dept_name", "Marketing", "location", "Building C")));
-    departments.add(new Row(Map.of("dept_id", 4, "dept_name", "HR", "location", "Building D")));
-    return departments;
-  }
-
-  @Override
-  public int writeBlock(DataWrite dataWrite) {
-    System.out.println("[MOCK-SM] writeBlock dipanggil untuk tabel: " + dataWrite.tableName());
-    System.out.println("[MOCK-SM] Data baru: " + dataWrite.newData());
-    return 1;
-  }
-
-  @Override
-  public int deleteBlock(DataDeletion dataDeletion) {
-    System.out.println("[MOCK-SM] deleteBlock dipanggil untuk tabel: " + dataDeletion.tableName());
-    return 1;
-  }
-
-  @Override
-  public int updateBlock(DataUpdate dataUpdate) {
-    System.out.println("[MOCK-SM] updateBlock dipanggil untuk tabel: " + dataUpdate.tableName());
-    System.out.println("[MOCK-SM] Updated data: " + dataUpdate.updatedData());
-    System.out.println("[MOCK-SM] Filter condition: " + dataUpdate.filterCondition());
-    return 1;
-  }
-
-  @Override
-  public void setIndex(String table, String column, String indexType) {
-    System.out.println("[MOCK-SM] setIndex dipanggil: " + table + "." + column);
-  }
-
-  @Override
-  public Map<String, Statistic> getAllStats() {
-    System.out.println("[MOCK-SM] getAllStats() dipanggil.");
-    Map<String, Statistic> mockStats = new HashMap<>();
-
-    if (!overrideStats.isEmpty()) {
-      mockStats.putAll(overrideStats);
+    public void addSchema(String tableName, Schema schema) {
+        this.schemaMap.put(tableName, schema);
     }
 
-    if (!mockStats.containsKey("employees")) {
-      mockStats.put("employees", new Statistic(
-          5, 1, 120, 34,
-          Map.of("id", 5, "dept_id", 3),
-          Map.of("id", IndexType.Hash)));
+    public void setAllStatsToReturn(Map<String, Statistic> stats) {
+        this.allStatsToReturn = stats;
     }
 
-    if (!mockStats.containsKey("users")) {
-      mockStats.put("users", new Statistic(
-          5, 1, 100, 40,
-          Map.of("id", 5),
-          Map.of()));
+    public void setDependentTablesToReturn(List<String> tables) {
+        this.dependentTablesToReturn = tables;
+    }
+    
+    public void setWriteAffectedRowsToReturn(int rows) {
+        this.writeAffectedRowsToReturn = rows;
     }
 
-    return mockStats;
-  }
-
-  @Override
-  public void createTable(Schema schema) throws IOException {
-    throw new UnsupportedOperationException("Not supported yet.");
-  }
-
-  @Override
-  public Schema getSchema(String tableName) {
-    switch (tableName) {
-      case "employees":
-        List<Column> empCols = List.of(
-            new Column("id", DataType.INTEGER),
-            new Column("name", DataType.VARCHAR, 100),
-            new Column("salary", DataType.INTEGER),
-            new Column("dept_id", DataType.INTEGER));
-        List<IndexSchema> empIdx = List.of(
-            new IndexSchema("idx_emp_id", "id", IndexType.Hash, "employees_id.idx"));
-        return new Schema("employees", "employees.dat", empCols, empIdx);
-      case "departments":
-        List<Column> deptCols = List.of(
-            new Column("dept_id", DataType.INTEGER),
-            new Column("dept_name", DataType.VARCHAR, 100),
-            new Column("location", DataType.VARCHAR, 100));
-        List<IndexSchema> deptIdx = List.of(
-            new IndexSchema("idx_dept_id", "dept_id", IndexType.Hash, "departments_id.idx"));
-        return new Schema("departments", "departments.dat", deptCols, deptIdx);
-      case "users":
-        return getSchema("employees");
-      default:
-        return null;
+    // --- MISSING SETTERS FIXED HERE ---
+    public void setUpdateAffectedRowsToReturn(int rows) {
+        this.updateAffectedRowsToReturn = rows;
     }
-  }
 
-  @Override
-  public int dropTable(String tableName, String option) {
-    System.out.println("[MOCK-SM] dropTable dipanggil: " + tableName + " [" + option + "]");
-    return 0;
-  }
+    public void setDeleteAffectedRowsToReturn(int rows) {
+        this.deleteAffectedRowsToReturn = rows;
+    }
+    // ----------------------------------
 
-  public void dropIndex(String tableName, String indexName) {
-    System.out.println("[MOCK-SM] dropIndex dipanggil: " + tableName + " [" + indexName + "]");
-  }
+    // --- Interface Implementation ---
 
-  @Override
-  public List<String> getDependentTables(String tableName) {
-    System.out.println("[MOCK-SM] getDependentTables dipanggil untuk: " + tableName);
-    return Collections.emptyList();
-  }
+    @Override
+    public List<Row> readBlock(DataRetrieval dataRetrieval) {
+        this.readBlockCallCount++;
+        this.lastDataRetrieval = dataRetrieval;
+        // Return defensive copy agar test aman
+        return new ArrayList<>(this.rowsToReturn);
+    }
 
+    @Override
+    public int writeBlock(DataWrite dataWrite) {
+        this.writeBlockCallCount++;
+        this.lastDataWrite = dataWrite;
+        return this.writeAffectedRowsToReturn;
+    }
+
+    @Override
+    public int deleteBlock(DataDeletion dataDeletion) {
+        this.deleteBlockCallCount++;
+        this.lastDataDeletion = dataDeletion;
+        return this.deleteAffectedRowsToReturn;
+    }
+
+    @Override
+    public int updateBlock(DataUpdate dataUpdate) {
+        this.updateBlockCallCount++;
+        this.lastDataUpdate = dataUpdate;
+        return this.updateAffectedRowsToReturn;
+    }
+
+    @Override
+    public void setIndex(String table, String column, String indexType) {
+        this.setIndexCallCount++;
+    }
+
+    @Override
+    public void dropIndex(String tableName, String indexName) {
+        this.dropIndexCallCount++;
+    }
+
+    @Override
+    public Map<String, Statistic> getAllStats() {
+        return this.allStatsToReturn;
+    }
+
+    @Override
+    public void createTable(Schema schema) throws IOException {
+        this.createTableCallCount++;
+        this.lastCreatedSchema = schema;
+        // Secara otomatis simpan schema ini agar bisa di-retrieve oleh getSchema nanti
+        if (schema != null) {
+            this.schemaMap.put(schema.tableName(), schema);
+        }
+    }
+
+    @Override
+    public Schema getSchema(String tableName) {
+        return this.schemaMap.get(tableName);
+    }
+
+    @Override
+    public int dropTable(String tableName, String option) {
+        this.dropTableCallCount++;
+        this.lastDroppedTable = tableName;
+        this.schemaMap.remove(tableName);
+        return 1; // Default 1 table dropped
+    }
+
+    @Override
+    public List<String> getDependentTables(String tablename) {
+        return this.dependentTablesToReturn;
+    }
+
+    // --- Helper Methods untuk Verifikasi Test ---
+
+    public int getReadBlockCallCount() { return readBlockCallCount; }
+    public DataRetrieval getLastDataRetrieval() { return lastDataRetrieval; }
+
+    public int getWriteBlockCallCount() { return writeBlockCallCount; }
+    public DataWrite getLastDataWrite() { return lastDataWrite; }
+
+    public int getUpdateBlockCallCount() { return updateBlockCallCount; }
+    public DataUpdate getLastDataUpdate() { return lastDataUpdate; }
+
+    public int getDeleteBlockCallCount() { return deleteBlockCallCount; }
+    public DataDeletion getLastDataDeletion() { return lastDataDeletion; }
+
+    public int getCreateTableCallCount() { return createTableCallCount; }
+    public Schema getLastCreatedSchema() { return lastCreatedSchema; }
+    
+    public int getDropTableCallCount() { return dropTableCallCount; }
+    public String getLastDroppedTable() { return lastDroppedTable; }
+
+    public void reset() {
+        this.readBlockCallCount = 0;
+        this.writeBlockCallCount = 0;
+        this.updateBlockCallCount = 0;
+        this.deleteBlockCallCount = 0;
+        this.createTableCallCount = 0;
+        this.dropTableCallCount = 0;
+        this.setIndexCallCount = 0;
+        this.dropIndexCallCount = 0;
+        
+        this.lastDataRetrieval = null;
+        this.lastDataWrite = null;
+        this.lastDataUpdate = null;
+        this.lastDataDeletion = null;
+        this.lastCreatedSchema = null;
+        this.lastDroppedTable = null;
+        
+        this.rowsToReturn.clear();
+        this.schemaMap.clear();
+        this.allStatsToReturn.clear();
+        this.dependentTablesToReturn.clear();
+        
+        // Reset config values to defaults
+        this.writeAffectedRowsToReturn = 1;
+        this.updateAffectedRowsToReturn = 1;
+        this.deleteAffectedRowsToReturn = 1;
+    }
 }
