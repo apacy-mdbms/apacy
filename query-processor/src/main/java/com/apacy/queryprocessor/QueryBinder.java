@@ -462,6 +462,10 @@ public class QueryBinder {
              List<String> cols = new ArrayList<>(getOutputColumns(join.left()));
              cols.addAll(getOutputColumns(join.right()));
              return cols;
+        } else if (node instanceof CartesianNode cart) {
+             List<String> cols = new ArrayList<>(getOutputColumns(cart.left()));
+             cols.addAll(getOutputColumns(cart.right()));
+             return cols;
         }
         return new ArrayList<>(); 
     }
