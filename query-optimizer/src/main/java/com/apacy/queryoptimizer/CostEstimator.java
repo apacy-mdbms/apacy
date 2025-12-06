@@ -267,8 +267,13 @@ public class CostEstimator {
 
 
     private DerivedCost costProject(ProjectNode proj, Map<String,Statistic> stats) {
-        // projection is pipelined
-        return estimatePlanCostHelper(proj.getChildren().get(0), stats);
+        DerivedCost childCost =  estimatePlanCostHelper(proj.getChildren().get(0), stats);
+        // asumsi lr menjadi 2x lebih kecil
+        int blockSize = 4096;
+        int lr2 = childCost.lr() / 2;
+        int fr2 = (int)Math.floor(blockSize / lr2);
+        int br2 = (int)Math.ceil(childCost.nr() / fr2);
+        return new DerivedCost(childCost.cost(), childCost.nr(), br2, lr2);
     }
 
     private DerivedCost costSort(SortNode sort, Map<String,Statistic> stats) {
