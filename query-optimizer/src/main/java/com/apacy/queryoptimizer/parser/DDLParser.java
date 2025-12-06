@@ -4,8 +4,6 @@ import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.lang.model.type.TypeKind;
-
 import com.apacy.common.dto.ForeignKeySchema;
 import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.ddl.ColumnDefinition;
@@ -17,7 +15,6 @@ import com.apacy.common.dto.ddl.ParsedQueryDropIndex;
 import com.apacy.common.dto.plan.DDLNode;
 import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.common.enums.DataType;
-import com.apacy.queryoptimizer.QueryTokenizer;
 
 /**
  * Parser for DDL Statements.
@@ -71,7 +68,7 @@ public class DDLParser extends AbstractParser {
 
         boolean moreDefinitions = true;
         while (moreDefinitions) {
-            if (isIdentifier("FOREIGN")) {
+            if (match(TokenType.FOREIGN)) {
                 foreignKeys.add(parseForeignKey(tableName));
             } else {
                 columns.add(parseColumnDefinition());
@@ -133,14 +130,14 @@ public class DDLParser extends AbstractParser {
                 }
                 break;
             default:
-                type = DataType.VARCHAR;
-                length = 255;
+                // type = DataType.VARCHAR;
+                // length = 255;
+                throw new RuntimeException("Invalid attribute type");
         }
 
         boolean isPrimary = false;
-        if (isIdentifier("PRIMARY")) {
-            consumeKeyword("PRIMARY");
-            consumeKeyword("KEY");
+        if (match(TokenType.PRIMARY)) {
+            consume(TokenType.KEY);
             isPrimary = true;
         }
 
@@ -148,14 +145,14 @@ public class DDLParser extends AbstractParser {
     }
 
     private ForeignKeySchema parseForeignKey(String currentTable) {
-        consumeKeyword("FOREIGN");
-        consumeKeyword("KEY");
+        // consume(TokenType.FOREIGN);
+        consume(TokenType.KEY);
 
         consume(TokenType.LPARENTHESIS);
         String colName = consume(TokenType.IDENTIFIER).getValue();
         consume(TokenType.RPARENTHESIS);
 
-        consumeKeyword("REFERENCES");
+        consume(TokenType.REFERENCES);
         String refTable = consume(TokenType.IDENTIFIER).getValue();
 
         consume(TokenType.LPARENTHESIS);
@@ -164,16 +161,17 @@ public class DDLParser extends AbstractParser {
 
         boolean isCascading = false;
         // Check ON DELETE CASCADE
-        if (isIdentifier("ON")) {
-            consumeKeyword("ON");
-            consumeKeyword("DELETE");
-            if (isIdentifier("CASCADE")) {
-                consumeKeyword("CASCADE");
+        if (match(TokenType.ON)) {
+            consume(TokenType.DELETE);
+            if (match(TokenType.CASCADE)) {
                 isCascading = true;
-            } else if (isIdentifier("RESTRICT")) {
-                consumeKeyword("RESTRICT");
+            } else if (match(TokenType.RESTRICT)) {
                 isCascading = false;
+            } else {
+                throw new RuntimeException("ON DELETE rule must be either CASCADE or RESTRICT");
             }
+
+
         }
 
         String constraintName = "fk_" + currentTable + "_" + colName;
@@ -188,12 +186,9 @@ public class DDLParser extends AbstractParser {
         String tableName = consume(TokenType.IDENTIFIER).getValue();
 
         boolean isCascading = false;
-        if (isIdentifier("CASCADE")) {
-            consumeKeyword("CASCADE");
+        if (match(TokenType.CASCADE)) {
             isCascading = true;
-        } else if (isIdentifier("RESTRICT")) {
-            consumeKeyword("RESTRICT");
-        }
+        } else if (match(TokenType.RESTRICT)) {}
 
         ParsedQueryDDL ddl = new ParsedQueryDrop(tableName, isCascading);
         PlanNode planRoot = new DDLNode(ddl);
@@ -280,24 +275,4 @@ public class DDLParser extends AbstractParser {
         );
     }
 
-    /**
-     * Helper to check if current token is IDENTIFIER with specific value (case-insensitive).
-     * DDL Keyword ga ada di TokenType.
-     */
-    private boolean isIdentifier(String val) {
-        Token t = peek();
-        return t.getType() == TokenType.IDENTIFIER && t.getValue().equalsIgnoreCase(val);
-    }
-
-    /**
-     * Helper to consumes an identifier that acts as a Keyword.
-     */
-    private void consumeKeyword(String keyword) {
-        Token t = peek();
-        if (t.getType() == TokenType.IDENTIFIER && t.getValue().equalsIgnoreCase(keyword)) {
-            position++;
-        } else {
-            // ini emang kosong??
-        }
-    }
 }
