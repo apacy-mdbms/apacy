@@ -519,6 +519,61 @@ public class StorageManager extends DBMSComponent implements IStorageManager {
     }
   }
 
+  @Override
+  public void dropIndex(String tableName, String indexName) {
+    try {
+      // 1. Ambil Schema Tabel
+      Schema schema = catalogManager.getSchema(tableName);
+      if (schema == null) {
+        throw new IOException("Table not found: " + tableName);
+      }
+
+      // 2. Cari IndexSchema target berdasarkan nama indeks
+      IndexSchema targetIndex = null;
+      for (IndexSchema idx : schema.indexes()) {
+        if (idx.indexName().equals(indexName)) {
+          targetIndex = idx;
+          break;
+        }
+      }
+
+      if (targetIndex == null) {
+        throw new IOException("Index '" + indexName + "' not found on table '" + tableName + "'");
+      }
+
+      // 3. Hapus dari IndexManager (Runtime/Memory)
+      indexManager.drop(
+          tableName, 
+          targetIndex.columnName(), 
+          targetIndex.indexType().toString()
+      );
+
+      // 4. Hapus File Fisik (.idx)
+      blockManager.deleteFile(targetIndex.indexFile());
+
+      // 5. Update Schema (Metadata)
+      List<IndexSchema> updatedIndexes = new ArrayList<>(schema.indexes());
+      updatedIndexes.remove(targetIndex);
+
+      Schema newSchema = new Schema(
+          schema.tableName(),
+          schema.dataFile(),
+          schema.columns(),
+          updatedIndexes,
+          schema.getForeignKeys()
+      );
+
+      // 6. Simpan perubahan ke Katalog
+      catalogManager.updateSchema(newSchema);
+      catalogManager.writeCatalog();
+
+      System.out.println("Index dropped successfully: " + indexName);
+
+    } catch (IOException e) {
+      System.err.println("Failed to drop index: " + e.getMessage());
+    }
+  }
+
   public void createTable(Schema newSchema) throws IOException {
     System.out.println("StorageManager: Menerima perintah CREATE TABLE untuk: " + newSchema.tableName());
     // 1. Tambahkan skema baru ke cache memori Katalog
