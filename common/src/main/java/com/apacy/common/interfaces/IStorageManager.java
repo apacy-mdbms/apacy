@@ -26,6 +26,8 @@ public interface IStorageManager {
 
   void setIndex(String table, String column, String indexType);
 
+  void dropIndex(String tableName, String indexName);
+
   int updateBlock(DataUpdate dataUpdate); // inplace-update
 
   Map<String, Statistic> getAllStats(); // returns statistic of each tables. String == Table name
