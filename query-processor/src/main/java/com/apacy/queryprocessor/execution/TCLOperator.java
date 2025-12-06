@@ -46,7 +46,7 @@ public class TCLOperator implements Operator {
                 ccm.endTransaction(txId, true);
                 resultData.put("status", "Transaction committed");
                 resultData.put("transaction_id", txId);
-                frm.writeTransactionLog(txId, "COMMIT");
+                // frm.writeTransactionLog(txId, "COMMIT");
                 System.out.println("[TCL] COMMIT: txId=" + txId);
                 break;
                 
@@ -55,7 +55,7 @@ public class TCLOperator implements Operator {
                 ccm.endTransaction(txId, false);
                 resultData.put("status", "Transaction rolled back");
                 resultData.put("transaction_id", txId);
-                frm.writeTransactionLog(txId, "ABORT");
+                // frm.writeTransactionLog(txId, "ABORT");
                 frm.recover(new RecoveryCriteria("UNDO_TRANSACTION", String.valueOf(txId), null));
                 System.out.println("[TCL] ROLLBACK: txId=" + txId);
                 break;

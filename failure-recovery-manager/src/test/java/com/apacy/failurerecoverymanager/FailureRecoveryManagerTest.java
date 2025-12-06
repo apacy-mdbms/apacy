@@ -33,7 +33,7 @@ class FailureRecoveryManagerTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        
+
         // Clean up any existing log files and checkpoints
         cleanupTestFiles();
         // Create a mock StorageManager for testing
@@ -504,9 +504,11 @@ class FailureRecoveryManagerTest {
         RecoveryCriteria criteria = new RecoveryCriteria("UNDO_TRANSACTION", "TX200", null);
         failureRecoveryManager.recover(criteria);
 
-        // Should undo: 1 UPDATE (writeBlock) + 2 INSERTs (deleteBlock)
-        assertEquals(1, mockStorageManager.getWriteCount(), "Should undo UPDATE");
-        assertEquals(2, mockStorageManager.getDeleteCount(), "Should undo 2 INSERTs");
+        // Should undo: 1 UPDATE (deleteBlock + writeBlock) + 2 INSERTs (deleteBlock
+        // each)
+        // Total: 3 deletes + 1 write
+        assertEquals(1, mockStorageManager.getWriteCount(), "Should undo UPDATE (restore old value)");
+        assertEquals(3, mockStorageManager.getDeleteCount(), "Should undo UPDATE (delete new) + 2 INSERTs");
     }
 
     @Test

@@ -98,8 +98,8 @@ public class SortMergeJoinOperator implements Operator {
             Row leftRow = sortedLeftTable.get(leftIndex);
             Row rightRow = sortedRightTable.get(rightIndex);
             
-            Object leftValue = leftRow.get(joinColumn);
-            Object rightValue = rightRow.get(joinColumn);
+            Object leftValue = getRowValue(leftRow, joinColumn);
+            Object rightValue = getRowValue(rightRow, joinColumn);
             
             // Skip null values
             if (leftValue == null) {
@@ -200,5 +200,18 @@ public class SortMergeJoinOperator implements Operator {
         }
         
         return new Row(mergedData);
+    }
+
+    private Object getRowValue(Row row, String columnName) {
+        if (row.data().containsKey(columnName)) {
+            return row.get(columnName);
+        }
+        String suffix = "." + columnName;
+        for (String key : row.data().keySet()) {
+            if (key.endsWith(suffix)) {
+                return row.get(key);
+            }
+        }
+        return null;
     }
 }

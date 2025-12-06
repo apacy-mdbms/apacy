@@ -75,8 +75,8 @@ public class ApacyServer {
         
         // Inisialisasi komponen lainnya
         QueryOptimizer queryOptimizer = new QueryOptimizer();
-        ConcurrencyControlManager concurrencyManager = new ConcurrencyControlManager();
         FailureRecoveryManager recoveryManager = new FailureRecoveryManager(storageManager);
+        ConcurrencyControlManager concurrencyManager = new ConcurrencyControlManager("lock", recoveryManager);
         
         // Inisialisasi query processor dengan semua komponen
         queryProcessor = new QueryProcessor(
