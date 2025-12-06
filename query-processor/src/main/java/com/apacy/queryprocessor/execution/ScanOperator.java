@@ -23,13 +23,15 @@ public class ScanOperator implements Operator {
 
     @Override
     public void open() {
+        boolean useIndex = (node.indexName() != null);
+        Object filterCondition = node.condition();
         // In a real implementation, this would open a cursor/file stream.
         // Due to StorageManager limitations, we read the block into memory here.
         DataRetrieval dr = new DataRetrieval(
             node.tableName(), 
-            null, 
-            null, 
-            false
+            null,
+            filterCondition, 
+            useIndex 
         );
         this.buffer = sm.readBlock(dr);
         if (this.buffer != null) {
