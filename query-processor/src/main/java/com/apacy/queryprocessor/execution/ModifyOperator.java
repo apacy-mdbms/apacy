@@ -105,6 +105,17 @@ public class ModifyOperator implements Operator {
         List<String> cols = node.targetColumns();
         List<Object> rawVals = node.values();
 
+        if (cols == null || cols.isEmpty()) {
+            Schema schema = sm.getSchema(node.targetTable());
+            if (schema == null) {
+                throw new RuntimeException("Table '" + node.targetTable() + "' not found.");
+            }
+            cols = new ArrayList<>();
+            for (com.apacy.common.dto.Column c : schema.columns()) {
+                cols.add(c.name());
+            }
+        }
+
         List<Object> resolvedVals = new ArrayList<>();
         if (rawVals != null) {
             for (Object val : rawVals) {

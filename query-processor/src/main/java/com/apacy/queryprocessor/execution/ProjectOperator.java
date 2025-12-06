@@ -1,6 +1,7 @@
 package com.apacy.queryprocessor.execution;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -32,7 +33,7 @@ public class ProjectOperator implements Operator {
             return row; 
         }
 
-        Map<String, Object> newMap = new HashMap<>();
+        Map<String, Object> newMap = new LinkedHashMap<>();
         
         for (String target : targetColumns) {
             if ("*".equals(target)) {

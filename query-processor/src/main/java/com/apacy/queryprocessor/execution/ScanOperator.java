@@ -1,12 +1,15 @@
 package com.apacy.queryprocessor.execution;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
 import com.apacy.common.dto.DataRetrieval;
 import com.apacy.common.dto.Row;
+import com.apacy.common.dto.Schema;
+import com.apacy.common.dto.Column;
 import com.apacy.common.dto.ast.where.WhereConditionNode;
 import com.apacy.common.dto.plan.ScanNode;
 import com.apacy.common.interfaces.IStorageManager;
@@ -47,14 +50,24 @@ public class ScanOperator implements Operator {
 
             System.out.println("ScanOperator DEBUG: Table=" + node.tableName() + ", Alias='" + node.alias() + "'");
             
-            Map<String, Object> prefixedData = new HashMap<>();
+            Map<String, Object> prefixedData = new LinkedHashMap<>();
             String prefix = (node.alias() != null && !node.alias().isEmpty()) 
                             ? node.alias() 
                             : node.tableName();
 
-            for (Map.Entry<String, Object> entry : rawRow.data().entrySet()) {
-                String newKey = prefix + "." + entry.getKey();
-                prefixedData.put(newKey, entry.getValue());
+            Schema schema = sm.getSchema(node.tableName());
+
+            if (schema != null) {
+                for (Column col : schema.columns()) {
+                    String colName = col.name();
+                    Object val = rawRow.get(colName); 
+                    prefixedData.put(prefix + "." + colName, val);
+                }
+            } else {
+                for (Map.Entry<String, Object> entry : rawRow.data().entrySet()) {
+                    String newKey = prefix + "." + entry.getKey();
+                    prefixedData.put(newKey, entry.getValue());
+                }
             }
 
             return new Row(prefixedData);
