@@ -72,11 +72,6 @@ public class QueryProcessor extends DBMSComponent {
      * Menangani Transaction Lifecycle, Parsing, Optimization, dan Dispatching.
      */
     public ExecutionResult executeQuery(String sqlQuery, int clientTxId) {
-        MockDDLParser ddlParser = new MockDDLParser(sqlQuery);
-        if (ddlParser.isDDL()) {
-            return executeDDL(ddlParser);
-        }
-
         int txId;
         boolean isAutoCommit = false;
 
