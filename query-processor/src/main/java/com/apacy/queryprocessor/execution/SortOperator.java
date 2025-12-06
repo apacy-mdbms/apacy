@@ -34,7 +34,7 @@ public class SortOperator implements Operator {
         buffer = SortStrategy.externalSort(
             buffer, 
             node.sortColumn(), 
-            node.ascending(), 
+            !node.ascending(), 
             MEMORY_LIMIT_ROWS
         );
         iterator = buffer.iterator();
