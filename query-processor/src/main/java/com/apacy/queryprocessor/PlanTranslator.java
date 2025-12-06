@@ -111,27 +111,17 @@ public class PlanTranslator {
             right = temp;
             type = "LEFT"; 
         }
-
-        // NATURAL JOIN
-        String joinColumn = extractJoinColumn(node.joinCondition());
-        List<String> joinColumns = new ArrayList<>();
         
-        if ("NATURAL".equals(type)) {
-            if (joinColumn != null) {
-                joinColumns.add(joinColumn);
-                type = "INNER";
-            }
-        } else if (joinColumn != null) {
-            joinColumns.add(joinColumn);
-        }
-
+        List<String> joinColumns = extractJoinColumns(node.joinCondition());
         
         if (algo == JoinAlgorithm.HASH && !joinColumns.isEmpty() && "INNER".equals(type)) {
              return new HashJoinOperator(left, right, joinColumns);
         }
         
         if (algo == JoinAlgorithm.SORT_MERGE && !joinColumns.isEmpty() && "INNER".equals(type)) {
-            return new SortMergeJoinOperator(left, right, joinColumns.get(0));
+            if (joinColumns.size() == 1) {
+                return new SortMergeJoinOperator(left, right, joinColumns.get(0));
+            }
         }
 
         return new NestedLoopJoinOperator(left, right, node.joinCondition(), type);
@@ -141,27 +131,30 @@ public class PlanTranslator {
     // HELPER METHODS (Preserved from original implementation)
     // ==================================================================================
 
-    private String extractJoinColumn(Object condition) {
-        if (!(condition instanceof com.apacy.common.dto.ast.where.ComparisonConditionNode)) {
-            return null;
+    private List<String> extractJoinColumns(Object condition) {
+        List<String> columns = new ArrayList<>();
+        
+        if (condition instanceof com.apacy.common.dto.ast.where.BinaryConditionNode bin) {
+            // If we have (A=B AND C=D), recurse both sides
+            if ("AND".equalsIgnoreCase(bin.operator())) {
+                columns.addAll(extractJoinColumns(bin.left()));
+                columns.addAll(extractJoinColumns(bin.right()));
+            }
+        } 
+        else if (condition instanceof com.apacy.common.dto.ast.where.ComparisonConditionNode comp) {
+            // Check for strict Equality "="
+            if ("=".equals(comp.operator())) {
+                String leftCol = extractColumnNameFromExpression(comp.leftOperand());
+                String rightCol = extractColumnNameFromExpression(comp.rightOperand());
+                
+                // If the simple column names match (e.g. "id" == "id"), add it
+                if (leftCol != null && rightCol != null && leftCol.equals(rightCol)) {
+                    columns.add(leftCol);
+                }
+            }
         }
         
-        com.apacy.common.dto.ast.where.ComparisonConditionNode comp = 
-            (com.apacy.common.dto.ast.where.ComparisonConditionNode) condition;
-        
-        // Only support "="
-        if (!"=".equals(comp.operator())) {
-            return null;
-        }
-        
-        String leftCol = extractColumnNameFromExpression(comp.leftOperand());
-        String rightCol = extractColumnNameFromExpression(comp.rightOperand());
-        
-        if (leftCol != null && rightCol != null && leftCol.equals(rightCol)) {
-            return leftCol;
-        }
-        
-        return null;
+        return columns;
     }
     
     /**
