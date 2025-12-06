@@ -13,6 +13,7 @@ import com.apacy.common.dto.plan.ProjectNode;
 import com.apacy.common.dto.plan.ScanNode;
 import com.apacy.common.dto.plan.SortNode;
 import com.apacy.common.dto.plan.TCLNode;
+import com.apacy.common.enums.JoinAlgorithm;
 import com.apacy.common.interfaces.IConcurrencyControlManager;
 import com.apacy.common.interfaces.IFailureRecoveryManager;
 import com.apacy.common.interfaces.IStorageManager;
@@ -87,57 +88,8 @@ public class PlanTranslator {
         throw new UnsupportedOperationException("PlanNode type not supported: " + node.getClass().getSimpleName());
     }
 
-    private Operator buildJoin(JoinNode node, int txId, IStorageManager sm, IConcurrencyControlManager ccm, IFailureRecoveryManager frm) {
-        Operator left = build(node.left(), txId, sm, ccm, frm);
-        Operator right = build(node.right(), txId, sm, ccm, frm);
-        
-        // Extract join column for optimization (Simple Equi-Join)
-        String joinColumn = extractJoinColumn(node.joinCondition());
-        
-        if (joinColumn != null) {
-            // Choose join strategy based on heuristics
-            JoinStrategy strategy = selectJoinStrategy(node, joinColumn);
-            
-            switch (strategy) {
-                case SORT_MERGE:
-                    System.out.println("[PlanTranslator] Selected SortMergeJoin strategy for column: " + joinColumn);
-                    return new SortMergeJoinOperator(left, right, joinColumn);
-                    
-                case HASH:
-                    System.out.println("[PlanTranslator] Selected HashJoin strategy for column: " + joinColumn);
-                    return new HashJoinOperator(left, right, Collections.singletonList(joinColumn));
-                    
-                case NESTED_LOOP:
-                default:
-                    System.out.println("[PlanTranslator] Selected NestedLoopJoin strategy (fallback)");
-                    return new NestedLoopJoinOperator(left, right, node.joinCondition());
-            }
-        } else {
-            // Complex join condition - fallback to Nested Loop Join
-            System.out.println("[PlanTranslator] Complex join condition detected, using NestedLoopJoin");
-            return new NestedLoopJoinOperator(left, right, node.joinCondition());
-        }
-    }
-    
-    /**
-     * Enum untuk strategi join yang tersedia
-     */
-    private enum JoinStrategy {
-        HASH,           // Hash Join - efisien untuk ukuran sedang
-        SORT_MERGE,     // Sort-Merge Join - efisien jika data sudah terurut
-        NESTED_LOOP     // Nested Loop Join - fallback untuk kasus umum
-    }
-    
     /**
      * Memilih strategi join terbaik berdasarkan karakteristik input.
-     * 
-     * Heuristik:
-     * 1. Jika salah satu child adalah SortNode pada join column yang sama -> SortMergeJoin
-     *    (data sudah terurut, manfaatkan untuk efisiensi)
-     * 2. Jika estimasi ukuran data kecil-menengah -> HashJoin
-     *    (efisien untuk ukuran sedang, memory overhead acceptable)
-     * 3. Untuk kasus lain -> NestedLoopJoin
-     *    (safe fallback, tidak butuh preprocessing)
      */
     private Operator buildJoin(JoinNode node, int txId, IStorageManager sm, IConcurrencyControlManager ccm, IFailureRecoveryManager frm) {
         Operator left = build(node.left(), txId, sm, ccm, frm);

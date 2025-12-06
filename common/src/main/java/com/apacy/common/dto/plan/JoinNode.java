@@ -8,7 +8,7 @@ public record JoinNode(
     PlanNode right,
     Object joinCondition, // PAKAI WhereConditionNode, sebagai theta
     String joinType, // INNER, LEFT, etc.
-    JoinAlgorithm algorihtm
+    JoinAlgorithm algorithm
 ) implements PlanNode {
     private static final long serialVersionUID = 1L;
 
