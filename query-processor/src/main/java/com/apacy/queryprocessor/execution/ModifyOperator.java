@@ -13,12 +13,19 @@ import com.apacy.common.dto.ForeignKeySchema;
 import com.apacy.common.dto.IndexSchema;
 import com.apacy.common.dto.Row;
 import com.apacy.common.dto.Schema;
+import com.apacy.common.dto.ast.expression.ColumnFactor;
+import com.apacy.common.dto.ast.expression.ExpressionNode;
+import com.apacy.common.dto.ast.expression.FactorNode;
+import com.apacy.common.dto.ast.expression.LiteralFactor;
+import com.apacy.common.dto.ast.expression.TermNode;
+import com.apacy.common.dto.ast.where.BinaryConditionNode;
+import com.apacy.common.dto.ast.where.ComparisonConditionNode;
+import com.apacy.common.dto.ast.where.WhereConditionNode;
 import com.apacy.common.dto.plan.ModifyNode;
 import com.apacy.common.interfaces.IConcurrencyControlManager;
 import com.apacy.common.interfaces.IFailureRecoveryManager;
 import com.apacy.common.interfaces.IStorageManager;
 import com.apacy.queryprocessor.evaluator.ExpressionEvaluator;
-
 
 public class ModifyOperator implements Operator {
 
@@ -206,7 +213,7 @@ public class ModifyOperator implements Operator {
         while ((childRow = child.next()) != null) {
             frm.writeDataLog(String.valueOf(txId), "DELETE", node.targetTable(), childRow, null);
 
-            Object predicate = buildPredicateFromRow(childRow);
+            Object predicate = buildIdentityAstFromRow(childRow);
 
             DataDeletion dd = new DataDeletion(node.targetTable(), predicate);
             int deleted = sm.deleteBlock(dd);
@@ -241,7 +248,7 @@ public class ModifyOperator implements Operator {
 
             frm.writeDataLog(String.valueOf(txId), "UPDATE", node.targetTable(), oldRow, newRow);
 
-            Object updatePredicate = buildPredicateFromRow(oldRow);
+            Object updatePredicate = buildIdentityAstFromRow(oldRow);
             DataUpdate du = new DataUpdate(node.targetTable(), newRow, updatePredicate);
             int updated = sm.updateBlock(du);
             affectedRows += updated;
@@ -277,5 +284,43 @@ public class ModifyOperator implements Operator {
     private String escapeSingleQuotes(String s) {
         if (s == null) return null;
         return s.replace("'", "''");
+    }
+
+    private Object buildIdentityAstFromRow(Row row) {
+        Object currentCondition = null;
+
+        for (Map.Entry<String, Object> e : row.data().entrySet()) {
+            String colName = e.getKey();
+            Object val = e.getValue();
+
+            if (colName.contains(".")) {
+                colName = colName.substring(colName.lastIndexOf('.') + 1);
+            }
+
+            Object comparison = createEqualityCondition(colName, val);
+
+            if (currentCondition == null) {
+                currentCondition = comparison;
+            } else {
+                currentCondition = new BinaryConditionNode(
+                    (WhereConditionNode) currentCondition, 
+                    "AND", 
+                    (WhereConditionNode) comparison
+                );
+            }
+        }
+        return currentCondition;
+    }
+
+    private ComparisonConditionNode createEqualityCondition(String colName, Object val) {
+        FactorNode leftFactor = new ColumnFactor(colName);
+        TermNode leftTerm = new TermNode(leftFactor, null);
+        ExpressionNode leftExpr = new ExpressionNode(leftTerm, null);
+
+        FactorNode rightFactor = new LiteralFactor(val);
+        TermNode rightTerm = new TermNode(rightFactor, null);
+        ExpressionNode rightExpr = new ExpressionNode(rightTerm, null);
+
+        return new ComparisonConditionNode(leftExpr, "=", rightExpr);
     }
 }
