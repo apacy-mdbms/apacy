@@ -167,6 +167,11 @@ public class MockStorageManager implements IStorageManager {
     return 0;
   }
 
+  public dropIndex(String tableName, String indexName) {
+    System.out.println("[MOCK-SM] dropIndex dipanggil: " + tableName + " [" + indexName + "]");
+    return 0;
+  }
+
   @Override
   public List<String> getDependentTables(String tableName) {
     System.out.println("[MOCK-SM] getDependentTables dipanggil untuk: " + tableName);
