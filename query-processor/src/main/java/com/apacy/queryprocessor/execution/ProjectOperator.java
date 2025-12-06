@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 
 import com.apacy.common.dto.Row;
-import com.apacy.common.dto.plan.ProjectNode;
 
 public class ProjectOperator implements Operator {
     private final Operator child;
@@ -27,19 +26,25 @@ public class ProjectOperator implements Operator {
     @Override
     public Row next() {
         Row row = child.next();
-        if (row == null) {
-            return null;
-        }
+        if (row == null) return null;
 
-        // Handle "SELECT *"
+        // Handle SELECT *
         if (targetColumns.size() == 1 && "*".equals(targetColumns.get(0))) {
-            return row;
+            return row; 
         }
 
         Map<String, Object> newMap = new HashMap<>();
-        for (String col : targetColumns) {
-            if (row.data().containsKey(col)) {
-                newMap.put(col, row.get(col));
+        for (String target : targetColumns) {
+            if (row.data().containsKey(target)) {
+                newMap.put(target, row.get(target));
+            } 
+            else {
+                for (String key : row.data().keySet()) {
+                    if (key.endsWith("." + target)) {
+                        newMap.put(target, row.get(key));
+                        break;
+                    }
+                }
             }
         }
         return new Row(newMap);
