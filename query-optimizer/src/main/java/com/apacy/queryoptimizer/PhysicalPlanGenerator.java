@@ -8,6 +8,7 @@ import com.apacy.common.dto.Statistic;
 import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.queryoptimizer.rewriter.JoinPlanRewriter;
 import com.apacy.queryoptimizer.rewriter.PlanRewriter;
+import com.apacy.queryoptimizer.rewriter.ScanPlanRewriter;
 
 public class PhysicalPlanGenerator {
 
@@ -15,7 +16,8 @@ public class PhysicalPlanGenerator {
 
     PhysicalPlanGenerator(CostEstimator costEstimator) {
         rules = List.of(
-            new JoinPlanRewriter(costEstimator)
+            new JoinPlanRewriter(costEstimator),
+            new ScanPlanRewriter(costEstimator)
         );
     }
 
