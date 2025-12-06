@@ -131,7 +131,8 @@ public class SelectParser extends AbstractParser {
             offsetValue = Integer.parseInt(offsetToken.getValue());
         }
 
-        if (peek().getType() == TokenType.SEMICOLON) consume(TokenType.SEMICOLON);
+        consume(TokenType.SEMICOLON);
+        consume(TokenType.EOF);
 
         Object joinConditions = joinAst;
         Object whereClause = where;
