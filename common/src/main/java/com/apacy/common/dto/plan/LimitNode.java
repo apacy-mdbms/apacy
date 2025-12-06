@@ -18,8 +18,8 @@ public record LimitNode(
         return List.of(child); 
     }
 
-    @Override 
-    public String toString() { 
-        return "Limit(" + limit + ")"; 
+    @Override
+    public String toString() {
+        return "Limit(" + limit + ") -> " + child;
     }
 }
