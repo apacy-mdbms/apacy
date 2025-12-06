@@ -162,7 +162,7 @@ public class HashJoinOperator implements Operator {
         Object joinCondition = createJoinCondition(joinColumns);
         
         // Initialize fallback operator
-        fallbackOperator = new NestedLoopJoinOperator(probeChild, buildChild, joinCondition);
+        fallbackOperator = new NestedLoopJoinOperator(probeChild, buildChild, joinCondition, "INNER");
         fallbackOperator.open();
     }
     

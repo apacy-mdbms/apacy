@@ -1,6 +1,7 @@
 package com.apacy.queryprocessor;
 
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.apacy.common.dto.plan.CartesianNode;
 import com.apacy.common.dto.plan.DDLNode;
@@ -95,34 +96,45 @@ public class PlanTranslator {
         Operator left = build(node.left(), txId, sm, ccm, frm);
         Operator right = build(node.right(), txId, sm, ccm, frm);
         
+        String type = node.joinType() != null ? node.joinType().toUpperCase() : "INNER";
         JoinAlgorithm algo = (node.algorithm() != null) ? node.algorithm() : JoinAlgorithm.NESTED_LOOP;
 
-        // Ekstrak kolom join (jika ada equality join) untuk Hash/SortMerge
-        String joinColumn = extractJoinColumn(node.joinCondition());
-
-        // Dispatch
-        switch (algo) {
-            case SORT_MERGE:
-                if (joinColumn == null) {
-                    System.err.println("[PlanTranslator] Warning: SortMerge requested but no equality condition found. Falling back to NestedLoop.");
-                    return new NestedLoopJoinOperator(left, right, node.joinCondition());
-                }
-                return new SortMergeJoinOperator(left, right, joinColumn);
-
-            case HASH:
-                if (joinColumn == null) {
-                    System.err.println("[PlanTranslator] Warning: HashJoin requested but no equality condition found. Falling back to NestedLoop.");
-                    return new NestedLoopJoinOperator(left, right, node.joinCondition());
-                }
-                return new HashJoinOperator(left, right, Collections.singletonList(joinColumn));
-
-            case CARTESIAN:
-                return new CartesianOperator(left, right);
-
-            case NESTED_LOOP:
-            default:
-                return new NestedLoopJoinOperator(left, right, node.joinCondition());
+        // CROSS JOIN
+        if ("CROSS".equals(type) || algo == JoinAlgorithm.CARTESIAN) {
+            return new CartesianOperator(left, right);
         }
+
+        // RIGHT JOIN
+        if (type.contains("RIGHT")) {
+            Operator temp = left;
+            left = right;
+            right = temp;
+            type = "LEFT"; 
+        }
+
+        // NATURAL JOIN
+        String joinColumn = extractJoinColumn(node.joinCondition());
+        List<String> joinColumns = new ArrayList<>();
+        
+        if ("NATURAL".equals(type)) {
+            if (joinColumn != null) {
+                joinColumns.add(joinColumn);
+                type = "INNER";
+            }
+        } else if (joinColumn != null) {
+            joinColumns.add(joinColumn);
+        }
+
+        
+        if (algo == JoinAlgorithm.HASH && !joinColumns.isEmpty() && "INNER".equals(type)) {
+             return new HashJoinOperator(left, right, joinColumns);
+        }
+        
+        if (algo == JoinAlgorithm.SORT_MERGE && !joinColumns.isEmpty() && "INNER".equals(type)) {
+            return new SortMergeJoinOperator(left, right, joinColumns.get(0));
+        }
+
+        return new NestedLoopJoinOperator(left, right, node.joinCondition(), type);
     }
     
     // ==================================================================================

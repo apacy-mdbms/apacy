@@ -8,90 +8,82 @@ import java.util.Map;
 import com.apacy.common.dto.Row;
 import com.apacy.queryprocessor.evaluator.ConditionEvaluator;
 
-/**
- * Block-Nested Loop Join Operator with Right Table Caching.
- * 
- * FIX I/O AMPLIFICATION:
- * - Caches the entire right table in memory on first open()
- * - Eliminates repeated rightChild.open() calls for each left row
- * - Reduces disk I/O from O(n*m) to O(n+m) where n = left rows, m = right rows
- */
 public class NestedLoopJoinOperator implements Operator {
     private final Operator leftChild;
     private final Operator rightChild;
     private final Object joinCondition;
+    private final String joinType; // "INNER", "LEFT"
     
-    // Cached right table to avoid repeated disk reads
+    // Cache right table to avoid repetitive disk I/O
     private List<Row> rightTableCache;
     private boolean rightTableCached = false;
     
-    // Iteration state
+    // State variables
     private Row currentLeftRow;
     private int rightIndex;
-    
-    public NestedLoopJoinOperator(Operator leftChild, Operator rightChild, Object joinCondition) {
+    private boolean matchFoundForLeft;
+
+    public NestedLoopJoinOperator(Operator leftChild, Operator rightChild, Object joinCondition, String joinType) {
         this.leftChild = leftChild;
         this.rightChild = rightChild;
         this.joinCondition = joinCondition;
+        this.joinType = joinType != null ? joinType.toUpperCase() : "INNER";
     }
 
     @Override
     public void open() {
-        // Open left child
         leftChild.open();
         
-        // Cache right table in memory (only once!)
+        // Cache Right Table (Block-Nested Loop style)
         if (!rightTableCached) {
-            cacheRightTable();
+            rightTableCache = new ArrayList<>();
+            rightChild.open();
+            Row r;
+            while ((r = rightChild.next()) != null) {
+                rightTableCache.add(r);
+            }
+            rightChild.close();
+            rightTableCached = true;
         }
-        
-        // Initialize iteration state
+
         currentLeftRow = leftChild.next();
         rightIndex = 0;
-    }
-    
-    /**
-     * Cache the entire right table in memory to avoid repeated disk reads.
-     * This is called only once during the first open().
-     */
-    private void cacheRightTable() {
-        rightTableCache = new ArrayList<>();
-        rightChild.open();
-        
-        Row rightRow;
-        while ((rightRow = rightChild.next()) != null) {
-            rightTableCache.add(rightRow);
-        }
-        
-        rightChild.close();
-        rightTableCached = true;
-        
-        System.out.println("[NestedLoopJoin] Cached " + rightTableCache.size() + " rows from right table");
+        matchFoundForLeft = false;
     }
 
     @Override
     public Row next() {
         while (currentLeftRow != null) {
-            // Iterate through cached right table
+            
             while (rightIndex < rightTableCache.size()) {
                 Row rightRow = rightTableCache.get(rightIndex);
                 rightIndex++;
-                
-                // Create merged row candidate
+
                 Row mergedRow = mergeRows(currentLeftRow, rightRow);
                 
-                // Check join condition
                 if (ConditionEvaluator.evaluate(mergedRow, joinCondition)) {
+                    matchFoundForLeft = true;
                     return mergedRow;
                 }
             }
-            
-            // Right table exhausted for current left row, advance to next left row
-            currentLeftRow = leftChild.next();
-            rightIndex = 0; // Reset right index for new left row
+
+            if (joinType.contains("LEFT") && !matchFoundForLeft) {
+                Row nullRow = createNullRow(currentLeftRow);
+                
+                advanceLeft(); 
+                return nullRow;
+            }
+
+            advanceLeft();
         }
-        
-        return null; // Both sides exhausted
+
+        return null;
+    }
+
+    private void advanceLeft() {
+        currentLeftRow = leftChild.next();
+        rightIndex = 0;
+        matchFoundForLeft = false;
     }
 
     @Override
@@ -100,16 +92,23 @@ public class NestedLoopJoinOperator implements Operator {
         rightChild.close();
     }
 
-    private Row mergeRows(Row leftRow, Row rightRow) {
-        Map<String, Object> mergedData = new HashMap<>(leftRow.data());
-        // Right row data overrides collision? or preserve? 
-        // Standard SQL: columns should be distinct or prefixed. 
-        // Our previous JoinStrategy logic:
-        // mergedData.putIfAbsent(entry.getKey(), entry.getValue()); (Left takes precedence)
-        
-        for (Map.Entry<String, Object> entry : rightRow.data().entrySet()) {
-            mergedData.putIfAbsent(entry.getKey(), entry.getValue());
+    private Row mergeRows(Row left, Row right) {
+        Map<String, Object> data = new HashMap<>(left.data());
+        for (var entry : right.data().entrySet()) {
+            data.putIfAbsent(entry.getKey(), entry.getValue());
         }
-        return new Row(mergedData);
+        return new Row(data);
+    }
+
+    private Row createNullRow(Row left) {
+        Map<String, Object> data = new HashMap<>(left.data());
+    
+        if (!rightTableCache.isEmpty()) {
+            Row sample = rightTableCache.get(0);
+            for (String key : sample.data().keySet()) {
+                data.putIfAbsent(key, null);
+            }
+        }
+        return new Row(data);
     }
 }

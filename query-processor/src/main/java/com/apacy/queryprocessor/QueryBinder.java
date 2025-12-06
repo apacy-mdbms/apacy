@@ -135,18 +135,16 @@ public class QueryBinder {
         throw new IllegalArgumentException("Unknown WhereNode type: " + node.getClass());
     }
 
-    // Recursive Expression Binding
+    // Recursive Expressiong Binding
     private ExpressionNode bindExpression(ExpressionNode expr, List<String> tables, Map<String, String> aliasMap) {
         TermNode newTerm = bindTerm(expr.term(), tables, aliasMap);
 
         List<ExpressionNode.TermPair> newRemainder = new ArrayList<>();
-        if (expr.remainderTerms() != null) {
-            for (ExpressionNode.TermPair pair : expr.remainderTerms()) {
-                newRemainder.add(new ExpressionNode.TermPair(
-                    pair.additiveOperator(), 
-                    bindTerm(pair.term(), tables, aliasMap)
-                ));
-            }
+        for (ExpressionNode.TermPair pair : expr.remainderTerms()) {
+            newRemainder.add(new ExpressionNode.TermPair(
+                pair.additiveOperator(), 
+                bindTerm(pair.term(), tables, aliasMap)
+            ));
         }
 
         return new ExpressionNode(newTerm, newRemainder);
@@ -227,7 +225,7 @@ public class QueryBinder {
             if (n.columns() != null) {
                 for (String col : n.columns()) {
                     if (col.equals("*")) {
-                        boundCols.add("*");
+                        boundCols.addAll(getOutputColumns(boundChild));
                     } else {
                         boundCols.add(resolveColumnName(col, tables, aliasMap));
                     }
@@ -242,11 +240,48 @@ public class QueryBinder {
             PlanNode boundRight = bindPlanTree(n.right(), tables, aliasMap);
 
             Object boundCond = null;
-            if (n.joinCondition() instanceof com.apacy.common.dto.ast.where.WhereConditionNode ast) {
-                boundCond = bindWhereCondition(ast, tables, aliasMap);
+            String finalJoinType = n.joinType();
+
+            if ("NATURAL".equalsIgnoreCase(n.joinType())) {
+                List<String> leftCols = getOutputColumns(boundLeft);
+                List<String> rightCols = getOutputColumns(boundRight);
+                
+                WhereConditionNode naturalCondition = null;
+
+                for (String lColQualified : leftCols) {
+                    String lColName = getColumnNameOnly(lColQualified);
+                    
+                    for (String rColQualified : rightCols) {
+                        String rColName = getColumnNameOnly(rColQualified);
+
+                        if (lColName.equals(rColName)) {
+                            ComparisonConditionNode eq = createEqualityCondition(lColQualified, rColQualified);
+                            
+                            if (naturalCondition == null) {
+                                naturalCondition = eq;
+                            } else {
+                                naturalCondition = new BinaryConditionNode(naturalCondition, "AND", eq);
+                            }
+                        }
+                    }
+                }
+                
+                if (naturalCondition != null) {
+                    boundCond = naturalCondition;
+                    finalJoinType = "INNER";
+                } else {
+                    finalJoinType = "CROSS"; 
+                }
+
+            } else {
+                if (n.joinCondition() instanceof WhereConditionNode ast) {
+                    boundCond = bindWhereCondition(ast, tables, aliasMap);
+                } else {
+                    boundCond = n.joinCondition();
+                }
             }
 
-            return new JoinNode(boundLeft, boundRight, boundCond, n.joinType());
+            return new JoinNode(boundLeft, boundRight, boundCond, finalJoinType);
         }
 
         // 4. CARTESIAN NODE
@@ -301,17 +336,7 @@ public class QueryBinder {
 
         // 8. SCAN NODE
         else if (node instanceof ScanNode scan) {
-            String tableAlias = scan.alias();
-            
-            if ((tableAlias == null || tableAlias.isEmpty()) && aliasMap != null) {
-                for (Map.Entry<String, String> entry : aliasMap.entrySet()) {
-                    if (entry.getValue().equals(scan.tableName())) {
-                        tableAlias = entry.getKey();
-                        break;
-                    }
-                }
-            }
-
+            // Jika ScanNode punya kondisi (hasil pushdown optimizer), bind kondisinya juga
             Object boundCondition = null;
             if (scan.condition() instanceof WhereConditionNode ast) {
                 boundCondition = bindWhereCondition(ast, tables, aliasMap);
@@ -319,9 +344,10 @@ public class QueryBinder {
                 boundCondition = scan.condition();
             }
             
+            // Return ScanNode baru dengan kondisi yang sudah di-bind (resolved column names)
             return new ScanNode(
                 scan.tableName(), 
-                tableAlias,
+                scan.alias(), 
                 scan.indexName(), 
                 boundCondition
             );
@@ -342,22 +368,12 @@ public class QueryBinder {
             String colName = parts[1];
 
             String realTable = null;
-            String resolvedPrefix = prefix;
 
             if (aliasMap != null && aliasMap.containsKey(prefix)) {
                 realTable = aliasMap.get(prefix);
-                resolvedPrefix = prefix;
-            } 
+            }
             else if (tables.contains(prefix)) {
                 realTable = prefix;
-                if (aliasMap != null) {
-                    for (Map.Entry<String, String> entry : aliasMap.entrySet()) {
-                        if (entry.getValue().equals(realTable)) {
-                            resolvedPrefix = entry.getKey();
-                            break;
-                        }
-                    }
-                }
             }
             
             if (realTable == null) {
@@ -365,35 +381,23 @@ public class QueryBinder {
             }
 
             validateColumnInCatalog(realTable, colName);
-            return resolvedPrefix + "." + colName;
+            return realTable + "." + colName;
         }
 
         String foundInTable = null;
-        String resolvedPrefix = null;
-
         for (String table : tables) {
             if (hasColumn(table, rawCol)) {
                 if (foundInTable != null) {
                     throw new IllegalArgumentException("Ambiguous column: '" + rawCol + "' exists in " + foundInTable + " and " + table);
                 }
                 foundInTable = table;
-                
-                resolvedPrefix = table;
-                if (aliasMap != null) {
-                    for (Map.Entry<String, String> entry : aliasMap.entrySet()) {
-                        if (entry.getValue().equals(table)) {
-                            resolvedPrefix = entry.getKey();
-                            break;
-                        }
-                    }
-                }
             }
         }
 
         if (foundInTable == null) {
             throw new IllegalArgumentException("Column '" + rawCol + "' not found in any target tables.");
         }
-        return resolvedPrefix + "." + rawCol;
+        return foundInTable + "." + rawCol;
     }
 
     private boolean hasColumn(String table, String col) {
@@ -405,5 +409,50 @@ public class QueryBinder {
         if (!hasColumn(table, col)) {
             throw new IllegalArgumentException("Column '" + col + "' not found in table '" + table + "'");
         }
+    }
+
+    private List<String> getOutputColumns(PlanNode node) {
+        if (node instanceof ScanNode scan) {
+            Schema schema = storageManager.getSchema(scan.tableName());
+            if (schema == null) return new ArrayList<>();
+            String prefix = (scan.alias() != null && !scan.alias().isEmpty()) 
+                            ? scan.alias() 
+                            : scan.tableName();
+            return schema.columns().stream()
+                .map(col -> prefix + "." + col.name())
+                .toList();
+        } 
+        else if (node instanceof ProjectNode proj) {
+            return proj.columns();
+        }
+        else if (node instanceof FilterNode filter) {
+            return getOutputColumns(filter.child());
+        }
+        else if (node instanceof SortNode sort) {
+            return getOutputColumns(sort.child());
+        } else if (node instanceof JoinNode join) {
+             List<String> cols = new ArrayList<>(getOutputColumns(join.left()));
+             cols.addAll(getOutputColumns(join.right()));
+             return cols;
+        }
+        return new ArrayList<>(); 
+    }
+
+    private String getColumnNameOnly(String qualifiedName) {
+        if (qualifiedName.contains(".")) {
+            return qualifiedName.substring(qualifiedName.lastIndexOf('.') + 1);
+        }
+        return qualifiedName;
+    }
+    private ComparisonConditionNode createEqualityCondition(String leftCol, String rightCol) {
+        FactorNode leftFactor = new ColumnFactor(leftCol);
+        TermNode leftTerm = new TermNode(leftFactor, null);
+        ExpressionNode leftExpr = new ExpressionNode(leftTerm, null);
+
+        FactorNode rightFactor = new ColumnFactor(rightCol);
+        TermNode rightTerm = new TermNode(rightFactor, null);
+        ExpressionNode rightExpr = new ExpressionNode(rightTerm, null);
+
+        return new ComparisonConditionNode(leftExpr, "=", rightExpr);
     }
 }
