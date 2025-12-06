@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import com.apacy.common.dto.Column;
 import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.Schema;
 import com.apacy.common.dto.ast.expression.ColumnFactor;
@@ -25,6 +26,7 @@ import com.apacy.common.dto.plan.LimitNode;
 import com.apacy.common.dto.plan.ModifyNode;
 import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.common.dto.plan.ProjectNode;
+import com.apacy.common.dto.plan.ScanNode;
 import com.apacy.common.dto.plan.SortNode;
 import com.apacy.common.interfaces.IStorageManager;
 
@@ -49,8 +51,15 @@ public class QueryBinder {
         List<String> tables = query.targetTables();
 
         for (String tableName : tables) {
-            if (storageManager.getSchema(tableName) == null) {
-                throw new IllegalArgumentException("Semantic Error: Table '" + tableName + "' does not exist.");
+            // Jika tableName ada di aliasMap sebagai key (alias), ambil real table-nya.
+            // Jika tidak, asumsikan itu nama tabel asli.
+            String realTable = tableName;
+            if (aliasMap != null && aliasMap.containsKey(tableName)) {
+                realTable = aliasMap.get(tableName);
+            }
+            
+            if (storageManager.getSchema(realTable) == null) {
+                throw new IllegalArgumentException("Semantic Error: Table '" + realTable + "' does not exist.");
             }
         }
 
@@ -59,7 +68,21 @@ public class QueryBinder {
         if (query.targetColumns() != null) {
             for (String colRaw : query.targetColumns()) {
                 if (colRaw.equals("*")) {
-                    resolvedColumns.add("*");
+                    // FIX: Expand '*' to all columns from all target tables
+                    for (String tableRef : tables) {
+                        String realTable = tableRef;
+                        if (aliasMap != null && aliasMap.containsKey(tableRef)) {
+                            realTable = aliasMap.get(tableRef);
+                        }
+
+                        Schema schema = storageManager.getSchema(realTable);
+                        if (schema != null) {
+                            for (Column c : schema.columns()) {
+                                // Add as fully qualified name: tableRef.columnName
+                                resolvedColumns.add(tableRef + "." + c.name());
+                            }
+                        }
+                    }
                     continue;
                 }
                 resolvedColumns.add(resolveColumnName(colRaw, tables, aliasMap));
@@ -224,7 +247,7 @@ public class QueryBinder {
             if (n.columns() != null) {
                 for (String col : n.columns()) {
                     if (col.equals("*")) {
-                        boundCols.add("*");
+                        boundCols.addAll(getOutputColumns(boundChild));
                     } else {
                         boundCols.add(resolveColumnName(col, tables, aliasMap));
                     }
@@ -239,11 +262,48 @@ public class QueryBinder {
             PlanNode boundRight = bindPlanTree(n.right(), tables, aliasMap);
 
             Object boundCond = null;
-            if (n.joinCondition() instanceof com.apacy.common.dto.ast.where.WhereConditionNode ast) {
-                boundCond = bindWhereCondition(ast, tables, aliasMap);
+            String finalJoinType = n.joinType();
+
+            if ("NATURAL".equalsIgnoreCase(n.joinType())) {
+                List<String> leftCols = getOutputColumns(boundLeft);
+                List<String> rightCols = getOutputColumns(boundRight);
+                
+                WhereConditionNode naturalCondition = null;
+
+                for (String lColQualified : leftCols) {
+                    String lColName = getColumnNameOnly(lColQualified);
+                    
+                    for (String rColQualified : rightCols) {
+                        String rColName = getColumnNameOnly(rColQualified);
+
+                        if (lColName.equals(rColName)) {
+                            ComparisonConditionNode eq = createEqualityCondition(lColQualified, rColQualified);
+                            
+                            if (naturalCondition == null) {
+                                naturalCondition = eq;
+                            } else {
+                                naturalCondition = new BinaryConditionNode(naturalCondition, "AND", eq);
+                            }
+                        }
+                    }
+                }
+                
+                if (naturalCondition != null) {
+                    boundCond = naturalCondition;
+                    finalJoinType = "INNER";
+                } else {
+                    finalJoinType = "CROSS"; 
+                }
+
+            } else {
+                if (n.joinCondition() instanceof WhereConditionNode ast) {
+                    boundCond = bindWhereCondition(ast, tables, aliasMap);
+                } else {
+                    boundCond = n.joinCondition();
+                }
             }
 
-            return new JoinNode(boundLeft, boundRight, boundCond, n.joinType());
+            return new JoinNode(boundLeft, boundRight, boundCond, finalJoinType);
         }
 
         // 4. CARTESIAN NODE
@@ -296,7 +356,26 @@ public class QueryBinder {
             );
         }
 
-        // 8. SCAN NODE / DDL NODE / TCL NODE
+        // 8. SCAN NODE
+        else if (node instanceof ScanNode scan) {
+            // Jika ScanNode punya kondisi (hasil pushdown optimizer), bind kondisinya juga
+            Object boundCondition = null;
+            if (scan.condition() instanceof WhereConditionNode ast) {
+                boundCondition = bindWhereCondition(ast, tables, aliasMap);
+            } else {
+                boundCondition = scan.condition();
+            }
+            
+            // Return ScanNode baru dengan kondisi yang sudah di-bind (resolved column names)
+            return new ScanNode(
+                scan.tableName(), 
+                scan.alias(), 
+                scan.indexName(), 
+                boundCondition
+            );
+        }
+
+        // 9. DDL NODE / TCL NODE
         else {
             return node;
         }
@@ -329,11 +408,17 @@ public class QueryBinder {
 
         String foundInTable = null;
         for (String table : tables) {
-            if (hasColumn(table, rawCol)) {
+            // Check if 'table' is an alias
+            String realTable = table;
+            if (aliasMap != null && aliasMap.containsKey(table)) {
+                realTable = aliasMap.get(table);
+            }
+
+            if (hasColumn(realTable, rawCol)) {
                 if (foundInTable != null) {
                     throw new IllegalArgumentException("Ambiguous column: '" + rawCol + "' exists in " + foundInTable + " and " + table);
                 }
-                foundInTable = table;
+                foundInTable = table; // Use the reference name (alias or table)
             }
         }
 
@@ -352,5 +437,50 @@ public class QueryBinder {
         if (!hasColumn(table, col)) {
             throw new IllegalArgumentException("Column '" + col + "' not found in table '" + table + "'");
         }
+    }
+
+    private List<String> getOutputColumns(PlanNode node) {
+        if (node instanceof ScanNode scan) {
+            Schema schema = storageManager.getSchema(scan.tableName());
+            if (schema == null) return new ArrayList<>();
+            String prefix = (scan.alias() != null && !scan.alias().isEmpty()) 
+                            ? scan.alias() 
+                            : scan.tableName();
+            return schema.columns().stream()
+                .map(col -> prefix + "." + col.name())
+                .toList();
+        } 
+        else if (node instanceof ProjectNode proj) {
+            return proj.columns();
+        }
+        else if (node instanceof FilterNode filter) {
+            return getOutputColumns(filter.child());
+        }
+        else if (node instanceof SortNode sort) {
+            return getOutputColumns(sort.child());
+        } else if (node instanceof JoinNode join) {
+             List<String> cols = new ArrayList<>(getOutputColumns(join.left()));
+             cols.addAll(getOutputColumns(join.right()));
+             return cols;
+        }
+        return new ArrayList<>(); 
+    }
+
+    private String getColumnNameOnly(String qualifiedName) {
+        if (qualifiedName.contains(".")) {
+            return qualifiedName.substring(qualifiedName.lastIndexOf('.') + 1);
+        }
+        return qualifiedName;
+    }
+    private ComparisonConditionNode createEqualityCondition(String leftCol, String rightCol) {
+        FactorNode leftFactor = new ColumnFactor(leftCol);
+        TermNode leftTerm = new TermNode(leftFactor, null);
+        ExpressionNode leftExpr = new ExpressionNode(leftTerm, null);
+
+        FactorNode rightFactor = new ColumnFactor(rightCol);
+        TermNode rightTerm = new TermNode(rightFactor, null);
+        ExpressionNode rightExpr = new ExpressionNode(rightTerm, null);
+
+        return new ComparisonConditionNode(leftExpr, "=", rightExpr);
     }
 }

@@ -11,6 +11,7 @@ public class QueryOptimizer extends DBMSComponent implements IQueryOptimizer {
 
     private final QueryParser parser;
     private final HeuristicOptimizer optimizer;
+    private final PhysicalPlanGenerator generator;
     private final CostEstimator estimator;
 
     public QueryOptimizer() {
@@ -19,6 +20,7 @@ public class QueryOptimizer extends DBMSComponent implements IQueryOptimizer {
         this.parser = new QueryParser();
         this.estimator = new CostEstimator();
         this.optimizer = new HeuristicOptimizer(estimator);
+        this.generator = new PhysicalPlanGenerator(estimator);
     }
 
     @Override
@@ -40,7 +42,15 @@ public class QueryOptimizer extends DBMSComponent implements IQueryOptimizer {
 
     @Override
     public ParsedQuery optimizeQuery(ParsedQuery query, Map<String, Statistic> allStats) {
-        return this.optimizer.optimize(query, allStats);
+        // System.out.println(query.planRoot());
+        // System.out.println(getCost(query, allStats));
+        ParsedQuery logicalOptimized = this.optimizer.optimize(query, allStats);
+        // System.out.println(logicalOptimized.planRoot());
+        // System.out.println(getCost(logicalOptimized, allStats));
+        ParsedQuery physicalOptimized = this.generator.generate(logicalOptimized, allStats);
+        // System.out.println(physicalOptimized.planRoot());
+        // System.out.println(getCost(physicalOptimized, allStats));
+        return physicalOptimized;
     }
 
     @Override

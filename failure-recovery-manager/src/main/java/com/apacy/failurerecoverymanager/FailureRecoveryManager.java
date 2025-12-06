@@ -52,7 +52,7 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
     public void initialize() throws Exception {
         System.out.println(this.getComponentName() + " is initializing...");
 
-        // Buat auto recovery jika ada checkpoint/log yang sudah ada
+        // Buat auto recovery kalo ada checkpoint/log yang sudah ada
         boolean recoveryNeeded = false;
         if (checkpointManager.hasCheckpoints()) {
             System.out.println("Checkpoint files detected. Recovery may be needed.");
@@ -97,9 +97,9 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
 
             Object dataAfter = formatDataFromExecutionResult(info);
 
-            // Buat log entry JSON
+            // Buat log entry dalam format JSON
             LogEntry entry = new LogEntry(transactionId, operation, tableName, null, dataAfter);
-            logWriter.writeLog(entry); // writeLog nerima LogEntry dan dijadiin JSON
+            logWriter.writeLog(entry); 
 
         } catch (Exception e) {
             System.err.println("Error writing log: " + e.getMessage());
@@ -116,7 +116,7 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
         }
     }
 
-    // Menulis log untuk lifecycle transaksi (BEGIN, COMMIT, ROLLBACK)
+    // write log untuk lifecycle transaksi (BEGIN, COMMIT, ROLLBACK)
     public void writeTransactionLog(int transactionId, String lifecycleEvent) {
         try {
             LogEntry entry = new LogEntry(String.valueOf(transactionId), lifecycleEvent, "-", null, null);
@@ -146,10 +146,10 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
         try {
             System.out.println("Creating a new checkpoint...");
             this.checkpointManager.createCheckpoint();
-            // Setelah checkpoint, lakuin rotasi/kompaksi WAL buat ilangin log lama
+            // rotasi WAL buat ilangin log lama
             if (logWriter != null) {
                 try {
-                    logWriter.rotateLog(); // simpan log lama
+                    logWriter.rotateLog(); 
                 } catch (IOException e) {
                     System.err.println("[FailureRecoveryManager] Failed to rotate WAL: " + e.getMessage());
                 }
@@ -201,7 +201,6 @@ public class FailureRecoveryManager extends DBMSComponent implements IFailureRec
         }
     }
 
-    // Getters
     public LogWriter getLogWriter() {
         return logWriter;
     }

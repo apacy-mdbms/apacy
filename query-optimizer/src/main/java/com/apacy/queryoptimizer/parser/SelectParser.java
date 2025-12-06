@@ -110,7 +110,14 @@ public class SelectParser extends AbstractParser {
         boolean isDesc = false;
         if (match(TokenType.ORDER)) {
             consume(TokenType.BY);
-            orderBy = consume(TokenType.IDENTIFIER).getValue();
+            String nextCol = consume(TokenType.IDENTIFIER).getValue();
+            while(match(TokenType.DOT)) {
+                Token t = peek();
+                if (match(TokenType.IDENTIFIER)) {
+                    nextCol += '.' + t.getValue();
+                } else {consume(TokenType.IDENTIFIER);} //throw error
+            }
+            orderBy = nextCol;
             if (match(TokenType.DESC)) {
                 isDesc = true;
             } else if (match(TokenType.ASC)) {
@@ -131,7 +138,8 @@ public class SelectParser extends AbstractParser {
             offsetValue = Integer.parseInt(offsetToken.getValue());
         }
 
-        if (peek().getType() == TokenType.SEMICOLON) consume(TokenType.SEMICOLON);
+        consume(TokenType.SEMICOLON);
+        consume(TokenType.EOF);
 
         Object joinConditions = joinAst;
         Object whereClause = where;

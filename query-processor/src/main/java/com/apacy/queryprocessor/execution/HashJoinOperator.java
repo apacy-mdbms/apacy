@@ -162,7 +162,7 @@ public class HashJoinOperator implements Operator {
         Object joinCondition = createJoinCondition(joinColumns);
         
         // Initialize fallback operator
-        fallbackOperator = new NestedLoopJoinOperator(probeChild, buildChild, joinCondition);
+        fallbackOperator = new NestedLoopJoinOperator(probeChild, buildChild, joinCondition, "INNER");
         fallbackOperator.open();
     }
     
@@ -219,7 +219,7 @@ public class HashJoinOperator implements Operator {
     private String generateCompositeKey(Row row, List<String> columns) {
         StringBuilder sb = new StringBuilder();
         for (String col : columns) {
-            Object val = row.get(col);
+            Object val = getRowValue(row, col);
             if (val == null) return null; 
             sb.append(val).append("|");   
         }
@@ -235,5 +235,19 @@ public class HashJoinOperator implements Operator {
             }
         }
         return new Row(mergedData);
+    }
+
+    private Object getRowValue(Row row, String columnName) {
+        if (row.data().containsKey(columnName)) {
+            return row.get(columnName);
+        }
+        
+        String suffix = "." + columnName;
+        for (String key : row.data().keySet()) {
+            if (key.endsWith(suffix)) {
+                return row.get(key);
+            }
+        }
+        return null;
     }
 }

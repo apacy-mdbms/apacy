@@ -17,21 +17,26 @@ import com.apacy.common.dto.DataUpdate;
  * Tugas: Mengelola baca/tulis/hapus data fisik di disk.
  */
 public interface IStorageManager {
-    
-    List<Row> readBlock(DataRetrieval dataRetrieval);
 
-    int writeBlock(DataWrite dataWrite); // returns affected rows
+  List<Row> readBlock(DataRetrieval dataRetrieval);
 
-    int deleteBlock(DataDeletion dataDeletion); // returns affected rows
+  int writeBlock(DataWrite dataWrite); // returns affected rows
 
-    void setIndex(String table, String column, String indexType);
+  int deleteBlock(DataDeletion dataDeletion); // returns affected rows
 
-    int updateBlock(DataUpdate dataUpdate); // inplace-update
+  void setIndex(String table, String column, String indexType);
 
-    Map<String, Statistic> getAllStats(); // returns statistic of each tables. String == Table name
+  void dropIndex(String tableName, String indexName);
 
-    void createTable(Schema schema) throws IOException;
+  int updateBlock(DataUpdate dataUpdate); // inplace-update
 
-    Schema getSchema(String tableName);
-    // void dropTable(String tableName, boolean isCascading) throws IOException;
+  Map<String, Statistic> getAllStats(); // returns statistic of each tables. String == Table name
+
+  void createTable(Schema schema) throws IOException;
+
+  Schema getSchema(String tableName);
+
+  int dropTable(String tableName, String option);
+
+  List<String> getDependentTables(String tablename);
 }

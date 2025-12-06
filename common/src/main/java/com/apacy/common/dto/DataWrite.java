@@ -2,6 +2,8 @@ package com.apacy.common.dto;
 
 import java.util.Map;
 
+import com.apacy.common.dto.ast.where.WhereConditionNode;
+
 /**
  * Dibuat oleh QP, dikonsumsi oleh SM.
  * Instruksi spesifik ke SM tentang data apa yang harus DITULIS/DIUBAH.
@@ -9,5 +11,5 @@ import java.util.Map;
 public record DataWrite(
     String tableName,
     Row newData,
-    Object filterCondition // Sebaiknya merujuk ke class/record internal SM
+    WhereConditionNode filterCondition // Sebaiknya merujuk ke class/record internal SM
 ) {}

@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -17,6 +18,13 @@ import java.util.stream.Stream;
 import com.apacy.common.dto.DataDeletion;
 import com.apacy.common.dto.DataWrite;
 import com.apacy.common.dto.Row;
+import com.apacy.common.dto.ast.expression.ExpressionNode;
+import com.apacy.common.dto.ast.expression.TermNode;
+import com.apacy.common.dto.ast.expression.ColumnFactor;
+import com.apacy.common.dto.ast.expression.LiteralFactor;
+import com.apacy.common.dto.ast.where.BinaryConditionNode;
+import com.apacy.common.dto.ast.where.ComparisonConditionNode;
+import com.apacy.common.dto.ast.where.WhereConditionNode;
 import com.apacy.common.interfaces.IStorageManager;
 import com.apacy.storagemanager.StorageManager;
 
@@ -52,7 +60,6 @@ public class CheckpointManager {
 
         long ts = System.currentTimeMillis();
 
-        // Tulis log checkpoint mulai
         if (logWriter != null) {
             logWriter.writeLog("SYSTEM", "CHECKPOINT_BEGIN", checkpointId, null);
             logWriter.flush();
@@ -60,14 +67,12 @@ public class CheckpointManager {
 
         int appliedEntries = flushWalToStorage();
 
-        // Buat Flush SM jika ada
         if (storageManager instanceof StorageManager sm) {
             if (sm.getBlockManager() != null) {
                 sm.getBlockManager().flush();
             }
         }
 
-        // Save metadata including checkpoint timestamp
         CheckpointInfo info = new CheckpointInfo(
             checkpointId,
             ts,
@@ -115,7 +120,6 @@ public class CheckpointManager {
         }
     }
 
-    // bantu parsing 
     private CheckpointInfo parseCheckpointFile(Path path) {
         String filename = path.getFileName().toString().replace(".meta", "");
         return new CheckpointInfo(filename, 0, 0, "Loaded from file");
@@ -123,7 +127,6 @@ public class CheckpointManager {
     
     public void cleanupOldCheckpoints(int keepCount) throws IOException {
         List<CheckpointInfo> checkpoints = listCheckpoints();
-        // Urutkan dari yang terbaru
         checkpoints.sort((a, b) -> b.checkpointId.compareTo(a.checkpointId));
 
         if (checkpoints.size() > keepCount) {
@@ -204,7 +207,10 @@ public class CheckpointManager {
                     if (criteria == null || criteria.isEmpty()) {
                         return false;
                     }
-                    storageManager.deleteBlock(new DataDeletion(tableName, criteria));
+                    WhereConditionNode condition = buildFullMatchCondition(criteria);
+                    if (condition != null) {
+                        storageManager.deleteBlock(new DataDeletion(tableName, condition));
+                    }
                     return true;
                 }
                 default -> {
@@ -223,6 +229,34 @@ public class CheckpointManager {
             "UPDATE".equalsIgnoreCase(operation) ||
             "DELETE".equalsIgnoreCase(operation)
         );
+    }
+    
+    private WhereConditionNode buildFullMatchCondition(Map<String, Object> dataMap) {
+        if (dataMap == null || dataMap.isEmpty()) return null;
+        
+        List<WhereConditionNode> conditions = new ArrayList<>();
+        for (Map.Entry<String, Object> e : dataMap.entrySet()) {
+            if (e.getValue() != null && !String.valueOf(e.getValue()).equalsIgnoreCase("null")) {
+                conditions.add(buildComparison(e.getKey(), "=", e.getValue()));
+            }
+        }
+        
+        if (conditions.isEmpty()) return null;
+        if (conditions.size() == 1) return conditions.get(0);
+        
+        WhereConditionNode result = conditions.get(0);
+        for (int i = 1; i < conditions.size(); i++) {
+            result = new BinaryConditionNode(result, "AND", conditions.get(i));
+        }
+        return result;
+    }
+    
+    private WhereConditionNode buildComparison(String columnName, String operator, Object value) {
+        TermNode colTerm = new TermNode(new ColumnFactor(columnName), List.of());
+        ExpressionNode leftExpr = new ExpressionNode(colTerm, List.of());
+        TermNode valTerm = new TermNode(new LiteralFactor(value), List.of());
+        ExpressionNode rightExpr = new ExpressionNode(valTerm, List.of());
+        return new ComparisonConditionNode(leftExpr, operator, rightExpr);
     }
 
     public static class CheckpointInfo {
@@ -244,7 +278,6 @@ public class CheckpointManager {
         }
     }
 
-    /** Cek apakah direktori checkpoint memiliki file checkpoint */
     public boolean hasCheckpoints() throws IOException {
         Path checkpointPath = Paths.get(checkpointDirectory);
         if (!Files.exists(checkpointPath)) {

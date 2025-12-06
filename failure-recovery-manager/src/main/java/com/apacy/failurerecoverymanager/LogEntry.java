@@ -5,8 +5,8 @@ public class LogEntry {
     private String transactionId;
     private String operation;
     private String tableName;
-    private Object dataBefore; // old values
-    private Object dataAfter;  // new values
+    private Object dataBefore; 
+    private Object dataAfter; 
     private long timestamp;
 
     public LogEntry() {
@@ -44,7 +44,6 @@ public class LogEntry {
 
     @Override
     public String toString() {
-        // Handle format log JSON
         return "{" +
                 "\"timestamp\": " + timestamp + ", " +
                 "\"transactionId\": \"" + (transactionId != null ? transactionId : "-") + "\", " +
@@ -72,10 +71,9 @@ public class LogEntry {
             String before = null;
             String after = null;
             
-            // Manual JSON parsing 
-            String content = jsonLine.substring(1, jsonLine.length() - 1); // Remove { }
+            // parse json
+            String content = jsonLine.substring(1, jsonLine.length() - 1);
             
-            // Parse timestamp 
             int timestampIndex = content.indexOf("\"timestamp\":");
             if (timestampIndex >= 0) {
                 int colonIndex = content.indexOf(":", timestampIndex);
@@ -89,14 +87,12 @@ public class LogEntry {
                 }
             }
             
-            // Parse string lainnya
             tx = extractJsonField(content, "transactionId");
             op = extractJsonField(content, "operation");
             table = extractJsonField(content, "tableName");
             before = extractJsonField(content, "dataBefore");
             after = extractJsonField(content, "dataAfter");
             
-            // "-" dianggap null
             tx = "-".equals(tx) ? null : tx;
             op = "-".equals(op) ? null : op;
             table = "-".equals(table) ? null : table;

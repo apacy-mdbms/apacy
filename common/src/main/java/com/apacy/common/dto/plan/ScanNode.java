@@ -4,9 +4,16 @@ import java.util.List;
 
 public record ScanNode(
     String tableName,
-    String alias
+    String alias,
+    String indexName,
+    Object condition
 ) implements PlanNode {
     private static final long serialVersionUID = 1L;
+
+    // Backward compability
+    public ScanNode(String tableName, String alias) {
+        this(tableName, alias, null, null);
+    }
     
     @Override public List<PlanNode> getChildren() { return List.of(); }
 }

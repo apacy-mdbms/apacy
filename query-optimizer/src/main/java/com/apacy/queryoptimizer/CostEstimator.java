@@ -16,6 +16,7 @@ import com.apacy.common.dto.ast.where.LiteralConditionNode;
 import com.apacy.common.dto.ast.where.UnaryConditionNode;
 import com.apacy.common.dto.ast.where.WhereConditionNode;
 import com.apacy.common.dto.plan.CartesianNode;
+import com.apacy.common.dto.plan.DDLNode;
 import com.apacy.common.dto.plan.FilterNode;
 import com.apacy.common.dto.plan.JoinNode;
 import com.apacy.common.dto.plan.LimitNode;
@@ -54,6 +55,9 @@ public class CostEstimator {
     }
 
     public double estimatePlanCost(PlanNode plan, Map<String, Statistic> stats) {
+        if (plan instanceof DDLNode) {
+            return 0;
+        }
         DerivedCost derivedCost = estimatePlanCostHelper(plan, stats);
         return derivedCost.cost();
     }
@@ -98,6 +102,10 @@ public class CostEstimator {
 
         DerivedCost childCost = estimatePlanCostHelper(child, stats);
         DerivedCost filteredCost = estimateSelectivity((WhereConditionNode)filter.predicate(), stats, childCost);
+        // System.out.print("KOS NTA JADI ");
+        // System.out.print(filteredCost);
+        // System.out.print(" dari ");
+        // System.out.print(childCost);
 
         return filteredCost;
     }
@@ -112,11 +120,11 @@ public class CostEstimator {
                 case "AND":
                     // return use conjunction
                     sel = left.sel() * right.sel();
-                    return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
+                    return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
                 case "OR":
                     // return use Disjunction
                     sel = 1 - (1 - left.sel()) * (1 - right.sel());
-                    return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
+                    return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
                 default:
                     throw new RuntimeException("Illegal binary condition operator");
             }
@@ -127,7 +135,7 @@ public class CostEstimator {
             }
             SelectivityResult operand = estimateSelectivityHelper(unary.operand(), stats, derivedCost);
             double sel = 1 - operand.sel(); // negation
-            return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
+            return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
         }
         else if (conditionNode instanceof ComparisonConditionNode comp) {
             String leftAttr = getExpressionAttribute(comp.leftOperand());
@@ -149,38 +157,52 @@ public class CostEstimator {
             }
             String singleAttribute = leftAttr == null ? rightAttr : leftAttr;
 
-            String tableName = singleAttribute.substring(0, singleAttribute.indexOf('.'));
+            int idx = singleAttribute.indexOf('.');
+            if (idx == -1) {
+                return new SelectivityResult(0.0, 0);
+            }
+            String tableName = singleAttribute.substring(0, idx);
             String columnName = singleAttribute.substring(singleAttribute.indexOf('.') + 1);
-            double sel = 1.0;
-            Map<String, Integer> Vs = stats.get(tableName).V();
+            double sel = 0.5;
+            // Map<String, Integer> Vs = stats.get(tableName).V();
             double V = stats.get(tableName).V().get(columnName);
-            Double max = (Double) stats.get(tableName).maxVal().get(columnName);
-            Double min = (Double) stats.get(tableName).minVal().get(columnName);
+            Double max;
+            Double min;
             switch (comp.operator().toUpperCase()) {
                 case "=":
                     // return use equality
                     if (V != 0.0)
                         sel = 1.0 / V;
-                    return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
+                    return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
                 case "<":
                 case "<=":
-                    if (value instanceof Number num && min != null && max != null) {
+                    if (value instanceof Number num) {
+                        max = (Double) (stats.get(tableName).maxVal().get(columnName));
+                        min = (Double) (stats.get(tableName).minVal().get(columnName));
+                        if (min == null || max == null) {
+                            return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
+                        }
                         int v = (int) num;
                         if (v <= min) sel = 0;
                         else if (v >= max) sel = 1;
                         else sel = (double)(v - min) / (double)(max - min);
                     }
-                    return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
+                    return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
                 case ">":
                 case ">=":
                     // return use inequality
-                    if (value instanceof Number num && min != null && max != null) {
+                    if (value instanceof Number num) {
+                        max = (Double) (stats.get(tableName).maxVal().get(columnName));
+                        min = (Double) (stats.get(tableName).minVal().get(columnName));
+                        if (min == null || max == null) {
+                            return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
+                        }
                         int v = (int) num;
                         if (v >= max) sel = 0;
                         else if (v <= min) sel = 1;
                         else sel = (double)(max - v) / (double)(max - min);
                     }
-                    return new SelectivityResult(sel, (int)(derivedCost.nr() * sel));
+                    return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
                 default:
                     throw new RuntimeException("Illegal binary condition operator");
             }
@@ -248,9 +270,6 @@ public class CostEstimator {
         if (factor instanceof ColumnFactor col) {
             String colName = col.columnName();
 
-            if (colName.contains(".")) {
-                colName = colName.substring(colName.indexOf('.') + 1);
-            }
             return colName;
         } else if (factor instanceof ExpressionNode expr) {
             return getExpressionAttribute(expr);
@@ -261,14 +280,19 @@ public class CostEstimator {
 
     private DerivedCost estimateSelectivity(WhereConditionNode conditionNode, Map<String, Statistic> stats, DerivedCost derivedCost) {
         SelectivityResult res = estimateSelectivityHelper(conditionNode, stats, derivedCost);
-        return new DerivedCost(derivedCost.cost(), res.nr(), (int)(derivedCost.br() * res.sel()), derivedCost.lr());
+        return new DerivedCost(derivedCost.cost(), res.nr(), (int)Math.ceil(derivedCost.br() * res.sel()), derivedCost.lr());
 
     }
 
 
     private DerivedCost costProject(ProjectNode proj, Map<String,Statistic> stats) {
-        // projection is pipelined
-        return estimatePlanCostHelper(proj.getChildren().get(0), stats);
+        DerivedCost childCost =  estimatePlanCostHelper(proj.getChildren().get(0), stats);
+        // asumsi lr menjadi 2x lebih kecil
+        int blockSize = 4096;
+        int lr2 = childCost.lr() / 2;
+        int fr2 = (int)Math.floor(blockSize / lr2);
+        int br2 = (int)Math.ceil(childCost.nr() / fr2);
+        return new DerivedCost(childCost.cost(), childCost.nr(), br2, lr2);
     }
 
     private DerivedCost costSort(SortNode sort, Map<String,Statistic> stats) {
@@ -313,5 +337,35 @@ public class CostEstimator {
         return new DerivedCost(leftCost.cost()+rightCost.cost()+cost, bS, bR, leftCost.lr());
     }
 
+
+    public double costJoinSortMerge(JoinNode node, Map<String, Statistic> stats) {
+        DerivedCost leftCost = estimatePlanCostHelper(node.left(), stats);
+        DerivedCost rightCost = estimatePlanCostHelper(node.right(), stats);
+
+        double blockTransfers = (leftCost.br() + rightCost.br()) * tT;
+        double bb = 1;
+        double seek = (Math.ceil(leftCost.br() / bb) + Math.ceil(rightCost.br() / bb)) * tS;
+        double sort =  2 * leftCost.br() * Math.log(leftCost.br()) + 2 * rightCost.br() * Math.log(rightCost.br());// WE ONLY HAVE SECONDARY INDEX. MUST SORT
+        return blockTransfers + seek + sort;
+    }
+
+    public double costJoinNestedLoop(JoinNode node, Map<String, Statistic> stats) {
+        DerivedCost leftCost = estimatePlanCostHelper(node.left(), stats);
+        DerivedCost rightCost = estimatePlanCostHelper(node.right(), stats);
+
+        double blockTransfers = (leftCost.nr() * rightCost.br() + leftCost.br()) * tT;
+        double seek = (leftCost.nr() + leftCost.br()) * tS;
+        return blockTransfers + seek;
+    }
+
+    public double costJoinHash(JoinNode node, Map<String, Statistic> stats) {
+        DerivedCost leftCost = estimatePlanCostHelper(node.left(), stats);
+        DerivedCost rightCost = estimatePlanCostHelper(node.right(), stats);
+
+        double blockTransfers = (3 * leftCost.br() + rightCost.br()) * tT;
+        double bb = 1;
+        double seek = 2 * (Math.ceil(leftCost.br() / bb) + Math.ceil(rightCost.br() / bb)) * tS;
+        return blockTransfers + seek;
+    }
 
 }

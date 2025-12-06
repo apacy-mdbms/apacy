@@ -156,11 +156,11 @@ public class ModifyOperator implements Operator {
         throw new RuntimeException("Primary Key Violation: Column '" + pkColumnName + "' cannot be NULL.");
     }
 
-    String filter = pkColumnName + "='" + pkValue + "'";
+    WhereConditionNode filter = createEqualityCondition(pkColumnName, pkValue);
     
-    DataRetrieval checkPK = new com.apacy.common.dto.DataRetrieval(
+    DataRetrieval checkPK = new DataRetrieval(
         tableName,
-        java.util.List.of(pkColumnName),
+        List.of(pkColumnName),
         filter,
         true
     );
@@ -185,11 +185,11 @@ public class ModifyOperator implements Operator {
 
         if (childValue == null) continue;
 
-        String filter = fk.referenceColumn() + "='" + childValue + "'";
+        WhereConditionNode filter = createEqualityCondition(fk.referenceColumn(), childValue);
         
         DataRetrieval checkParent = new DataRetrieval(
             fk.referenceTable(),
-            java.util.List.of(fk.referenceColumn()),
+            List.of(fk.referenceColumn()),
             filter,
             true
         );
@@ -211,9 +211,11 @@ public class ModifyOperator implements Operator {
 
         Row childRow;
         while ((childRow = child.next()) != null) {
+            validateDelete(childRow, node.targetTable());
+
             frm.writeDataLog(String.valueOf(txId), "DELETE", node.targetTable(), childRow, null);
 
-            Object predicate = buildIdentityAstFromRow(childRow);
+            WhereConditionNode predicate = buildIdentityAstFromRow(childRow);
 
             DataDeletion dd = new DataDeletion(node.targetTable(), predicate);
             int deleted = sm.deleteBlock(dd);
@@ -246,48 +248,183 @@ public class ModifyOperator implements Operator {
 
             Row newRow = new Row(mergedData);
 
+            validateUpdatePrimaryKey(oldRow, newRow, node.targetTable()); 
+
+            validateUpdateChild(oldRow, newRow, node.targetTable());
+
+            validateUpdateParent(oldRow, newRow, node.targetTable());
+
             frm.writeDataLog(String.valueOf(txId), "UPDATE", node.targetTable(), oldRow, newRow);
 
-            Object updatePredicate = buildIdentityAstFromRow(oldRow);
+            WhereConditionNode updatePredicate = buildIdentityAstFromRow(oldRow);
             DataUpdate du = new DataUpdate(node.targetTable(), newRow, updatePredicate);
             int updated = sm.updateBlock(du);
             affectedRows += updated;
         }
     }
 
-    private String buildPredicateFromRow(Row row) {
-        StringBuilder sb = new StringBuilder();
+    private void validateUpdatePrimaryKey(Row oldRow, Row newRow, String tableName) {
+        Schema schema = sm.getSchema(tableName);
+        if (schema == null) return;
 
-        boolean first = true;
-        for (Map.Entry<String, Object> e : row.data().entrySet()) {
-            if (!first) {
-                sb.append(" AND ");
-            }
-            first = false;
+        String pkColumnName = null;
+        String prefix = "pk_" + tableName + "_";
 
-            String col = e.getKey();
-            Object val = e.getValue();
-
-            if (val == null) {
-                sb.append(col).append(" IS NULL");
-            } else if (val instanceof String) {
-                String escaped = escapeSingleQuotes((String) val);
-                sb.append(col).append("='").append(escaped).append("'");
-            } else {
-                sb.append(col).append("=").append(val.toString());
+        for (IndexSchema idx : schema.indexes()) {
+            if (idx.indexName().startsWith(prefix)) {
+                pkColumnName = idx.columnName();
+                break;
             }
         }
 
-        return sb.toString();
+        if (pkColumnName == null) return;
+
+        Object oldValue = getColumnValue(oldRow, pkColumnName);
+        Object newValue = getColumnValue(newRow, pkColumnName);
+
+        if (newValue == null || newValue.equals(oldValue)) {
+            return; 
+        }
+
+        if (newValue == null) {
+            throw new RuntimeException("Primary Key Constraint Violation: Column '" + pkColumnName + "' cannot be NULL.");
+        }
+
+        WhereConditionNode filter = createEqualityCondition(pkColumnName, newValue);
+        
+        DataRetrieval checkPK = new DataRetrieval(
+            tableName,
+            List.of(pkColumnName),
+            filter,
+            true
+        );
+
+        List<Row> results = sm.readBlock(checkPK);
+
+        if (!results.isEmpty()) {
+            throw new RuntimeException("Primary Key Constraint Violation: Duplicate entry '" + newValue + 
+                "' for key '" + pkColumnName + "' in table '" + tableName + "'.");
+        }
+    }
+    private void validateUpdateChild(Row oldRow, Row newRow, String tableName) {
+        Schema schema = sm.getSchema(tableName);
+        if (schema.getForeignKeys() == null) return;
+
+        for (ForeignKeySchema fk : schema.getForeignKeys()) {
+            Object oldValue = getColumnValue(oldRow, fk.columnName());
+            Object newValue = getColumnValue(newRow, fk.columnName());
+
+            if (newValue != null && !newValue.equals(oldValue)) {
+                WhereConditionNode filter = createEqualityCondition(fk.referenceColumn(), newValue);
+                
+                DataRetrieval checkParent = new DataRetrieval(
+                    fk.referenceTable(),
+                    List.of(fk.referenceColumn()),
+                    filter,
+                    true
+                );
+
+                if (sm.readBlock(checkParent).isEmpty()) {
+                    throw new RuntimeException("Integrity Violation: Referenced key '" + newValue + 
+                        "' not found in parent table '" + fk.referenceTable() + "'.");
+                }
+            }
+        }
     }
 
-    private String escapeSingleQuotes(String s) {
-        if (s == null) return null;
-        return s.replace("'", "''");
+    private void validateUpdateParent(Row oldRow, Row newRow, String tableName) {
+        List<String> dependents = sm.getDependentTables(tableName);
+        if (dependents == null || dependents.isEmpty()) return;
+
+        for (String childTable : dependents) {
+            Schema childSchema = sm.getSchema(childTable);
+            if (childSchema == null) continue;
+
+            for (ForeignKeySchema fk : childSchema.getForeignKeys()) {
+                if (!fk.referenceTable().equalsIgnoreCase(tableName)) continue;
+
+                Object oldKey = getColumnValue(oldRow, fk.referenceColumn());
+                Object newKey = getColumnValue(newRow, fk.referenceColumn());
+
+                if (oldKey != null && !oldKey.equals(newKey)) {
+                    WhereConditionNode filter = createEqualityCondition(fk.columnName(), oldKey);
+                    
+                    DataRetrieval checkChildren = new DataRetrieval(
+                        childTable,
+                        List.of(fk.columnName()),
+                        filter,
+                        true
+                    );
+                    
+                    List<Row> orphans = sm.readBlock(checkChildren);
+                    if (!orphans.isEmpty()) {
+                        throw new RuntimeException("Integrity Violation: Cannot update key '" + oldKey + 
+                            "' in '" + tableName + "'. It is referenced by " + orphans.size() + 
+                            " row(s) in '" + childTable + "'.");
+                    }
+                }
+            }
+        }
     }
 
-    private Object buildIdentityAstFromRow(Row row) {
-        Object currentCondition = null;
+    private void validateDelete(Row parentRow, String tableName) {
+        List<String> dependents = sm.getDependentTables(tableName);
+        if (dependents == null || dependents.isEmpty()) return;
+
+        for (String childTableName : dependents) {
+            Schema childSchema = sm.getSchema(childTableName);
+            if (childSchema == null) continue;
+
+            for (ForeignKeySchema fk : childSchema.getForeignKeys()) {
+                if (!fk.referenceTable().equalsIgnoreCase(tableName)) continue;
+
+                Object parentValue = getColumnValue(parentRow, fk.referenceColumn());
+                if (parentValue == null) continue; 
+
+                WhereConditionNode filter = createEqualityCondition(fk.columnName(), parentValue);
+
+                DataRetrieval checkChild = new DataRetrieval(
+                    childTableName,
+                    List.of(fk.columnName()), 
+                    filter,
+                    true
+                );
+
+                List<Row> children = sm.readBlock(checkChild);
+
+                if (!children.isEmpty()) {
+                    if (fk.isCascading()) {
+                        System.out.println("[Integrity] Cascading DELETE to table: " + childTableName);
+                        
+                        DataDeletion childDelete = new DataDeletion(childTableName, filter);
+                        sm.deleteBlock(childDelete);
+                        
+                    } else {
+                        throw new RuntimeException("Integrity Violation: Cannot delete row from '" + 
+                            tableName + "'. It is still referenced by " + children.size() + 
+                            " row(s) in table '" + childTableName + "'.");
+                    }
+                }
+            }
+        }
+    }
+
+    private Object getColumnValue(Row row, String columnName) {
+        if (row.data().containsKey(columnName)) {
+            return row.get(columnName);
+        }
+        
+        String suffix = "." + columnName;
+        for (String key : row.data().keySet()) {
+            if (key.endsWith(suffix)) {
+                return row.get(key);
+            }
+        }
+        return null;
+    }
+
+    private WhereConditionNode buildIdentityAstFromRow(Row row) {
+        WhereConditionNode currentCondition = null;
 
         for (Map.Entry<String, Object> e : row.data().entrySet()) {
             String colName = e.getKey();
@@ -297,15 +434,15 @@ public class ModifyOperator implements Operator {
                 colName = colName.substring(colName.lastIndexOf('.') + 1);
             }
 
-            Object comparison = createEqualityCondition(colName, val);
+            WhereConditionNode comparison = createEqualityCondition(colName, val);
 
             if (currentCondition == null) {
                 currentCondition = comparison;
             } else {
                 currentCondition = new BinaryConditionNode(
-                    (WhereConditionNode) currentCondition, 
+                    currentCondition, 
                     "AND", 
-                    (WhereConditionNode) comparison
+                    comparison
                 );
             }
         }
