@@ -7,6 +7,7 @@ import java.util.Map;
 
 import com.apacy.common.dto.DataRetrieval;
 import com.apacy.common.dto.Row;
+import com.apacy.common.dto.ast.where.WhereConditionNode;
 import com.apacy.common.dto.plan.ScanNode;
 import com.apacy.common.interfaces.IStorageManager;
 
@@ -24,7 +25,7 @@ public class ScanOperator implements Operator {
     @Override
     public void open() {
         boolean useIndex = (node.indexName() != null);
-        Object filterCondition = node.condition();
+        WhereConditionNode filterCondition = (WhereConditionNode) node.condition();
         // In a real implementation, this would open a cursor/file stream.
         // Due to StorageManager limitations, we read the block into memory here.
         DataRetrieval dr = new DataRetrieval(
@@ -43,6 +44,8 @@ public class ScanOperator implements Operator {
     public Row next() {
         if (iterator != null && iterator.hasNext()) {
             Row rawRow = iterator.next();
+
+            System.out.println("ScanOperator DEBUG: Table=" + node.tableName() + ", Alias='" + node.alias() + "'");
             
             Map<String, Object> prefixedData = new HashMap<>();
             String prefix = (node.alias() != null && !node.alias().isEmpty()) 

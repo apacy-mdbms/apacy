@@ -52,6 +52,18 @@ public class DDLOperator implements Operator {
                     sm.dropTable(dropCmd.getTableName(), "RESTRICT");
                 }
             }
+            // CREATE INDEX
+            else if (ddlQuery instanceof com.apacy.common.dto.ddl.ParsedQueryCreateIndex idxCmd) {
+                sm.setIndex(
+                    idxCmd.getTableName(), 
+                    idxCmd.getColumnName(), 
+                    idxCmd.getIndexType()
+                );
+            }
+            // DROP INDEX
+            else if (ddlQuery instanceof com.apacy.common.dto.ddl.ParsedQueryDropIndex idxCmd) {
+                sm.dropIndex(idxCmd.getTableName(), idxCmd.getIndexName());
+            }
         } catch (IOException e) {
             throw new RuntimeException("Storage IO Error executing DDL: " + e.getMessage(), e);
         }

@@ -43,7 +43,7 @@ class QueryProcessorTest {
     
     @Test
     void test_executeQuery_SELECT_Success() {
-        ExecutionResult result = queryProcessor.executeQuery("SELECT * FROM users");
+        ExecutionResult result = queryProcessor.executeQuery("SELECT * FROM users;");
 
         System.out.println(result.rows());
         assertNotNull(result);
@@ -60,7 +60,7 @@ class QueryProcessorTest {
 
     @Test
     void test_executeQuery_INSERT_Success() {
-        ExecutionResult result = queryProcessor.executeQuery("INSERT INTO users (name) VALUES ('Budi')");
+        ExecutionResult result = queryProcessor.executeQuery("INSERT INTO users (name) VALUES ('Budi');");
 
         assertNotNull(result);
         assertTrue(result.success(), "INSERT harus sukses");
@@ -70,7 +70,7 @@ class QueryProcessorTest {
 
     @Test
     void test_executeQuery_UPDATE_Atomic_Success() {
-        ExecutionResult result = queryProcessor.executeQuery("UPDATE users SET name = 'John' WHERE id = 1");
+        ExecutionResult result = queryProcessor.executeQuery("UPDATE users SET name = 'John' WHERE id = 1;");
         
         assertNotNull(result);
         assertTrue(result.success(), "UPDATE harus sukses");
@@ -79,7 +79,7 @@ class QueryProcessorTest {
 
     @Test
     void test_executeQuery_Fail_UnknownQuery() {
-        ExecutionResult result = queryProcessor.executeQuery("JOGET DULU GAK SIE");
+        ExecutionResult result = queryProcessor.executeQuery("JOGET DULU GAK SIE;");
 
         assertNotNull(result);
         assertFalse(result.success(), "Query invalid harus gagal");

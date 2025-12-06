@@ -50,11 +50,11 @@ public class MockStorageManager implements IStorageManager {
 
   private List<Row> getEmployeeDataLegacy() {
     List<Row> employees = new ArrayList<>();
-    employees.add(new Row(Map.of("id", 1, "name", "Naufarrel", "salary", 20000)));
-    employees.add(new Row(Map.of("id", 2, "name", "Weka", "salary", 30000)));
-    employees.add(new Row(Map.of("id", 3, "name", "Kinan", "salary", 40000)));
-    employees.add(new Row(Map.of("id", 4, "name", "Farrel", "salary", 50000)));
-    employees.add(new Row(Map.of("id", 5, "name", "Bayu", "salary", 60000)));
+    employees.add(new Row(Map.of("id", 1, "name", "Naufarrel", "salary", 20000, "dept_id", 1)));
+    employees.add(new Row(Map.of("id", 2, "name", "Weka", "salary", 30000, "dept_id", 2)));
+    employees.add(new Row(Map.of("id", 3, "name", "Kinan", "salary", 40000, "dept_id", 1)));
+    employees.add(new Row(Map.of("id", 4, "name", "Farrel", "salary", 50000, "dept_id", 3)));
+    employees.add(new Row(Map.of("id", 5, "name", "Bayu", "salary", 60000, "dept_id", 2)));
     return employees;
   }
 
@@ -165,6 +165,10 @@ public class MockStorageManager implements IStorageManager {
   public int dropTable(String tableName, String option) {
     System.out.println("[MOCK-SM] dropTable dipanggil: " + tableName + " [" + option + "]");
     return 0;
+  }
+
+  public void dropIndex(String tableName, String indexName) {
+    System.out.println("[MOCK-SM] dropIndex dipanggil: " + tableName + " [" + indexName + "]");
   }
 
   @Override
