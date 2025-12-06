@@ -4,12 +4,16 @@ import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.List;
 
+import javax.lang.model.type.TypeKind;
+
 import com.apacy.common.dto.ForeignKeySchema;
 import com.apacy.common.dto.ParsedQuery;
 import com.apacy.common.dto.ddl.ColumnDefinition;
 import com.apacy.common.dto.ddl.ParsedQueryCreate;
+import com.apacy.common.dto.ddl.ParsedQueryCreateIndex;
 import com.apacy.common.dto.ddl.ParsedQueryDDL;
 import com.apacy.common.dto.ddl.ParsedQueryDrop;
+import com.apacy.common.dto.ddl.ParsedQueryDropIndex;
 import com.apacy.common.dto.plan.DDLNode;
 import com.apacy.common.dto.plan.PlanNode;
 import com.apacy.common.enums.DataType;
@@ -30,10 +34,22 @@ public class DDLParser extends AbstractParser {
         Token t = peek();
 
         if (t.getType() == TokenType.CREATE) {
-            return parseCreateTable();
+            consume(TokenType.CREATE);
+            t = peek();
+            if (t.getType() == TokenType.TABLE) {
+                return parseCreateTable();
+            } else if (t.getType() == TokenType.INDEX) {
+                return ParseCreateIndex();
+            }
         }
         else if (t.getType() == TokenType.DROP) {
-            return parseDropTable();
+            consume(TokenType.DROP);
+            t = peek();
+            if (t.getType() == TokenType.TABLE) {
+                return parseDropTable();
+            } else if (t.getType() == TokenType.INDEX) {
+                return ParseDropIndex();
+            }
         }
 
         throw new RuntimeException("Unknown or unsupported DDL Command: " + t.getValue());
@@ -44,7 +60,7 @@ public class DDLParser extends AbstractParser {
 
     // Create Table
     private ParsedQuery parseCreateTable() {
-        consume(TokenType.CREATE);
+        // consume(TokenType.CREATE);
         consume(TokenType.TABLE);
 
         String tableName = consume(TokenType.IDENTIFIER).getValue();
@@ -166,7 +182,7 @@ public class DDLParser extends AbstractParser {
 
     // Drop Table
     private ParsedQuery parseDropTable() {
-        consume(TokenType.DROP);
+        // consume(TokenType.DROP);
         consume(TokenType.TABLE);
 
         String tableName = consume(TokenType.IDENTIFIER).getValue();
@@ -184,6 +200,74 @@ public class DDLParser extends AbstractParser {
 
         return new ParsedQuery(
             "DROP",
+            planRoot,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            false,
+            false
+        );
+    }
+
+    private ParsedQuery ParseCreateIndex() {
+        // consume(TokenType.CREATE);
+        consume(TokenType.INDEX);
+
+        String indexName = consume(TokenType.IDENTIFIER).getValue();
+
+        consume(TokenType.ON);
+
+        String tableName = consume(TokenType.IDENTIFIER).getValue();
+
+        consume(TokenType.USING);
+
+        Token indexType = peek();
+        if (match(TokenType.BTREE) || match(TokenType.HASH)) {}
+        else {
+            throw new RuntimeException("Expected BTREE or HASH index type.");
+        }
+
+        consume(TokenType.LPARENTHESIS);
+        String columnName = consume(TokenType.IDENTIFIER).getValue();
+        consume(TokenType.RPARENTHESIS);
+
+        consume(TokenType.SEMICOLON);
+        consume(TokenType.EOF);
+
+        ParsedQueryDDL ddl = new ParsedQueryCreateIndex(tableName, indexName, columnName, indexType.getValue());
+        PlanNode planRoot = new DDLNode(ddl);
+
+        return new ParsedQuery(
+            "CREATE INDEX",
+            planRoot,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            false,
+            false
+        );
+    }
+
+    private ParsedQuery ParseDropIndex() {
+        // consume(TokenType.DROP);
+        consume(TokenType.INDEX);
+
+        String indexName = consume(TokenType.IDENTIFIER).getValue();
+
+        consume(TokenType.SEMICOLON);
+        consume(TokenType.EOF);
+
+        ParsedQueryDDL ddl = new ParsedQueryDropIndex(indexName);
+        PlanNode planRoot = new DDLNode(ddl);
+
+        return new ParsedQuery(
+            "DROP INDEX",
             planRoot,
             null,
             null,
