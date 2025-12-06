@@ -1,56 +1,151 @@
 package com.apacy.queryprocessor.mocks;
 
-import com.apacy.common.dto.*;
+import com.apacy.common.dto.Response;
+import com.apacy.common.dto.Row;
 import com.apacy.common.enums.Action;
 import com.apacy.common.interfaces.IConcurrencyControlManager;
 
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Mock implementasi dari IConcurrencyControlManager untuk keperluan testing Query Processor.
+ * * Fitur:
+ * 1. Stubbing: Mengatur hasil validasi (Allow/Deny) untuk simulasi locking.
+ * 2. Spying: Melacak transaction lifecycle (begin/end) dan objek yang divalidasi.
+ */
 public class MockConcurrencyControlManager implements IConcurrencyControlManager {
 
-    private boolean forceFail = false;
-    private AtomicInteger counter = new AtomicInteger(0);
+    // --- Configuration (Stubbing) ---
+    private boolean shouldAllowValidation = true;
+    private String validationMessage = "Mock: Access Allowed";
+    private int nextTransactionId = 100;
+
+    // --- State (Spying) ---
+    private int beginTransactionCallCount = 0;
     
+    private int endTransactionCallCount = 0;
+    private Integer lastEndedTransactionId;
+    private Boolean lastEndCommitStatus;
+
+    private int validateObjectCallCount = 0;
+    private String lastValidatedObjectId;
+    private Action lastValidatedAction;
+    private int lastValidatedTransactionId;
+
+    private int logObjectCallCount = 0;
+    private Row lastLoggedObject;
+
+    // --- Configuration Methods ---
+
+    /**
+     * Mengatur apakah validateObject() akan mengembalikan true (allowed) atau false.
+     */
+    public void setShouldAllowValidation(boolean allow) {
+        this.shouldAllowValidation = allow;
+        this.validationMessage = allow ? "Mock: Access Allowed" : "Mock: Access Denied";
+    }
+
+    /**
+     * Mengatur ID transaksi berikutnya yang akan dikembalikan oleh beginTransaction().
+     */
+    public void setNextTransactionId(int nextId) {
+        this.nextTransactionId = nextId;
+    }
+
+    // --- Interface Implementation ---
+
     @Override
     public int beginTransaction() {
-        int txId = counter.incrementAndGet();
-        System.out.println("[MOCK-CCM] beginTransaction: " + txId);
-        return txId;
-    }
-
-    @Override
-    public Response validateObject(String objectId, int transactionId, Action action) {
-        if (forceFail) {
-            return new Response(false, "Mock FAILED by force");
-        }
-        // System.out.println("[MOCK-CCM] validateObject SUKSES untuk: " + objectId + " (Tx:" + transactionId + ")");
-        return new Response(true, "Mock OK");
-    }
-
-    @Override
-    public Response validateObjects(List<String> objectIds, int transactionId, Action action) {
-        for (String objectId : objectIds) {
-            Response response = validateObject(objectId, transactionId, action);
-            if (!response.isAllowed()) {
-                return response;
-            }
-        }
-        return new Response(true, "All locks acquired");
-    }
-    
-    @Override
-    public void endTransaction(int transactionId, boolean commit) {
-        String status = commit ? "COMMIT" : "ABORT";
-        System.out.println("[MOCK-CCM] endTransaction " + transactionId + ": " + status);
+        this.beginTransactionCallCount++;
+        return this.nextTransactionId++;
     }
 
     @Override
     public void logObject(Row object, int transactionId) {
-        // Silent log
+        this.logObjectCallCount++;
+        this.lastLoggedObject = object;
     }
 
-    public void setForceFail(boolean forceFail) {
-        this.forceFail = forceFail;
+    @Override
+    public Response validateObject(String objectId, int transactionId, Action action) {
+        this.validateObjectCallCount++;
+        this.lastValidatedObjectId = objectId;
+        this.lastValidatedAction = action;
+        this.lastValidatedTransactionId = transactionId;
+        
+        return new Response(this.shouldAllowValidation, this.validationMessage);
+    }
+
+    @Override
+    public Response validateObjects(List<String> objectIds, int transactionId, Action action) {
+        this.validateObjectCallCount++; // Hitung sebagai panggilan validasi
+        this.lastValidatedTransactionId = transactionId;
+        this.lastValidatedAction = action;
+        
+        if (objectIds != null && !objectIds.isEmpty()) {
+            this.lastValidatedObjectId = objectIds.get(0); // Simpan item pertama sebagai representasi
+        }
+        
+        return new Response(this.shouldAllowValidation, this.validationMessage);
+    }
+
+    @Override
+    public void endTransaction(int transactionId, boolean commit) {
+        this.endTransactionCallCount++;
+        this.lastEndedTransactionId = transactionId;
+        this.lastEndCommitStatus = commit;
+    }
+
+    // --- Helper Methods untuk Verifikasi Test ---
+
+    public int getBeginTransactionCallCount() {
+        return beginTransactionCallCount;
+    }
+
+    public int getEndTransactionCallCount() {
+        return endTransactionCallCount;
+    }
+
+    public Integer getLastEndedTransactionId() {
+        return lastEndedTransactionId;
+    }
+
+    public Boolean getLastEndCommitStatus() {
+        return lastEndCommitStatus;
+    }
+
+    public int getValidateObjectCallCount() {
+        return validateObjectCallCount;
+    }
+
+    public String getLastValidatedObjectId() {
+        return lastValidatedObjectId;
+    }
+
+    public Action getLastValidatedAction() {
+        return lastValidatedAction;
+    }
+
+    public int getLogObjectCallCount() {
+        return logObjectCallCount;
+    }
+
+    public Row getLastLoggedObject() {
+        return lastLoggedObject;
+    }
+
+    public void reset() {
+        this.beginTransactionCallCount = 0;
+        this.endTransactionCallCount = 0;
+        this.validateObjectCallCount = 0;
+        this.logObjectCallCount = 0;
+        
+        this.lastEndedTransactionId = null;
+        this.lastEndCommitStatus = null;
+        this.lastValidatedObjectId = null;
+        this.lastValidatedAction = null;
+        this.lastLoggedObject = null;
+        
+        this.shouldAllowValidation = true;
     }
 }
