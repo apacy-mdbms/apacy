@@ -82,7 +82,8 @@ public class CostEstimator {
         for (PlanNode child : plan.getChildren()) {
             return estimatePlanCostHelper(child, stats);
         }
-        throw new RuntimeException("Unknown Node has no children");
+        return new DerivedCost(0.0, 0 ,0 ,0);
+        // throw new RuntimeException("Unknown Node has no children");
     }
 
     private DerivedCost costScan(ScanNode scan, Map<String,Statistic> stats) {
@@ -185,7 +186,8 @@ public class CostEstimator {
                         int v = (int) num;
                         if (v <= min) sel = 0;
                         else if (v >= max) sel = 1;
-                        else sel = (double)(v - min) / (double)(max - min);
+                        else if (max - min != 0.0) sel = (double)(v - min) / (double)(max - min);
+                        else sel = 1.0;
                     }
                     return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
                 case ">":
@@ -200,7 +202,8 @@ public class CostEstimator {
                         int v = (int) num;
                         if (v >= max) sel = 0;
                         else if (v <= min) sel = 1;
-                        else sel = (double)(max - v) / (double)(max - min);
+                        else if (max - min != 0.0) sel = (double)(max - v) / (double)(max - min);
+                        else sel = 1.0;
                     }
                     return new SelectivityResult(sel, (int)Math.ceil(derivedCost.nr() * sel));
                 default:
@@ -299,8 +302,14 @@ public class CostEstimator {
         PlanNode child = sort.getChildren().get(0);
         DerivedCost childCost = estimatePlanCostHelper(child, stats);
 
-        double sortCost = childCost.nr() * (Math.log(childCost.nr()) / Math.log(2));
-        return new DerivedCost(childCost.cost() + sortCost, childCost.nr(), childCost.br(), childCost.lr());
+        double nr = childCost.nr();
+
+        if (nr <= 1) {
+            return new DerivedCost(childCost.cost(), (int)Math.ceil(nr), childCost.br(), childCost.lr());
+        }
+
+        double sortCost = nr * (Math.log(nr) / Math.log(2.0));
+        return new DerivedCost(childCost.cost() + sortCost, (int)Math.ceil(nr), childCost.br(), childCost.lr());
     }
 
     private DerivedCost costLimit(LimitNode limit, Map<String,Statistic> stats) {

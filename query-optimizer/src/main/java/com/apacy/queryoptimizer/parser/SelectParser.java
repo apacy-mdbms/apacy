@@ -138,8 +138,6 @@ public class SelectParser extends AbstractParser {
             offsetValue = Integer.parseInt(offsetToken.getValue());
         }
 
-        consume(TokenType.SEMICOLON);
-        consume(TokenType.EOF);
 
         Object joinConditions = joinAst;
         Object whereClause = where;
@@ -154,6 +152,9 @@ public class SelectParser extends AbstractParser {
             int finalOffset = (offsetValue != null) ? offsetValue : 0;
             planRoot = new LimitNode(planRoot, limitValue, finalOffset);
         }
+
+        consume(TokenType.SEMICOLON);
+        consume(TokenType.EOF);
 
         // Gunakan konstruktor BARU yang ada limit & offset
         return new ParsedQuery(
@@ -251,66 +252,84 @@ public class SelectParser extends AbstractParser {
 
     protected JoinOperand parseTableReference(List<String> targetTables, Map<String, String> aliasMap) throws ParseException {
         JoinOperand leftRef = parseTableFactor(targetTables, aliasMap);
-        JoinConditionNode rightRef = parseJoinTail(targetTables, aliasMap);
 
-        if (rightRef != null) {
-            return new JoinConditionNode(rightRef.joinType(), leftRef, rightRef.right(), rightRef.conditions());
+        List<JoinConditionNode> tails = parseJoinTail(targetTables, aliasMap);
+
+        for (JoinConditionNode tail : tails) {
+            leftRef = new JoinConditionNode(
+                    tail.joinType(),
+                    leftRef,
+                    tail.right(),
+                    tail.conditions()
+            );
         }
 
         return leftRef;
     }
 
-    protected JoinConditionNode parseJoinTail(List<String> targetTables, Map<String, String> aliasMap) throws ParseException {
-        if (match(TokenType.CROSS)) {
-            consume(TokenType.JOIN);
-            JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
-            return new JoinConditionNode("CROSS", null, rightRef, null);
+    protected List<JoinConditionNode> parseJoinTail(List<String> targetTables, Map<String, String> aliasMap) throws ParseException {
+        List<JoinConditionNode> joins = new ArrayList<>();
+
+        while (true) {
+            if (match(TokenType.CROSS)) {
+                consume(TokenType.JOIN);
+                JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
+                joins.add(new JoinConditionNode("CROSS", null, rightRef, null));
+                continue;
+            }
+
+            if (match(TokenType.INNER)) {
+                consume(TokenType.JOIN);
+                JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
+                consume(TokenType.ON);
+                joins.add(new JoinConditionNode("INNER", null, rightRef, parseWhereExpression()));
+                continue;
+            }
+
+            if (match(TokenType.LEFT)) {
+                match(TokenType.OUTER);
+                consume(TokenType.JOIN);
+                JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
+                consume(TokenType.ON);
+                joins.add(new JoinConditionNode("LEFT", null, rightRef, parseWhereExpression()));
+                continue;
+            }
+
+            if (match(TokenType.RIGHT)) {
+                match(TokenType.OUTER);
+                consume(TokenType.JOIN);
+                JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
+                consume(TokenType.ON);
+                joins.add(new JoinConditionNode("RIGHT", null, rightRef, parseWhereExpression()));
+                continue;
+            }
+
+            if (match(TokenType.FULL)) {
+                match(TokenType.OUTER);
+                consume(TokenType.JOIN);
+                JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
+                consume(TokenType.ON);
+                joins.add(new JoinConditionNode("FULL", null, rightRef, parseWhereExpression()));
+                continue;
+            }
+
+            if (match(TokenType.NATURAL)) {
+                consume(TokenType.JOIN);
+                JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
+                joins.add(new JoinConditionNode("NATURAL", null, rightRef, null));
+                continue;
+            }
+
+            if (match(TokenType.JOIN)) {
+                JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
+                consume(TokenType.ON);
+                joins.add(new JoinConditionNode("INNER", null, rightRef, parseWhereExpression()));
+                continue;
+            }
+            break;
         }
 
-        if (match(TokenType.INNER)) {
-            consume(TokenType.JOIN);
-            JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
-            consume(TokenType.ON);
-            return new JoinConditionNode("INNER", null, rightRef, parseWhereExpression());
-        }
-
-        if (match(TokenType.LEFT)) {
-            match(TokenType.OUTER);
-            consume(TokenType.JOIN);
-            JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
-            consume(TokenType.ON);
-            return new JoinConditionNode("LEFT", null, rightRef, parseWhereExpression());
-        }
-
-        if (match(TokenType.RIGHT)) {
-            match(TokenType.OUTER);
-            consume(TokenType.JOIN);
-            JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
-            consume(TokenType.ON);
-            return new JoinConditionNode("RIGHT", null, rightRef, parseWhereExpression());
-        }
-
-        if (match(TokenType.FULL)) {
-            match(TokenType.OUTER);
-            consume(TokenType.JOIN);
-            JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
-            consume(TokenType.ON);
-            return new JoinConditionNode("FULL", null, rightRef, parseWhereExpression());
-        }
-
-        if (match(TokenType.NATURAL)) {
-            consume(TokenType.JOIN);
-            JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
-            return new JoinConditionNode("NATURAL", null, rightRef, null);
-        }
-
-        if (match(TokenType.JOIN)) {
-            JoinOperand rightRef = parseTableFactor(targetTables, aliasMap);
-            consume(TokenType.ON);
-            return new JoinConditionNode("INNER", null, rightRef, parseWhereExpression());
-        }
-
-        return null;
+        return joins;
 
     }
 
